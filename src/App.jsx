@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "./supabaseClient";
 import { fetchProfiles, upsertProfile, myProfileName } from "./lib/profiles";
-import { fetchCatalog } from "./lib/catalog";
+import { fetchCatalog, addModule, addModuleParam } from "./lib/catalog";
 import { fetchPlans, setPlanModule, setPlanExcludedParam } from "./lib/plans";
 import { fetchLabs, insertLab, updateLabCsm, updateLabPlan } from "./lib/labs";
 import { logActivity } from "./lib/activity";
@@ -163,6 +163,55 @@ export default function App() {
     }
   }
 
+  // ---- Adoption Template (catalog): create a module or parameter, optionally wiring it
+  // straight into one or more Plans so there's no separate trip to the Plans screen. ----
+  async function handleAddModule({ key, name, icon, weight, planIds }) {
+    const newModule = { key, name, icon, weight, params: [] };
+    setModules((ms) => [...ms, newModule]);
+    if (SUPABASE_CONFIGURED) {
+      try {
+        await addModule({ key, name, icon, weight });
+        for (const planId of planIds) {
+          await setPlanModule(planId, key, true);
+        }
+      } catch (err) {
+        console.error(err);
+        showToast(`⚠ ${name} saved locally but NOT to the database — ${err.message}`);
+        return;
+      }
+    }
+    if (planIds.length) {
+      setPlans((ps) => ps.map((p) => (planIds.includes(p.id) ? { ...p, modules: [...p.modules, key] } : p)));
+    }
+    showToast(`${name} module added${planIds.length ? ` to ${planIds.length} plan(s)` : ""}.`);
+  }
+
+  async function handleAddModuleParam({ moduleKey, name, type, weight, category, excludePlanIds }) {
+    const newParam = { name, type, weight, category };
+    setModules((ms) => ms.map((m) => (m.key === moduleKey ? { ...m, params: [...m.params, newParam] } : m)));
+    if (SUPABASE_CONFIGURED) {
+      try {
+        await addModuleParam({ moduleKey, name, type, weight, category });
+        for (const planId of excludePlanIds) {
+          await setPlanExcludedParam(planId, moduleKey, name, true);
+        }
+      } catch (err) {
+        console.error(err);
+        showToast(`⚠ ${name} saved locally but NOT to the database — ${err.message}`);
+        return;
+      }
+    }
+    if (excludePlanIds.length) {
+      setPlans((ps) => ps.map((p) => {
+        if (!excludePlanIds.includes(p.id)) return p;
+        const excluded = { ...(p.excludedParams || {}) };
+        excluded[moduleKey] = [...(excluded[moduleKey] || []), name];
+        return { ...p, excludedParams: excluded };
+      }));
+    }
+    showToast(`${name} parameter added.`);
+  }
+
   async function handleSaveCsm({ id, name, role }) {
     if (SUPABASE_CONFIGURED) {
       const saved = await upsertProfile({ id, name, role });
@@ -222,7 +271,9 @@ export default function App() {
           {view === "plans" && (
             <PlansView plans={plans} modules={modules} labs={labs} onToggleModule={handleToggleModule} onToggleParam={handleToggleParam} />
           )}
-          {view === "adoption-template" && <AdoptionTemplateView modules={modules} />}
+          {view === "adoption-template" && (
+            <AdoptionTemplateView modules={modules} plans={plans} onAddModule={handleAddModule} onAddModuleParam={handleAddModuleParam} />
+          )}
           {view === "csm-setup" && (
             <CsmSetupView csmDirectory={csmDirectory} idByName={idByName} onSaveCsm={handleSaveCsm} />
           )}
