@@ -1,4 +1,4 @@
-import { supabase } from "../supabaseClient";
+import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
 
 const LIVE_NAV = [
   { key: "list", icon: "☰", label: "Customer Master (Total Labs)" },
@@ -48,17 +48,26 @@ export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCu
       <div className="sidebar-foot">
         <div className="avatar">{initials(currentCSM)}</div>
         <div className="who">
-          <select
-            className="csm-switcher"
-            value={currentCSM}
-            onChange={(e) => setCurrentCSM(e.target.value)}
-            title="Viewing as"
-          >
-            {csmDirectory.map((c) => (
-              <option key={c.name} value={c.name}>{c.name}</option>
-            ))}
-          </select>
-          <span>{role}</span>
+          {SUPABASE_CONFIGURED ? (
+            <>
+              <span className="who-name" title={currentCSM}>{currentCSM}</span>
+              <span>{role}</span>
+            </>
+          ) : (
+            <>
+              <select
+                className="csm-switcher"
+                value={currentCSM}
+                onChange={(e) => setCurrentCSM(e.target.value)}
+                title="Demo mode — viewing as"
+              >
+                {csmDirectory.map((c) => (
+                  <option key={c.name} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+              <span>{role} (demo)</span>
+            </>
+          )}
         </div>
         <span
           onClick={() => supabase && supabase.auth.signOut().then(() => location.reload())}
