@@ -6,7 +6,7 @@ Internal tool for CrelioHealth's Customer Success team — replaces the old Exce
 
 - **Frontend:** React + [Vite](https://vitejs.dev). Split into components (`src/components`, `src/views`) rather than one giant file — see Project structure below.
 - **Backend:** [Supabase](https://supabase.com) — hosted Postgres database, authentication, and an auto-generated REST API. No separate backend server to run; the frontend talks to Supabase directly via `@supabase/supabase-js`.
-- **Database schema + seed data:** `migrations/0001_init.sql`, then `migrations/0002_visits.sql` — run once each, in order, against a fresh Supabase project (SQL Editor → paste → Run).
+- **Database schema + seed data:** `migrations/0001_init.sql`, then `migrations/0002_visits.sql`, then `migrations/0003_catalog_description.sql` — run once each, in order, against a fresh Supabase project (SQL Editor → paste → Run).
 
 ## Project structure
 
@@ -23,6 +23,7 @@ src/
   index.css                ← all styling (shared across every screen)
 migrations/0001_init.sql   ← base schema + seed data — run once, in order, against your Supabase project
 migrations/0002_visits.sql ← adds the visits table (Visits & Meetings) — run once, after 0001
+migrations/0003_catalog_description.sql ← adds modules.description (Adoption Template) — run once, after 0002
 migrations/000N_*.sql      ← future schema changes go here, one file per change, in order (see below)
 MIGRATION_PLAN.md          ← the original build plan: what's wired to the database vs. still on demo data,
                              Supabase project setup steps, team onboarding steps
@@ -46,7 +47,7 @@ Without a `.env` file, the app still runs — it falls back to demo mode (seeded
 ## First-time setup (Supabase project)
 
 1. Create a Supabase project at supabase.com.
-2. SQL Editor → paste `migrations/0001_init.sql` → Run. Then paste `migrations/0002_visits.sql` → Run (adds the `visits` table used by Visits & Meetings).
+2. SQL Editor → paste `migrations/0001_init.sql` → Run. Then paste `migrations/0002_visits.sql` → Run (adds the `visits` table used by Visits & Meetings). Then paste `migrations/0003_catalog_description.sql` → Run (adds an optional description field used by the Adoption Template's Module Builder).
 3. Settings → API: copy the Project URL and `anon public` key into your `.env` file (see `.env.example`).
 4. Authentication → Providers: enable Email.
 5. Authentication → Users: invite each team member.
