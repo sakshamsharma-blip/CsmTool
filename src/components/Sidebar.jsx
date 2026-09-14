@@ -74,7 +74,7 @@ export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCu
             >
               <span className="ico">{item.icon}</span>
               <span className="lbl">{item.label}</span>
-              {item.children && <span style={{ flex: "none", fontSize: 10, color: "#8093b0" }}>{expanded[item.key] ? "▾" : "▸"}</span>}
+              {item.children && <span style={{ flex: "none", fontSize: 10, color: "var(--text-faint)" }}>{expanded[item.key] ? "▾" : "▸"}</span>}
             </div>
             {item.children && expanded[item.key] && (
               <div className="nav-sub">
@@ -123,7 +123,7 @@ export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCu
         </div>
         <span
           onClick={() => supabase && supabase.auth.signOut().then(() => location.reload())}
-          style={{ cursor: "pointer", color: "#8093b0", fontSize: 11, textDecoration: "underline", flex: "none" }}
+          style={{ cursor: "pointer", color: "var(--text-faint)", fontSize: 11, textDecoration: "underline", flex: "none" }}
         >
           Sign out
         </span>
