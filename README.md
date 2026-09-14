@@ -67,6 +67,20 @@ Full detail (including what's wired to the database today vs. still pending) is 
 
 `npm run build` produces a static `dist/` folder — deploy it anywhere that serves static files. Easiest: connect this repo to [Vercel](https://vercel.com) or [Netlify](https://netlify.com) — both auto-detect Vite, auto-build (`npm run build`) and auto-deploy on every push to main. Set the two `VITE_SUPABASE_*` values from `.env.example` as environment variables in the host's project settings (not committed to the repo).
 
+## Troubleshooting
+
+**`sh: vite: command not found` (or `npm run dev` fails right after `npm install`)**
+
+This is a known npm bug ([npm/cli#4828](https://github.com/npm/cli/issues/4828)), not something wrong with this repo. Vite installs a small platform-specific native binary as an "optional dependency" — if `package-lock.json` was generated on a different machine/OS than the one you're installing on, npm can resolve the wrong one (or fail partway through), leaving `vite` missing from `node_modules/.bin`. Fix:
+
+```
+rm -rf node_modules package-lock.json
+npm install
+npm run dev
+```
+
+This forces npm to resolve the correct native binary for your actual machine. If it still fails, check `node -v` (needs 18+) and make sure you're running the command from inside the `csm-tool-repo` folder (the one with `package.json` in it).
+
 ## Ownership note (why this is in a repo at all)
 
 This repo and the Supabase project behind it should live under CrelioHealth-owned accounts (a company GitHub org, a company Supabase org), not a single person's personal account — so the CSM tool keeps working and stays maintainable regardless of who's actively working on it. If either currently lives under a personal account, moving it to a company one is worth doing early.
