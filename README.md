@@ -4,38 +4,52 @@ Internal tool for CrelioHealth's Customer Success team — replaces the old Exce
 
 ## Tech stack
 
-- **Frontend:** `app.html` — a single self-contained HTML/CSS/JS file. No framework, no build step, no `npm install`. Open it in a browser and it runs. This is a deliberate choice: it keeps the barrier to making a change as low as possible (see "Making changes" below).
-- **Backend:** [Supabase](https://supabase.com) — hosted Postgres database, authentication, and an auto-generated REST API. There is no separate backend server to run or deploy; `app.html` talks to Supabase directly over HTTPS using the `supabase-js` library (loaded from a CDN, see the `<script src="...supabase-js...">` tag near the top of `app.html`).
-- **Database schema + seed data:** `migrations/0001_init.sql` — run once against a fresh Supabase project (SQL Editor → paste → Run) to create every table, security policy, and the starting catalog/plans/CSM roster.
-
-That's the whole stack. No servers to provision, no CI/CD pipeline required to ship a change (though one can be added — see Deploying below).
+- **Frontend:** React + [Vite](https://vitejs.dev). Split into components (`src/components`, `src/views`) rather than one giant file — see Project structure below.
+- **Backend:** [Supabase](https://supabase.com) — hosted Postgres database, authentication, and an auto-generated REST API. No separate backend server to run; the frontend talks to Supabase directly via `@supabase/supabase-js`.
+- **Database schema + seed data:** `migrations/0001_init.sql` — run once against a fresh Supabase project (SQL Editor → paste → Run).
 
 ## Project structure
 
 ```
-app.html                    ← the app. Edit this file to change anything.
-migrations/0001_init.sql    ← original schema + seed data (already run once — don't re-run on a live project)
-migrations/000N_*.sql       ← future schema changes go here, one file per change, in order (see below)
-MIGRATION_PLAN.md           ← the build plan this was built from: what's wired to the database vs. still on demo
-                               data, Supabase project setup steps, team onboarding steps
-archive_prototype.html      ← the original design prototype (seeded/local-only, no database) — kept for
-                               reference only, not the live app
+src/
+  supabaseClient.js       ← creates the Supabase client from .env values
+  lib/                    ← data layer: one file per domain (labs.js, plans.js, catalog.js, profiles.js),
+                             each just wraps the matching Supabase table(s) in a few plain functions
+  lib/demoSeed.js          ← seed data used only when .env isn't configured yet (demo mode)
+  hooks/useToast.js        ← small shared UI hook
+  components/              ← reusable pieces: Sidebar, TopBar, Modal, Toast, LoginScreen, AddLabDrawer, etc.
+  views/                   ← one file per screen: LabsView, PlansView, AdoptionTemplateView, CsmSetupView
+  App.jsx                  ← wires it all together: auth state, data loading, which view is showing
+  index.css                ← all styling (shared across every screen)
+migrations/0001_init.sql   ← schema + seed data (already run once on the live project — don't re-run there)
+migrations/000N_*.sql      ← future schema changes go here, one file per change, in order (see below)
+MIGRATION_PLAN.md          ← the original build plan: what's wired to the database vs. still on demo data,
+                             Supabase project setup steps, team onboarding steps
+archive_app_single_file.html   ← an earlier, fully working single-HTML-file version of this same app (no
+                             build step, same features) — kept as a working reference/fallback, not the
+                             version to develop further
+archive_prototype.html     ← the original design prototype (seeded/local-only, no database) — historical
+                             reference only
 ```
 
-## First-time setup (already done once, kept here for a new project / new teammate)
+## Running it locally
+
+```
+npm install
+cp .env.example .env       # then fill in your Supabase URL + anon key (see below)
+npm run dev                # starts a local dev server with hot-reload
+```
+
+Without a `.env` file, the app still runs — it falls back to demo mode (seeded local data, no login, nothing saved) so it's always safe to open.
+
+## First-time setup (Supabase project)
 
 1. Create a Supabase project at supabase.com.
 2. SQL Editor → paste `migrations/0001_init.sql` → Run.
-3. Settings → API: copy the Project URL and `anon public` key.
-4. Open `app.html`, find these two lines near the top of the `<script>` block, and fill them in:
-   ```js
-   const SUPABASE_URL = "YOUR_SUPABASE_URL_HERE";
-   const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY_HERE";
-   ```
-   Until these are filled in, `app.html` runs in demo mode (seeded local data, nothing saved, no login) — safe to open anytime.
-5. Authentication → Providers: enable Email.
-6. Authentication → Users: invite each team member.
-7. Once someone accepts their invite, link their login to their CSM roster row (SQL Editor):
+3. Settings → API: copy the Project URL and `anon public` key into your `.env` file (see `.env.example`).
+4. Authentication → Providers: enable Email.
+5. Authentication → Users: invite each team member.
+6. Once someone accepts their invite, link their login to their CSM roster row (SQL Editor):
    ```sql
    update profiles set auth_user_id = '<their-user-id-from-the-Users-tab>' where name = 'Their Name';
    ```
@@ -44,18 +58,14 @@ Full detail (including what's wired to the database today vs. still pending) is 
 
 ## Making changes
 
-Because there's no build step, changing the app is just editing `app.html` directly — with a text editor, or by asking an AI coding tool (e.g. Claude Code) to make the change for you and describing what you want. There's nothing to compile or bundle; you edit the file, save it, and reload the browser to see the change.
+- **Adding to an existing screen** (e.g. a new field on Labs): edit the relevant file in `src/views/` or `src/components/`, and the matching function in `src/lib/` if it needs to read/write a new column.
+- **Adding a new database-backed screen**: add a table via a new migration file (see below), add a small file to `src/lib/` with functions to read/write it (follow the pattern in `src/lib/labs.js`), add a view component in `src/views/`, and wire it into `src/App.jsx` (add a case to the view switch + a nav entry in `src/components/Sidebar.jsx`).
+- **Changing the database schema:** don't edit `migrations/0001_init.sql` after it's been run once — add a new file `migrations/0002_your_change.sql` with just the new SQL, run its contents in the Supabase SQL Editor, and commit it here so there's a record of every schema change in order.
+- This can all be done by hand, or by asking an AI coding tool (Claude Code, or similar) to make the change and describing what you want — the codebase is small and conventional enough (plain React, no exotic patterns) that a coding agent should be able to work in it without much extra context.
 
-**Rule of thumb:** all the screen logic and rendering (Labs, Plans, Adoption Template, CSM Setup, and the rest) lives in one `<script>` block in `app.html`. The functions that read/write Supabase are grouped together and named with a `db` prefix (`dbFetchLabs`, `dbInsertLab`, `dbUpdateLabCsm`, etc.) — if you're adding a new screen that needs to save data, follow that same pattern: add a table to a new migration file, add a `db*` function to read/write it, and wire it into the relevant render function.
+## Deploying
 
-**Changing the database schema:** don't edit `migrations/0001_init.sql` after it's been run once — instead add a new file `migrations/0002_your_change.sql` with just the new SQL (e.g. `alter table labs add column ...`), run that new file's contents in the Supabase SQL Editor, and commit it here so there's a record of every schema change over time, in order.
-
-## Deploying (getting `app.html` in front of the team)
-
-`app.html` is a static file — any static hosting works:
-
-- **Simplest for now:** send the file directly (email, Slack, shared drive) and people open it locally in a browser. Works, but everyone needs the latest copy each time it changes.
-- **Recommended:** connect this repo to a free static host like [Vercel](https://vercel.com) or [Netlify](https://netlify.com) — every push to this repo's main branch redeploys automatically, and the team always has the latest version at one URL. No configuration needed beyond pointing the host at this repo (there's no build command — it's just static files).
+`npm run build` produces a static `dist/` folder — deploy it anywhere that serves static files. Easiest: connect this repo to [Vercel](https://vercel.com) or [Netlify](https://netlify.com) — both auto-detect Vite, auto-build (`npm run build`) and auto-deploy on every push to main. Set the two `VITE_SUPABASE_*` values from `.env.example` as environment variables in the host's project settings (not committed to the repo).
 
 ## Ownership note (why this is in a repo at all)
 

@@ -1,0 +1,530 @@
+{
+  "MODULES": [
+    {
+      "key": "registration",
+      "name": "Registration",
+      "icon": "👤",
+      "weight": 10,
+      "params": [
+        {
+          "name": "Patient Registration",
+          "type": "M",
+          "weight": 25,
+          "category": "Adoption"
+        },
+        {
+          "name": "Referral Registration",
+          "type": "M",
+          "weight": 20,
+          "category": "Adoption"
+        },
+        {
+          "name": "Doctor Registration",
+          "type": "M",
+          "weight": 20,
+          "category": "Adoption"
+        },
+        {
+          "name": "Organization Registration",
+          "type": "O",
+          "weight": 15,
+          "category": "Expansion"
+        },
+        {
+          "name": "User Creation",
+          "type": "M",
+          "weight": 15,
+          "category": "Adoption"
+        },
+        {
+          "name": "Branch Setup",
+          "type": "O",
+          "weight": 5,
+          "category": "Expansion"
+        }
+      ]
+    },
+    {
+      "key": "billing",
+      "name": "Billing",
+      "icon": "🧾",
+      "weight": 10,
+      "params": [
+        {
+          "name": "Invoice Generation",
+          "type": "M",
+          "weight": 30,
+          "category": "Adoption"
+        },
+        {
+          "name": "Payment Collection",
+          "type": "M",
+          "weight": 25,
+          "category": "Adoption"
+        },
+        {
+          "name": "Credit Note",
+          "type": "O",
+          "weight": 15,
+          "category": "Expansion"
+        },
+        {
+          "name": "Billing Reports",
+          "type": "O",
+          "weight": 15,
+          "category": "Expansion"
+        },
+        {
+          "name": "Multi-currency Billing",
+          "type": "O",
+          "weight": 15,
+          "category": "Expansion"
+        }
+      ]
+    },
+    {
+      "key": "operations",
+      "name": "Operations",
+      "icon": "⚙️",
+      "weight": 10,
+      "params": [
+        {
+          "name": "Sample Collection",
+          "type": "M",
+          "weight": 30,
+          "category": "Adoption"
+        },
+        {
+          "name": "Sample Tracking",
+          "type": "M",
+          "weight": 25,
+          "category": "Adoption"
+        },
+        {
+          "name": "Result Entry",
+          "type": "M",
+          "weight": 25,
+          "category": "Adoption"
+        },
+        {
+          "name": "Result Validation",
+          "type": "O",
+          "weight": 10,
+          "category": "Expansion"
+        },
+        {
+          "name": "Report Approval",
+          "type": "O",
+          "weight": 10,
+          "category": "Expansion"
+        }
+      ]
+    },
+    {
+      "key": "homecollection",
+      "name": "Home Collection",
+      "icon": "🏠",
+      "weight": 8,
+      "params": [
+        {
+          "name": "Phlebotomist Assignment",
+          "type": "M",
+          "weight": 40,
+          "category": "Adoption"
+        },
+        {
+          "name": "Route Planning",
+          "type": "O",
+          "weight": 30,
+          "category": "Expansion"
+        },
+        {
+          "name": "Home Collection App",
+          "type": "O",
+          "weight": 30,
+          "category": "Expansion"
+        }
+      ]
+    },
+    {
+      "key": "appointment",
+      "name": "Appointment",
+      "icon": "📅",
+      "weight": 8,
+      "params": [
+        {
+          "name": "Online Booking",
+          "type": "M",
+          "weight": 40,
+          "category": "Adoption"
+        },
+        {
+          "name": "Slot Management",
+          "type": "M",
+          "weight": 30,
+          "category": "Adoption"
+        },
+        {
+          "name": "Reminder Notifications",
+          "type": "O",
+          "weight": 30,
+          "category": "Expansion"
+        }
+      ]
+    },
+    {
+      "key": "reportmgmt",
+      "name": "Report Management",
+      "icon": "📄",
+      "weight": 8,
+      "params": [
+        {
+          "name": "Report Generation",
+          "type": "M",
+          "weight": 30,
+          "category": "Adoption"
+        },
+        {
+          "name": "Report Dispatch",
+          "type": "M",
+          "weight": 25,
+          "category": "Adoption"
+        },
+        {
+          "name": "Digital Signature",
+          "type": "M",
+          "weight": 20,
+          "category": "Adoption"
+        },
+        {
+          "name": "Report Templates",
+          "type": "O",
+          "weight": 25,
+          "category": "Expansion"
+        }
+      ]
+    },
+    {
+      "key": "inventory",
+      "name": "Inventory",
+      "icon": "📦",
+      "weight": 12,
+      "params": [
+        {
+          "name": "Item Master",
+          "type": "M",
+          "weight": 25,
+          "category": "Adoption"
+        },
+        {
+          "name": "Vendor Setup",
+          "type": "M",
+          "weight": 20,
+          "category": "Adoption"
+        },
+        {
+          "name": "Stock Entry",
+          "type": "M",
+          "weight": 20,
+          "category": "Adoption"
+        },
+        {
+          "name": "Stock Consumption",
+          "type": "M",
+          "weight": 15,
+          "category": "Adoption"
+        },
+        {
+          "name": "Purchase Orders",
+          "type": "O",
+          "weight": 10,
+          "category": "Expansion"
+        },
+        {
+          "name": "Reorder Levels",
+          "type": "O",
+          "weight": 5,
+          "category": "Expansion"
+        },
+        {
+          "name": "Inventory Reports",
+          "type": "O",
+          "weight": 5,
+          "category": "Expansion"
+        }
+      ]
+    },
+    {
+      "key": "qc",
+      "name": "QC",
+      "icon": "🧪",
+      "weight": 10,
+      "params": [
+        {
+          "name": "QC Setup",
+          "type": "M",
+          "weight": 25,
+          "category": "Adoption"
+        },
+        {
+          "name": "Daily QC Usage",
+          "type": "M",
+          "weight": 25,
+          "category": "Adoption"
+        },
+        {
+          "name": "Levy Jennings",
+          "type": "M",
+          "weight": 20,
+          "category": "Adoption"
+        },
+        {
+          "name": "QC Reports",
+          "type": "O",
+          "weight": 15,
+          "category": "Expansion"
+        },
+        {
+          "name": "Westgard Rules",
+          "type": "O",
+          "weight": 15,
+          "category": "Expansion"
+        }
+      ]
+    },
+    {
+      "key": "logistic",
+      "name": "Logistic",
+      "icon": "🚚",
+      "weight": 6,
+      "params": [
+        {
+          "name": "Pickup Scheduling",
+          "type": "M",
+          "weight": 50,
+          "category": "Adoption"
+        },
+        {
+          "name": "Route Optimization",
+          "type": "O",
+          "weight": 25,
+          "category": "Expansion"
+        },
+        {
+          "name": "Logistics Reports",
+          "type": "O",
+          "weight": 25,
+          "category": "Expansion"
+        }
+      ]
+    },
+    {
+      "key": "marketing",
+      "name": "Marketing",
+      "icon": "📣",
+      "weight": 6,
+      "params": [
+        {
+          "name": "Campaign Setup",
+          "type": "O",
+          "weight": 50,
+          "category": "Expansion"
+        },
+        {
+          "name": "SMS / WhatsApp Integration",
+          "type": "O",
+          "weight": 50,
+          "category": "Expansion"
+        }
+      ]
+    },
+    {
+      "key": "smartreports",
+      "name": "Smart Reports",
+      "icon": "✨",
+      "weight": 6,
+      "params": [
+        {
+          "name": "AI Report Summary",
+          "type": "O",
+          "weight": 60,
+          "category": "Expansion"
+        },
+        {
+          "name": "Smart Insights",
+          "type": "O",
+          "weight": 40,
+          "category": "Expansion"
+        }
+      ]
+    },
+    {
+      "key": "branding",
+      "name": "Branding",
+      "icon": "🎨",
+      "weight": 3,
+      "params": [
+        {
+          "name": "Custom Letterhead",
+          "type": "O",
+          "weight": 50,
+          "category": "Expansion"
+        },
+        {
+          "name": "Custom Domain",
+          "type": "O",
+          "weight": 50,
+          "category": "Expansion"
+        }
+      ]
+    },
+    {
+      "key": "adminsetup",
+      "name": "Admin Setup",
+      "icon": "🔐",
+      "weight": 3,
+      "params": [
+        {
+          "name": "Role Management",
+          "type": "M",
+          "weight": 60,
+          "category": "Adoption"
+        },
+        {
+          "name": "Access Control",
+          "type": "M",
+          "weight": 40,
+          "category": "Adoption"
+        }
+      ]
+    }
+  ],
+  "CSM_DIRECTORY": [
+    {
+      "name": "Rahul Barge",
+      "role": "Lead"
+    },
+    {
+      "name": "Aditi",
+      "role": "CSM"
+    },
+    {
+      "name": "Aseem Khan",
+      "role": "CSM"
+    },
+    {
+      "name": "Mazhar Shaikh",
+      "role": "CSM"
+    },
+    {
+      "name": "Hrushikesh",
+      "role": "CSM"
+    },
+    {
+      "name": "Sanskriti",
+      "role": "CSM"
+    },
+    {
+      "name": "Suraj Todkar",
+      "role": "CSM"
+    }
+  ],
+  "PLANS": [
+    {
+      "id": "starter",
+      "name": "LIMS Starter",
+      "modules": [
+        "registration",
+        "billing",
+        "operations",
+        "reportmgmt",
+        "adminsetup"
+      ],
+      "excludedParams": {
+        "billing": [
+          "Credit Note",
+          "Multi-currency Billing"
+        ],
+        "reportmgmt": [
+          "Digital Signature",
+          "Report Templates"
+        ]
+      }
+    },
+    {
+      "id": "growth",
+      "name": "LIMS Growth",
+      "modules": [
+        "registration",
+        "billing",
+        "operations",
+        "reportmgmt",
+        "adminsetup",
+        "appointment",
+        "inventory",
+        "qc"
+      ],
+      "excludedParams": {
+        "billing": [
+          "Multi-currency Billing"
+        ]
+      }
+    },
+    {
+      "id": "advance",
+      "name": "LIMS Advance",
+      "modules": [
+        "registration",
+        "billing",
+        "operations",
+        "reportmgmt",
+        "adminsetup",
+        "appointment",
+        "inventory",
+        "qc",
+        "homecollection",
+        "logistic"
+      ],
+      "excludedParams": {}
+    },
+    {
+      "id": "premium",
+      "name": "LIMS Premium",
+      "modules": [
+        "registration",
+        "billing",
+        "operations",
+        "reportmgmt",
+        "adminsetup",
+        "appointment",
+        "inventory",
+        "qc",
+        "homecollection",
+        "logistic",
+        "marketing",
+        "smartreports"
+      ],
+      "excludedParams": {}
+    },
+    {
+      "id": "enterprise",
+      "name": "LIMS Enterprise",
+      "modules": [
+        "registration",
+        "billing",
+        "operations",
+        "homecollection",
+        "appointment",
+        "reportmgmt",
+        "inventory",
+        "qc",
+        "logistic",
+        "marketing",
+        "smartreports",
+        "branding",
+        "adminsetup"
+      ],
+      "excludedParams": {}
+    }
+  ]
+}

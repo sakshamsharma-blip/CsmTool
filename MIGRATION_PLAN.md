@@ -1,16 +1,20 @@
 # CSM Tool — from prototype to a real, deployed app
 
-> ## ⚡ UPDATE — the app is now built. Read this box, then do 3 things.
+> ## ⚡ UPDATE 2 — moved to Vite + React. Read `README.md` first.
 >
-> Everything below this box was written when only the database schema existed. Since then, **`app.html` has been built** — a real, Supabase-wired version of the tool (login, Labs, Plans, Adoption Template, and a new CSM Setup screen), verified end-to-end against a mocked backend with zero console errors. It is NOT yet connected to your actual Supabase project — that takes 3 steps, roughly 10 minutes:
+> The app was rebuilt again since the update below: it's now a proper **Vite + React project** (`src/`, `package.json`) instead of the single `app.html` file the first update describes. Same features, same Supabase backend, same `migrations/0001_init.sql` schema — just split into components instead of one file, with a normal `npm install && npm run dev` workflow. **`README.md` is now the accurate day-to-day reference** (how to run it, project structure, deploying, making changes); this file stays for the original rollout plan and Supabase setup steps, which are unchanged. `app.html` (now `archive_app_single_file.html`) still works standalone if ever needed as a no-build-step fallback, but new work should go into `src/`.
 >
-> 1. **Create the Supabase project** (if you haven't) and run `supabase_schema.sql` in its SQL Editor — one paste, one click.
-> 2. **Open `app.html`**, find the two lines near the top of its `<script>` block (`SUPABASE_URL` / `SUPABASE_ANON_KEY`), and paste in your project's values from Settings → API. Until you do this, `app.html` runs exactly like the old demo prototype — safe to open anytime, nothing breaks.
+> ## ⚡ UPDATE 1 — the app got built. (Superseded by Update 2 above for *which files* to run — the setup steps below are still correct.)
+>
+> Everything below this box was written when only the database schema existed. Since then, a real, Supabase-wired version of the tool was built (login, Labs, Plans, Adoption Template, and a new CSM Setup screen), verified end-to-end against a mocked backend with zero console errors. It is NOT yet connected to your actual Supabase project — that takes 3 steps, roughly 10 minutes:
+>
+> 1. **Create the Supabase project** (if you haven't) and run `migrations/0001_init.sql` in its SQL Editor — one paste, one click.
+> 2. **Set your Supabase URL/anon key** — in the Vite project, copy `.env.example` to `.env` and fill in Settings → API's values (see `README.md`). Without this, the app runs in a safe demo mode (seeded local data, no login, nothing saved).
 > 3. **Enable Email auth** in Supabase (Authentication → Providers) and invite your 7 teammates (Authentication → Users → Invite). Once each accepts, link their login to their roster row: `update profiles set auth_user_id = '<their-uid>' where name = 'Aditi';` (repeat per person — see Step 1.6 below).
 >
-> That's it — once those 3 things are done, share `app.html` with the team and it's real: logins, shared data, everything they add persists. The rest of this document is the original build plan/checklist, kept for reference (what's wired vs. not, verification steps, what to build next).
+> That's it — once those 3 things are done and the app is deployed (see README's Deploying section), share it with the team and it's real: logins, shared data, everything they add persists. The rest of this document is the original build plan/checklist, kept for reference (what's wired vs. not, verification steps, what to build next).
 >
-> **What's live in `app.html` today:** sign-in, Labs (add/list — Customer Master), Plans (view + toggle module/param membership), Adoption Template (view), and CSM Setup (new — add/edit team roster). Also fixed a small pre-existing bug along the way: the Add Lab form's City field was typed in but never actually saved — it now is.
+> **What's live today:** sign-in, Labs (add/list — Customer Master), Plans (view + toggle module/param membership), Adoption Template (view), and CSM Setup (new — add/edit team roster). Also fixed a small pre-existing bug along the way: the Add Lab form's City field was typed in but never actually saved — it now is.
 > **What's still demo-data-only** (unchanged from the prototype, not required for Monday): Dashboard, My Portfolio, Collections, Tasks, Lab History, Visits & Meetings. These still render and are clickable, but nothing entered there is saved yet.
 
 **Goal:** by Monday, the team can start using the real (not prototype) tool for: adding labs, working with Plans, working with the Adoption Template (modules/params), and setting up labs and CSMs — with everything actually saved, not just living in one browser tab.
