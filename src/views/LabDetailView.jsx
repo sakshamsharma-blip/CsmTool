@@ -6,6 +6,7 @@ import {
   STATUS_ORDER, EXP_STAGES, defaultParamState,
   fetchLabAdoption, saveLabAdoption, computeLabScores,
 } from "../lib/adoption";
+import { fetchLabActivity, logActivity, ACTIVITY_ICONS } from "../lib/activity";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const EMPTY_ADOPTION = { scope: {}, paramScope: {}, paramState: {} };
@@ -13,7 +14,7 @@ const EMPTY_ADOPTION = { scope: {}, paramScope: {}, paramState: {} };
 function statusPillClass(s) { return "status-" + s.replace(" ", ""); }
 function initials(name) { return (name || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
 
-export default function LabDetailView({ lab, labs, modules, plans, csmNames, onBack, onOpenLab, onReassignCsm, onChangePlan, showToast }) {
+export default function LabDetailView({ lab, labs, modules, plans, csmNames, currentCSM, idByName, onBack, onOpenLab, onReassignCsm, onChangePlan, showToast }) {
   const [tab, setTab] = useState("details");
   const [expandedModule, setExpandedModule] = useState(null);
 
@@ -24,6 +25,12 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, onB
   const [draftParamScope, setDraftParamScope] = useState({});
   const [draftParams, setDraftParams] = useState({});
   const [saving, setSaving] = useState(false);
+
+  const [activity, setActivity] = useState([]);
+  const [loadingActivity, setLoadingActivity] = useState(SUPABASE_CONFIGURED);
+  const [activityError, setActivityError] = useState(null);
+  const nameById = {};
+  Object.entries(idByName || {}).forEach(([n, id]) => { nameById[id] = n; });
 
   const [newCsm, setNewCsm] = useState(lab.csm);
   const [newPlan, setNewPlan] = useState(lab.plan);
@@ -48,6 +55,23 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, onB
       .then((data) => { if (!cancelled) setSaved(data); })
       .catch((err) => { if (!cancelled) setAdoptionError(err.message || "Failed to load adoption data."); })
       .finally(() => { if (!cancelled) setLoadingAdoption(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lab.id]);
+
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) {
+      setActivity([]);
+      setLoadingActivity(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingActivity(true);
+    setActivityError(null);
+    fetchLabActivity(lab.id)
+      .then((rows) => { if (!cancelled) setActivity(rows); })
+      .catch((err) => { if (!cancelled) setActivityError(err.message || "Failed to load activity."); })
+      .finally(() => { if (!cancelled) setLoadingActivity(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lab.id]);
@@ -146,10 +170,29 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, onB
           paramState: nextParamState,
         };
       });
+      const paramChanges = Object.values(draftParams).filter((v) => v.status !== undefined).length;
+      const purchasedChanges = Object.values(draftParams).filter((v) => v.included !== undefined).length;
+      const scopeChanges = Object.keys(draftScope).length;
+      const paramScopeChanges = Object.keys(draftParamScope).length;
       setDraftScope({});
       setDraftParamScope({});
       setDraftParams({});
       showToast("Adoption changes saved.");
+
+      const parts = [];
+      if (paramChanges) parts.push(`${paramChanges} status change${paramChanges > 1 ? "s" : ""}`);
+      if (purchasedChanges) parts.push(`${purchasedChanges} param${purchasedChanges > 1 ? "s" : ""} included/purchased`);
+      if (scopeChanges) parts.push(`${scopeChanges} module scope change${scopeChanges > 1 ? "s" : ""}`);
+      if (paramScopeChanges) parts.push(`${paramScopeChanges} feature scope change${paramScopeChanges > 1 ? "s" : ""}`);
+      if (SUPABASE_CONFIGURED && parts.length) {
+        const csmId = idByName?.[currentCSM];
+        logActivity(lab.id, { kind: "Adoption Updated", title: "Adoption updated", meta: parts.join(", "), csmId })
+          .then(() => setActivity((a) => [
+            { id: "tmp" + Date.now(), source: "system", kind: "Adoption Updated", title: "Adoption updated", meta: parts.join(", "), csm_id: csmId, created_at: new Date().toISOString() },
+            ...a,
+          ]))
+          .catch((err) => console.error(err));
+      }
     } catch (err) {
       console.error(err);
       showToast(`⚠ Not saved to the database — ${err.message}`);
@@ -187,12 +230,42 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, onB
     showToast(`Reset to ${plan.name} defaults.`);
   }
 
+  async function handleReassignClick() {
+    const oldCsm = lab.csm;
+    await onReassignCsm(lab.id, newCsm);
+    if (SUPABASE_CONFIGURED && oldCsm !== newCsm) {
+      const csmId = idByName?.[newCsm];
+      logActivity(lab.id, { kind: "Lab Reassigned", title: "CSM reassigned", meta: `${oldCsm} → ${newCsm}`, csmId })
+        .then(() => setActivity((a) => [
+          { id: "tmp" + Date.now(), source: "system", kind: "Lab Reassigned", title: "CSM reassigned", meta: `${oldCsm} → ${newCsm}`, csm_id: csmId, created_at: new Date().toISOString() },
+          ...a,
+        ]))
+        .catch((err) => console.error(err));
+    }
+  }
+
+  async function handleChangePlanClick() {
+    const oldPlanName = plan.name;
+    const newPlanName = plans.find((p) => p.id === newPlan)?.name || newPlan;
+    await onChangePlan(lab.id, newPlan);
+    if (SUPABASE_CONFIGURED && lab.plan !== newPlan) {
+      const csmId = idByName?.[lab.csm];
+      logActivity(lab.id, { kind: "Plan Changed", title: "Plan changed", meta: `${oldPlanName} → ${newPlanName}`, csmId })
+        .then(() => setActivity((a) => [
+          { id: "tmp" + Date.now(), source: "system", kind: "Plan Changed", title: "Plan changed", meta: `${oldPlanName} → ${newPlanName}`, csm_id: csmId, created_at: new Date().toISOString() },
+          ...a,
+        ]))
+        .catch((err) => console.error(err));
+    }
+  }
+
   const seg = segmentFor(effectiveMRR(lab));
   const children = lab.type === "Parent" ? labs.filter((l) => l.type === "Child" && l.parent === lab.id) : [];
   const tabs = [
     { key: "details", label: "Lab Details" },
     ...(lab.type === "Parent" ? [{ key: "childlabs", label: `Child Labs (${children.length})` }] : []),
     { key: "adoption", label: "Adoption" },
+    { key: "history", label: `Lab History${activity.length ? ` (${activity.length})` : ""}` },
   ];
 
   const inScopeResults = scores.moduleResults.filter((m) => m.inScope);
@@ -250,7 +323,6 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, onB
           </button>
         ))}
         <button className="tabbtn tabdisabled" title="Not built yet">Collections <span className="concept-tag">Planned</span></button>
-        <button className="tabbtn tabdisabled" title="Not built yet">Lab History <span className="concept-tag">Planned</span></button>
       </div>
 
       {tab === "details" && (
@@ -277,7 +349,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, onB
                 <select value={newCsm} onChange={(e) => setNewCsm(e.target.value)} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
                   {csmNames.map((n) => <option key={n}>{n}</option>)}
                 </select>
-                <button className="btn btn-ghost" disabled={newCsm === lab.csm} onClick={() => onReassignCsm(lab.id, newCsm)}>Save</button>
+                <button className="btn btn-ghost" disabled={newCsm === lab.csm} onClick={handleReassignClick}>Save</button>
               </div>
             </div>
             <div className="tmpl-field" style={{ flex: "1 1 220px" }}>
@@ -286,7 +358,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, onB
                 <select value={newPlan} onChange={(e) => setNewPlan(e.target.value)} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
                   {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
-                <button className="btn btn-ghost" disabled={newPlan === lab.plan} onClick={() => onChangePlan(lab.id, newPlan)}>Save</button>
+                <button className="btn btn-ghost" disabled={newPlan === lab.plan} onClick={handleChangePlanClick}>Save</button>
               </div>
             </div>
           </div>
@@ -479,6 +551,51 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, onB
               Adoption features are always tracked on status, Expansion features are gated behind "Mark purchased" until bought. Edits stay local to this
               screen until you hit <b>Save Changes</b>.
             </div>
+          </div>
+        )
+      )}
+
+      {tab === "history" && (
+        loadingActivity ? (
+          <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading activity…</div>
+        ) : activityError ? (
+          <div className="warn-banner" style={{ background: "var(--bad-bg)", color: "var(--bad)", borderColor: "#f3b8b8" }}>
+            Couldn't load activity — {activityError}
+          </div>
+        ) : !SUPABASE_CONFIGURED ? (
+          <div className="table-card" style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>
+            Demo mode — activity isn't tracked without a database connected.
+          </div>
+        ) : (
+          <div className="table-card" style={{ padding: "6px 20px 18px" }}>
+            <div style={{ fontWeight: 700, fontSize: 14, paddingTop: 14 }}>Activity Timeline</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2 }}>Every logged system event for {lab.name}, newest first.</div>
+
+            <div className="summary-grid">
+              <div className="stile"><div className="sval">{activity.length}</div><div className="slabel">Total Activities</div></div>
+              <div className="stile"><div className="sval" style={{ fontSize: 12.5 }}>{activity.length ? new Date(activity[activity.length - 1].created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—"}</div><div className="slabel">Created On</div></div>
+              <div className="stile"><div className="sval" style={{ fontSize: 12.5 }}>{activity.length ? new Date(activity[0].created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—"}</div><div className="slabel">Last Updated On</div></div>
+              <div className="stile"><div className="sval" style={{ fontSize: 12.5 }}>{activity.length ? (nameById[activity[0].csm_id] || "System") : "—"}</div><div className="slabel">Last Updated By</div></div>
+            </div>
+
+            <table className="activity-table">
+              <thead><tr><th>Date &amp; Time</th><th>Activity</th><th>Details</th><th>Performed By</th></tr></thead>
+              <tbody>
+                {activity.length === 0 ? (
+                  <tr><td colSpan="4" style={{ textAlign: "center", color: "var(--text-faint)", padding: "20px 0" }}>No activity logged for this lab yet.</td></tr>
+                ) : activity.map((e) => {
+                  const d = new Date(e.created_at);
+                  return (
+                    <tr key={e.id}>
+                      <td className="adate">{d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}<br />{d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</td>
+                      <td><span className="aicon">{ACTIVITY_ICONS[e.kind] || "📝"}</span>{e.title}</td>
+                      <td style={{ color: "var(--text-dim)" }}>{e.meta || "—"}</td>
+                      <td>{nameById[e.csm_id] || "System"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )
       )}

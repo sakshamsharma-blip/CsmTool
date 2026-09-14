@@ -4,6 +4,7 @@ import { fetchProfiles, upsertProfile, myProfileName } from "./lib/profiles";
 import { fetchCatalog } from "./lib/catalog";
 import { fetchPlans, setPlanModule, setPlanExcludedParam } from "./lib/plans";
 import { fetchLabs, insertLab, updateLabCsm, updateLabPlan } from "./lib/labs";
+import { logActivity } from "./lib/activity";
 import { DEMO_MODULES, DEMO_PLANS, DEMO_CSM_DIRECTORY, DEMO_LABS } from "./lib/demoSeed";
 import { useToast } from "./hooks/useToast";
 
@@ -93,7 +94,16 @@ export default function App() {
   async function handleAddLab(lab) {
     setLabs((ls) => [...ls, lab]);
     if (SUPABASE_CONFIGURED) {
-      try { await insertLab(lab, idByName); }
+      try {
+        await insertLab(lab, idByName);
+        const csmId = idByName[lab.csm];
+        logActivity(lab.id, {
+          kind: "Lab Created",
+          title: lab.type === "Child" ? "Added as a child lab" : "Parent lab created",
+          meta: `${lab.csm} · Lab Hierarchy`,
+          csmId,
+        }).catch((err) => console.error(err));
+      }
       catch (err) { console.error(err); showToast(`⚠ ${lab.name} saved locally but NOT to the database — ${err.message}`); }
     }
     showToast(`${lab.name} saved.`);
@@ -219,6 +229,8 @@ export default function App() {
               modules={modules}
               plans={plans}
               csmNames={csmNames}
+              currentCSM={currentCSM}
+              idByName={idByName}
               onBack={() => setView("list")}
               onOpenLab={openLabDetail}
               onReassignCsm={handleReassignCsm}

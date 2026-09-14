@@ -7,7 +7,7 @@ const LIVE_NAV = [
   { key: "csm-setup", icon: "👥", label: "CSM Setup" },
 ];
 const PLANNED_NAV = [
-  "Dashboard", "My Portfolio", "Collections", "Lab History", "Visits & Meetings",
+  "Dashboard", "My Portfolio", "Collections", "Visits & Meetings",
 ];
 
 export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCurrentCSM }) {
