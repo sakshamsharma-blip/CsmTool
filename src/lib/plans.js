@@ -19,6 +19,10 @@ export async function fetchPlans() {
   });
 }
 
+export function planIncludesModule(plan, moduleKey) {
+  return plan.modules.includes(moduleKey);
+}
+
 export function planIncludesParam(plan, moduleKey, paramName) {
   if (!plan.modules.includes(moduleKey)) return false;
   const excluded = plan.excludedParams && plan.excludedParams[moduleKey];

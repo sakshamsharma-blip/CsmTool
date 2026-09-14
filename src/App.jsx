@@ -12,7 +12,7 @@ import TopBar from "./components/TopBar";
 import Toast from "./components/Toast";
 import LoginScreen from "./components/LoginScreen";
 import AddLabDrawer from "./components/AddLabDrawer";
-import LabDetailModal from "./components/LabDetailModal";
+import LabDetailView from "./views/LabDetailView";
 import LabsView from "./views/LabsView";
 import PlansView from "./views/PlansView";
 import AdoptionTemplateView from "./views/AdoptionTemplateView";
@@ -33,7 +33,13 @@ export default function App() {
   const [currentCSM, setCurrentCSM] = useState(SUPABASE_CONFIGURED ? "" : DEMO_CSM_DIRECTORY[0].name);
   const [view, setView] = useState("list");
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
-  const [openLab, setOpenLab] = useState(null);
+  const [detailLabId, setDetailLabId] = useState(null);
+  const detailLab = labs.find((l) => l.id === detailLabId) || null;
+
+  function openLabDetail(id) {
+    setDetailLabId(id);
+    setView("lab-detail");
+  }
   const [toastMsg, showToast] = useToast();
 
   useEffect(() => {
@@ -95,7 +101,6 @@ export default function App() {
 
   async function handleReassignCsm(labId, newCsm) {
     setLabs((ls) => ls.map((l) => (l.id === labId ? { ...l, csm: newCsm } : l)));
-    setOpenLab((l) => (l && l.id === labId ? { ...l, csm: newCsm } : l));
     if (SUPABASE_CONFIGURED) {
       try { await updateLabCsm(labId, newCsm, idByName); }
       catch (err) { console.error(err); showToast(`⚠ Reassignment not saved to the database — ${err.message}`); return; }
@@ -105,7 +110,6 @@ export default function App() {
 
   async function handleChangePlan(labId, newPlanId) {
     setLabs((ls) => ls.map((l) => (l.id === labId ? { ...l, plan: newPlanId } : l)));
-    setOpenLab((l) => (l && l.id === labId ? { ...l, plan: newPlanId } : l));
     if (SUPABASE_CONFIGURED) {
       try { await updateLabPlan(labId, newPlanId); }
       catch (err) { console.error(err); showToast(`⚠ Plan change not saved to the database — ${err.message}`); return; }
@@ -199,7 +203,7 @@ export default function App() {
             </div>
           )}
           {view === "list" && (
-            <LabsView labs={labs} csmNames={csmNames} onOpenAddDrawer={() => setAddDrawerOpen(true)} onOpenLab={setOpenLab} />
+            <LabsView labs={labs} csmNames={csmNames} onOpenAddDrawer={() => setAddDrawerOpen(true)} onOpenLab={openLabDetail} />
           )}
           {view === "plans" && (
             <PlansView plans={plans} modules={modules} labs={labs} onToggleModule={handleToggleModule} onToggleParam={handleToggleParam} />
@@ -207,6 +211,20 @@ export default function App() {
           {view === "adoption-template" && <AdoptionTemplateView modules={modules} />}
           {view === "csm-setup" && (
             <CsmSetupView csmDirectory={csmDirectory} idByName={idByName} onSaveCsm={handleSaveCsm} />
+          )}
+          {view === "lab-detail" && detailLab && (
+            <LabDetailView
+              lab={detailLab}
+              labs={labs}
+              modules={modules}
+              plans={plans}
+              csmNames={csmNames}
+              onBack={() => setView("list")}
+              onOpenLab={openLabDetail}
+              onReassignCsm={handleReassignCsm}
+              onChangePlan={handleChangePlan}
+              showToast={showToast}
+            />
           )}
         </div>
       </div>
@@ -218,14 +236,6 @@ export default function App() {
         labs={labs}
         csmNames={csmNames}
         plans={plans}
-      />
-      <LabDetailModal
-        lab={openLab}
-        onClose={() => setOpenLab(null)}
-        csmNames={csmNames}
-        plans={plans}
-        onReassignCsm={handleReassignCsm}
-        onChangePlan={handleChangePlan}
       />
       <Toast message={toastMsg} />
     </div>

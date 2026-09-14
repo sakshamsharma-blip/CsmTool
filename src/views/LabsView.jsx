@@ -99,7 +99,7 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab })
                     </span>
                   )}</td>
                   <td>{r.id}</td>
-                  <td className="lab-name clickable" onClick={() => onOpenLab(r)}>{r.name}</td>
+                  <td className="lab-name clickable" onClick={() => onOpenLab(r.id)}>{r.name}</td>
                   <td><span className="pill pill-parent">Parent</span></td>
                   <td>{r.csm}</td>
                   <td><span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span></td>
@@ -112,7 +112,7 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab })
                   return (
                     <tr className="child-row" key={c.id}>
                       <td></td><td>{c.id}</td>
-                      <td className="lab-name clickable" onClick={() => onOpenLab(c)}>{c.name}</td>
+                      <td className="lab-name clickable" onClick={() => onOpenLab(c.id)}>{c.name}</td>
                       <td><span className="pill pill-child">Child</span></td>
                       <td>{c.csm}</td>
                       <td><span className="seg-badge" style={{ background: cseg.color }}>{cseg.code}</span></td>

@@ -1,0 +1,487 @@
+import { useEffect, useMemo, useState } from "react";
+import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
+import { fmtINR, segmentFor } from "../lib/format";
+import { planIncludesModule, planIncludesParam } from "../lib/plans";
+import {
+  STATUS_ORDER, EXP_STAGES, defaultParamState,
+  fetchLabAdoption, saveLabAdoption, computeLabScores,
+} from "../lib/adoption";
+
+const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
+const EMPTY_ADOPTION = { scope: {}, paramScope: {}, paramState: {} };
+
+function statusPillClass(s) { return "status-" + s.replace(" ", ""); }
+function initials(name) { return (name || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
+
+export default function LabDetailView({ lab, labs, modules, plans, csmNames, onBack, onOpenLab, onReassignCsm, onChangePlan, showToast }) {
+  const [tab, setTab] = useState("details");
+  const [expandedModule, setExpandedModule] = useState(null);
+
+  const [saved, setSaved] = useState(EMPTY_ADOPTION);
+  const [loadingAdoption, setLoadingAdoption] = useState(SUPABASE_CONFIGURED);
+  const [adoptionError, setAdoptionError] = useState(null);
+  const [draftScope, setDraftScope] = useState({});
+  const [draftParamScope, setDraftParamScope] = useState({});
+  const [draftParams, setDraftParams] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const [newCsm, setNewCsm] = useState(lab.csm);
+  const [newPlan, setNewPlan] = useState(lab.plan);
+
+  useEffect(() => {
+    setTab("details");
+    setExpandedModule(null);
+    setDraftScope({});
+    setDraftParamScope({});
+    setDraftParams({});
+    setNewCsm(lab.csm);
+    setNewPlan(lab.plan);
+    if (!SUPABASE_CONFIGURED) {
+      setSaved(EMPTY_ADOPTION);
+      setLoadingAdoption(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingAdoption(true);
+    setAdoptionError(null);
+    fetchLabAdoption(lab.id)
+      .then((data) => { if (!cancelled) setSaved(data); })
+      .catch((err) => { if (!cancelled) setAdoptionError(err.message || "Failed to load adoption data."); })
+      .finally(() => { if (!cancelled) setLoadingAdoption(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lab.id]);
+
+  const plan = plans.find((p) => p.id === lab.plan) || plans[0];
+  const hasDraftChanges =
+    Object.keys(draftScope).length > 0 || Object.keys(draftParamScope).length > 0 || Object.keys(draftParams).length > 0;
+
+  function paramDefOf(moduleKey, paramName) {
+    const mod = modules.find((m) => m.key === moduleKey);
+    return mod && mod.params.find((p) => p.name === paramName);
+  }
+  function effectiveScope(moduleKey) {
+    if (Object.prototype.hasOwnProperty.call(draftScope, moduleKey)) return draftScope[moduleKey];
+    if (Object.prototype.hasOwnProperty.call(saved.scope, moduleKey)) return saved.scope[moduleKey];
+    return planIncludesModule(plan, moduleKey);
+  }
+  function effectiveParamScope(moduleKey, paramName) {
+    const key = `${moduleKey}|${paramName}`;
+    if (Object.prototype.hasOwnProperty.call(draftParamScope, key)) return draftParamScope[key];
+    if (Object.prototype.hasOwnProperty.call(saved.paramScope, key)) return saved.paramScope[key];
+    return planIncludesParam(plan, moduleKey, paramName);
+  }
+  function effectiveParamState(moduleKey, paramName) {
+    const key = `${moduleKey}|${paramName}`;
+    const base = saved.paramState[key] || defaultParamState(paramDefOf(moduleKey, paramName));
+    const draft = draftParams[key];
+    return draft ? { ...base, ...draft } : base;
+  }
+
+  const scores = useMemo(
+    () => computeLabScores(modules, effectiveScope, effectiveParamScope, effectiveParamState),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [modules, saved, draftScope, draftParamScope, draftParams, plan]
+  );
+
+  function effectiveMRR(l) {
+    if (l.type === "Parent") {
+      const children = labs.filter((c) => c.type === "Child" && c.parent === l.id);
+      if (children.length) return children.reduce((s, c) => s + (c.mrr || 0), 0);
+    }
+    return l.mrr || 0;
+  }
+
+  function guardedNav(fn) {
+    if (hasDraftChanges && !window.confirm("You have unsaved adoption changes for this lab — discard them?")) return;
+    fn();
+  }
+
+  function updateDraftParam(key, patch) {
+    setDraftParams((d) => ({ ...d, [key]: { ...(d[key] || {}), ...patch } }));
+  }
+  function handleSetStatus(moduleKey, paramName, status) {
+    updateDraftParam(`${moduleKey}|${paramName}`, { status });
+  }
+  function handleToggleIncluded(moduleKey, paramName) {
+    const current = effectiveParamState(moduleKey, paramName);
+    updateDraftParam(`${moduleKey}|${paramName}`, {
+      included: !current.included,
+      status: !current.included ? "Not Started" : current.status,
+    });
+  }
+  function handleSetExpValue(moduleKey, paramName, raw) {
+    updateDraftParam(`${moduleKey}|${paramName}`, { expValue: raw === "" ? null : Number(raw) });
+  }
+  function handleSetExpStage(moduleKey, paramName, stage) {
+    updateDraftParam(`${moduleKey}|${paramName}`, { expStage: stage });
+  }
+  function handleToggleScope(moduleKey) {
+    setDraftScope((d) => ({ ...d, [moduleKey]: !effectiveScope(moduleKey) }));
+  }
+  function handleToggleParamScope(moduleKey, paramName) {
+    const key = `${moduleKey}|${paramName}`;
+    setDraftParamScope((d) => ({ ...d, [key]: !effectiveParamScope(moduleKey, paramName) }));
+  }
+
+  async function handleSaveAdoption() {
+    setSaving(true);
+    try {
+      if (SUPABASE_CONFIGURED) {
+        await saveLabAdoption(lab.id, {
+          plan, modules, saved,
+          draft: { scope: draftScope, paramScope: draftParamScope, params: draftParams },
+        });
+      }
+      setSaved((s) => {
+        const nextParamState = { ...s.paramState };
+        Object.entries(draftParams).forEach(([key, delta]) => {
+          const [moduleKey, paramName] = key.split("|");
+          const base = nextParamState[key] || defaultParamState(paramDefOf(moduleKey, paramName));
+          nextParamState[key] = { ...base, ...delta };
+        });
+        return {
+          scope: { ...s.scope, ...draftScope },
+          paramScope: { ...s.paramScope, ...draftParamScope },
+          paramState: nextParamState,
+        };
+      });
+      setDraftScope({});
+      setDraftParamScope({});
+      setDraftParams({});
+      showToast("Adoption changes saved.");
+    } catch (err) {
+      console.error(err);
+      showToast(`⚠ Not saved to the database — ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleDiscardAdoption() {
+    setDraftScope({});
+    setDraftParamScope({});
+    setDraftParams({});
+    showToast("Unsaved adoption changes discarded.");
+  }
+
+  async function handleResetToPlanDefaults() {
+    if (!window.confirm(`Reset all scope customizations for ${lab.name} back to the ${plan.name} plan defaults?`)) return;
+    try {
+      if (SUPABASE_CONFIGURED) {
+        const [{ error: e1 }, { error: e2 }] = await Promise.all([
+          supabase.from("scope_overrides").delete().eq("lab_id", lab.id),
+          supabase.from("param_scope_overrides").delete().eq("lab_id", lab.id),
+        ]);
+        if (e1) throw e1;
+        if (e2) throw e2;
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(`⚠ Reset not saved to the database — ${err.message}`);
+      return;
+    }
+    setSaved((s) => ({ ...s, scope: {}, paramScope: {} }));
+    setDraftScope({});
+    setDraftParamScope({});
+    showToast(`Reset to ${plan.name} defaults.`);
+  }
+
+  const seg = segmentFor(effectiveMRR(lab));
+  const children = lab.type === "Parent" ? labs.filter((l) => l.type === "Child" && l.parent === lab.id) : [];
+  const tabs = [
+    { key: "details", label: "Lab Details" },
+    ...(lab.type === "Parent" ? [{ key: "childlabs", label: `Child Labs (${children.length})` }] : []),
+    { key: "adoption", label: "Adoption" },
+  ];
+
+  const inScopeResults = scores.moduleResults.filter((m) => m.inScope);
+  const outOfScopeCount = scores.moduleResults.length - inScopeResults.length;
+  const fullyAdopted = inScopeResults.filter((m) => (m.mandPct || 0) >= 91).length;
+  const inProgress = inScopeResults.filter((m) => (m.mandPct || 0) > 0 && (m.mandPct || 0) < 91).length;
+  const notStarted = inScopeResults.filter((m) => !(m.mandPct > 0)).length;
+  const planDeviations = modules.filter((mod) => effectiveScope(mod.key) !== planIncludesModule(plan, mod.key));
+  const expansionPipeline = modules.reduce((sum, mod) => {
+    if (!effectiveScope(mod.key)) return sum;
+    return sum + mod.params.reduce((s2, p) => {
+      if (!effectiveParamScope(mod.key, p.name)) return s2;
+      const st = effectiveParamState(mod.key, p.name);
+      return s2 + (!st.included ? st.expValue || 0 : 0);
+    }, 0);
+  }, 0);
+  const ringColor =
+    scores.mandatoryPct >= 76 ? "var(--ok)" : scores.mandatoryPct >= 51 ? "var(--accent)" : scores.mandatoryPct >= 26 ? "var(--warn)" : "var(--bad)";
+
+  return (
+    <div>
+      <div className="crumb">
+        <a onClick={() => guardedNav(onBack)}>Customer Master &gt; Total Labs</a> &gt; <span>{lab.name}</span>
+      </div>
+
+      <div className="detail-head">
+        <div className="detail-avatar">{initials(lab.name)}</div>
+        <div>
+          <div className="detail-title">
+            <h1>{lab.name}</h1>
+            <span className={`status-pill ${statusPillClass(lab.status)}`}>{lab.status}</span>
+          </div>
+        </div>
+        <div className="detail-meta">
+          <div className="m"><div>Lab ID</div><div>{lab.id}</div></div>
+          <div className="m"><div>Type</div><div>{lab.type} Lab</div></div>
+          <div className="m"><div>CSM</div><div>{lab.csm}</div></div>
+          <div className="m"><div>Plan</div><div>{plan.name}</div></div>
+          <div className="m"><div>Segment</div><div>{seg.code} — {SEG_NAME[seg.code]}</div></div>
+          <div className="m"><div>Current MRR</div><div>{fmtINR(effectiveMRR(lab))}</div></div>
+          <div className="m"><div>Current ARR</div><div>{fmtINR(effectiveMRR(lab) * 12)}</div></div>
+          <div className="m"><div>City, State</div><div>{lab.city ? lab.city + ", " : ""}{lab.state}</div></div>
+        </div>
+        <button className="btn btn-ghost" onClick={() => guardedNav(onBack)}>&larr; Back to Total Labs</button>
+      </div>
+
+      <div className="tabbar">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            className={`tabbtn${tab === t.key ? " active" : ""}`}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+        <button className="tabbtn tabdisabled" title="Not built yet">Collections <span className="concept-tag">Planned</span></button>
+        <button className="tabbtn tabdisabled" title="Not built yet">Lab History <span className="concept-tag">Planned</span></button>
+      </div>
+
+      {tab === "details" && (
+        <div className="table-card" style={{ padding: "6px 20px 20px" }}>
+          {[
+            ["Lab Name", lab.name], ["Lab ID", lab.id], ["Lab Type", lab.type + " Lab"],
+            ["Parent Lab", lab.parent ? (labs.find((l) => l.id === lab.parent) || {}).name || lab.parent : "—"],
+            ["CSM Name", lab.csm], ["Region Category", lab.region], ["City", lab.city || "—"], ["State", lab.state],
+            ["Country", lab.country], ["Client Segment", `${seg.code} — ${SEG_NAME[seg.code]}`],
+            ["Credit Days", lab.creditDays || "30"], ["Billing Type", lab.billingType || "Variable"],
+            ["Payment Cycle", lab.paymentCycle || "Monthly"], ["Current MRR", fmtINR(effectiveMRR(lab))],
+            ["Current ARR", fmtINR(effectiveMRR(lab) * 12)], ["Status", lab.status], ["Remarks", lab.remarks || "—"],
+          ].map(([k, v]) => (
+            <div key={k} className="param-row" style={{ padding: "11px 0" }}>
+              <span className="pname" style={{ color: "var(--text-dim)", flex: "0 0 180px" }}>{k}</span>
+              <span style={{ fontWeight: 600 }}>{v}</span>
+            </div>
+          ))}
+
+          <div style={{ display: "flex", gap: 24, marginTop: 18, paddingTop: 18, borderTop: "1px solid var(--border)", flexWrap: "wrap" }}>
+            <div className="tmpl-field" style={{ flex: "1 1 220px" }}>
+              <label>Reassign CSM</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <select value={newCsm} onChange={(e) => setNewCsm(e.target.value)} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
+                  {csmNames.map((n) => <option key={n}>{n}</option>)}
+                </select>
+                <button className="btn btn-ghost" disabled={newCsm === lab.csm} onClick={() => onReassignCsm(lab.id, newCsm)}>Save</button>
+              </div>
+            </div>
+            <div className="tmpl-field" style={{ flex: "1 1 220px" }}>
+              <label>Change Plan</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <select value={newPlan} onChange={(e) => setNewPlan(e.target.value)} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
+                  {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <button className="btn btn-ghost" disabled={newPlan === lab.plan} onClick={() => onChangePlan(lab.id, newPlan)}>Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === "childlabs" && (
+        children.length === 0 ? (
+          <div className="table-card" style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>No child labs under this parent yet.</div>
+        ) : (
+          <div className="table-card"><div className="table-scroll"><table className="child-mini"><thead><tr>
+            <th>Lab ID</th><th>Lab Name</th><th>CSM</th><th>Segment</th><th>MRR</th><th>Status</th>
+          </tr></thead><tbody>
+            {children.map((c) => {
+              const cseg = segmentFor(c.mrr);
+              return (
+                <tr key={c.id}>
+                  <td>{c.id}</td>
+                  <td className="lab-name clickable" onClick={() => guardedNav(() => onOpenLab(c.id))}>{c.name}</td>
+                  <td>{c.csm}</td>
+                  <td><span className="seg-badge" style={{ background: cseg.color }}>{cseg.code}</span></td>
+                  <td className="mrr-cell">{fmtINR(c.mrr)}</td>
+                  <td><span className={`status-pill ${statusPillClass(c.status)}`}>{c.status}</span></td>
+                </tr>
+              );
+            })}
+          </tbody></table></div></div>
+        )
+      )}
+
+      {tab === "adoption" && (
+        loadingAdoption ? (
+          <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading adoption data…</div>
+        ) : adoptionError ? (
+          <div className="warn-banner" style={{ background: "var(--bad-bg)", color: "var(--bad)", borderColor: "#f3b8b8" }}>
+            Couldn't load adoption data — {adoptionError}
+          </div>
+        ) : (
+          <div>
+            <div className="adopt-summary">
+              <div className="adopt-ring-card">
+                <div className="ring" style={{ background: `conic-gradient(${ringColor} ${scores.mandatoryPct * 3.6}deg, #eef0f3 0deg)` }}>
+                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>
+                    {Math.round(scores.mandatoryPct)}%
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>Mandatory Completion</div>
+                  <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>
+                    Overall Adoption: <b style={{ color: "var(--text)" }}>{Math.round(scores.overallPct)}%</b>
+                  </div>
+                </div>
+              </div>
+              <div className="tile"><div className="tval" style={{ color: "var(--ok)" }}>{fullyAdopted}</div><div className="tlabel">Modules ≥ 91% (mandatory)</div></div>
+              <div className="tile"><div className="tval" style={{ color: "var(--warn)" }}>{inProgress}</div><div className="tlabel">Modules in progress</div></div>
+              <div className="tile"><div className="tval">{notStarted}</div><div className="tlabel">Modules not started</div></div>
+              <div className="tile"><div className="tval" style={{ color: "#7c3aed" }}>{fmtINR(expansionPipeline)}</div><div className="tlabel">Expansion pipeline</div></div>
+            </div>
+
+            {hasDraftChanges && (
+              <div className="warn-banner" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", background: "var(--accent-dim)", color: "#1948a8", borderColor: "#c8dafc" }}>
+                <span><b>Unsaved changes</b> — the numbers above are a live preview. Nothing is recorded for this lab until you save.</span>
+                <div style={{ display: "flex", gap: 8, flex: "none" }}>
+                  <button className="btn btn-ghost" style={{ fontSize: 11, padding: "5px 10px" }} onClick={handleDiscardAdoption} disabled={saving}>Discard</button>
+                  <button className="btn btn-primary" style={{ fontSize: 11, padding: "5px 10px" }} onClick={handleSaveAdoption} disabled={saving}>{saving ? "Saving…" : "Save Changes"}</button>
+                </div>
+              </div>
+            )}
+
+            <div className="adopt-note" style={{ margin: "0 0 12px" }}>
+              {outOfScopeCount > 0 ? (
+                <>This lab is on <b>{plan.name}</b>, which includes {plan.modules.length} of {modules.length} modules by default — <b>{outOfScopeCount}</b> module{outOfScopeCount > 1 ? "s are" : " is"} currently out of scope for this lab as a result.</>
+              ) : (
+                <>This lab is on <b>{plan.name}</b>, which includes every module — every module below is in scope by default. Untick "In scope" on any module to give this lab a custom offer.</>
+              )}
+            </div>
+
+            {planDeviations.length > 0 && (
+              <div className="warn-banner" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", background: "#fff7e6", borderColor: "#f3dfa8", color: "#8a5a00" }}>
+                <span>Current scope differs from this lab's <b>{plan.name}</b> plan on <b>{planDeviations.length}</b> module{planDeviations.length > 1 ? "s" : ""} ({planDeviations.map((m) => m.name).join(", ")}) — a custom add-on or drop, not a plan change.</span>
+                <button className="btn btn-ghost" style={{ fontSize: 11, padding: "5px 10px", flex: "none" }} onClick={handleResetToPlanDefaults}>Reset to Plan Defaults</button>
+              </div>
+            )}
+
+            {scores.moduleResults.map(({ mod, mandPct, inScope }) => {
+              const isOpen = expandedModule === mod.key;
+              const scopeToggle = (
+                <label className="scope-toggle" onClick={(e) => e.stopPropagation()} title={inScope ? "In scope for this lab — untick if this lab doesn't have / doesn't apply to this module" : "Out of scope for this lab"}>
+                  <input type="checkbox" checked={inScope} onChange={() => handleToggleScope(mod.key)} /> In scope
+                </label>
+              );
+              if (!inScope) {
+                return (
+                  <div key={mod.key} className="module-row out-of-scope">
+                    <div className="module-head" style={{ cursor: "default" }}>
+                      <span className="mtoggle"></span>
+                      <span>{mod.icon}</span>
+                      <span className="mname">{mod.name}</span>
+                      <span className="out-of-scope-tag">Not applicable to this lab</span>
+                      <div className="bar-track"></div>
+                      {scopeToggle}
+                    </div>
+                  </div>
+                );
+              }
+              const pct = Math.round(mandPct || 0);
+              const barColor = pct >= 76 ? "var(--ok)" : pct >= 51 ? "var(--accent)" : pct >= 26 ? "var(--warn)" : "var(--bad)";
+              return (
+                <div key={mod.key} className="module-row">
+                  <div className="module-head" onClick={() => setExpandedModule(isOpen ? null : mod.key)}>
+                    <span className="mtoggle">{isOpen ? "▾" : "▸"}</span>
+                    <span>{mod.icon}</span>
+                    <span className="mname">{mod.name}</span>
+                    <span className="mtag">{mod.weight}% of score</span>
+                    <div className="bar-track"><div className="bar-fill" style={{ width: `${pct}%`, background: barColor }}></div></div>
+                    <span className="mpct">{pct}%</span>
+                    {scopeToggle}
+                  </div>
+                  <div className={`module-body${isOpen ? " open" : ""}`}>
+                    {mod.params.map((p) => {
+                      const pInScope = effectiveParamScope(mod.key, p.name);
+                      const paramScopeToggle = (
+                        <label className="scope-toggle" title={pInScope ? "In scope — untick if this lab never does this specific feature" : "Out of scope for this lab"}>
+                          <input type="checkbox" checked={pInScope} onChange={() => handleToggleParamScope(mod.key, p.name)} /> In scope
+                        </label>
+                      );
+                      const catTag = <span className={`cat-tag cat-${p.category}`} title={p.category === "Adoption" ? "Base plan — tracked on rollout status" : "Add-on — gated behind purchase"}>{p.category}</span>;
+                      if (!pInScope) {
+                        return (
+                          <div key={p.name} className="param-row" style={{ opacity: 0.55 }}>
+                            <span className="param-type">{p.type === "M" ? "Mandatory" : "Optional"}</span>
+                            <span className="pname">{p.name}</span>
+                            {catTag}
+                            <span className="out-of-scope-tag">Not applicable to this lab</span>
+                            {paramScopeToggle}
+                          </div>
+                        );
+                      }
+                      const st = effectiveParamState(mod.key, p.name);
+                      if (st.included) {
+                        return (
+                          <div key={p.name} className="param-row">
+                            <span className={`param-type ${p.type}`}>{p.type === "M" ? "Mandatory" : "Optional"}</span>
+                            <span className="pname">{p.name}</span>
+                            {catTag}
+                            <span className="param-weight">{p.weight}%</span>
+                            <select className="status-select" value={st.status} onChange={(e) => handleSetStatus(mod.key, p.name, e.target.value)}>
+                              {STATUS_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                            {paramScopeToggle}
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={p.name} className="param-row">
+                          <span className={`param-type ${p.type}`}>{p.type === "M" ? "Mandatory" : "Optional"}</span>
+                          <span className="pname">{p.name}</span>
+                          {catTag}
+                          <span className="param-weight">{p.weight}%</span>
+                          <span className="expansion-chip" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            ₹<input
+                              type="number" min="0" placeholder="value"
+                              value={st.expValue ?? ""}
+                              onChange={(e) => handleSetExpValue(mod.key, p.name, e.target.value)}
+                              style={{ width: 62, border: "none", background: "transparent", color: "inherit", font: "inherit", fontWeight: 700 }}
+                            />
+                          </span>
+                          <select
+                            value={st.expStage || ""}
+                            onChange={(e) => handleSetExpStage(mod.key, p.name, e.target.value)}
+                            style={{ fontSize: 11, border: "1px solid var(--border)", borderRadius: 6, padding: "3px 5px", fontFamily: "inherit", flex: "none" }}
+                          >
+                            <option value="">Stage…</option>
+                            {EXP_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                          <button className="mark-purchased" onClick={() => handleToggleIncluded(mod.key, p.name)}>Mark purchased</button>
+                          {paramScopeToggle}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="adopt-note">
+              Module Progress % = Completed Mandatory Weightage ÷ Total Mandatory Weightage × 100. Scope defaults from this lab's <b>{plan.name}</b> plan
+              (left nav: <b>Plans</b>) — untick "In scope" on a module this lab doesn't need, or tick one on that isn't in their plan as a custom add-on.
+              Each feature has its own "In scope" tick too. A feature's <b>Adoption</b>/<b>Expansion</b> tag is set once in the <b>Adoption Template</b> —
+              Adoption features are always tracked on status, Expansion features are gated behind "Mark purchased" until bought. Edits stay local to this
+              screen until you hit <b>Save Changes</b>.
+            </div>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
