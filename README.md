@@ -29,8 +29,10 @@ migrations/0004_collections_zoho.sql ← adds collections_items.collected_at (Co
 migrations/0005_checkins.sql ← adds visits columns used by Log Check-in (meeting details, discussion
                              topics, sentiment, flagged modules, action items) — run once, after 0004
 migrations/000N_*.sql      ← future schema changes go here, one file per change, in order (see below)
-MIGRATION_PLAN.md          ← the original build plan: what's wired to the database vs. still on demo data,
-                             Supabase project setup steps, team onboarding steps
+GO_LIVE.md                 ← the current guide for going from demo mode to a real, deployed tool:
+                             Supabase project setup, a real working check, and deployment steps
+MIGRATION_PLAN.md          ← historical — the original build plan from when only a few screens were
+                             wired up. Superseded by GO_LIVE.md for setup steps; kept for context.
 archive_app_single_file.html   ← an earlier, fully working single-HTML-file version of this same app (no
                              build step, same features) — kept as a working reference/fallback, not the
                              version to develop further
@@ -60,7 +62,8 @@ Without a `.env` file, the app still runs — it falls back to demo mode (seeded
    update profiles set auth_user_id = '<their-user-id-from-the-Users-tab>' where name = 'Their Name';
    ```
 
-Full detail (including what's wired to the database today vs. still pending) is in `MIGRATION_PLAN.md`.
+Full detail (Supabase project setup, a real working check before onboarding the team, and deployment) is
+in `GO_LIVE.md`.
 
 ## Making changes
 
