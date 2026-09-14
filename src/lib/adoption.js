@@ -5,6 +5,8 @@ export const STATUS_ORDER = ["Not Started", "In Progress", "Partially Adopted", 
 export const STATUS_WEIGHT = { "Not Started": 0, "In Progress": 25, "Partially Adopted": 50, "Adopted": 100 };
 export const EXP_STAGES = ["Opportunity Identified", "Discussion", "Quotation Shared", "Negotiation"];
 
+const EMPTY_ADOPTION = { scope: {}, paramScope: {}, paramState: {} };
+
 // A param that's never been touched for this lab gets this default: Adoption-category features are
 // part of the base plan (always "included", tracked purely on rollout status); Expansion-category
 // features are add-ons the lab hasn't bought yet, so they start excluded with no pipeline value —
@@ -43,6 +45,81 @@ export async function fetchLabAdoption(labId) {
     };
   });
   return { scope, paramScope, paramState };
+}
+
+// Bulk variant of fetchLabAdoption — one query per table across every lab, grouped client-side, so
+// Portfolio/Dashboard can compute every lab's scores without one round-trip per lab.
+export async function fetchAllLabsAdoption() {
+  const [{ data: so, error: e1 }, { data: pso, error: e2 }, { data: ps, error: e3 }] = await Promise.all([
+    supabase.from("scope_overrides").select("lab_id,module_key,in_scope"),
+    supabase.from("param_scope_overrides").select("lab_id,module_key,param_name,in_scope"),
+    supabase.from("param_states").select("lab_id,module_key,param_name,included,status,exp_value,exp_stage"),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  if (e3) throw e3;
+
+  const byLab = {};
+  const ensure = (labId) => (byLab[labId] = byLab[labId] || { scope: {}, paramScope: {}, paramState: {} });
+  (so || []).forEach((r) => { ensure(r.lab_id).scope[r.module_key] = r.in_scope; });
+  (pso || []).forEach((r) => { ensure(r.lab_id).paramScope[`${r.module_key}|${r.param_name}`] = r.in_scope; });
+  (ps || []).forEach((r) => {
+    ensure(r.lab_id).paramState[`${r.module_key}|${r.param_name}`] = {
+      included: r.included,
+      status: r.status,
+      expValue: r.exp_value != null ? Number(r.exp_value) : null,
+      expStage: r.exp_stage || null,
+    };
+  });
+  return byLab; // labId -> { scope, paramScope, paramState } — a lab with no rows anywhere is simply absent
+}
+
+// Scores a lab from already-saved adoption data only (no draft layer) — what Portfolio/Dashboard need,
+// as opposed to LabDetailView's computeLabScores which also layers unsaved local edits.
+export function computeSavedLabScores(modules, plan, adoption) {
+  const a = adoption || EMPTY_ADOPTION;
+  const effectiveScope = (moduleKey) =>
+    Object.prototype.hasOwnProperty.call(a.scope, moduleKey) ? a.scope[moduleKey] : planIncludesModule(plan, moduleKey);
+  const effectiveParamScope = (moduleKey, paramName) => {
+    const key = `${moduleKey}|${paramName}`;
+    return Object.prototype.hasOwnProperty.call(a.paramScope, key) ? a.paramScope[key] : planIncludesParam(plan, moduleKey, paramName);
+  };
+  const effectiveParamState = (moduleKey, paramName) => {
+    const key = `${moduleKey}|${paramName}`;
+    const mod = modules.find((m) => m.key === moduleKey);
+    const paramDef = mod && mod.params.find((p) => p.name === paramName);
+    return a.paramState[key] || defaultParamState(paramDef);
+  };
+  return computeLabScores(modules, effectiveScope, effectiveParamScope, effectiveParamState);
+}
+
+// A single param graduating from "pitched" to "Added" (My Portfolio) needs to flip included=true on
+// its param_states row without disturbing status/expValue/expStage if a row already exists.
+export async function markParamIncluded(labId, moduleKey, paramName, existingState) {
+  const base = existingState || defaultParamState(null);
+  const { error } = await supabase.from("param_states").upsert(
+    {
+      lab_id: labId,
+      module_key: moduleKey,
+      param_name: paramName,
+      included: true,
+      status: base.status,
+      exp_value: base.expValue,
+      exp_stage: base.expStage,
+    },
+    { onConflict: "lab_id,module_key,param_name" }
+  );
+  if (error) throw error;
+}
+
+// A whole module graduating from "pitched as new" to "Added" — same mechanism the Adoption tab's
+// scope toggle already uses.
+export async function markModuleInScope(labId, moduleKey) {
+  const { error } = await supabase.from("scope_overrides").upsert(
+    { lab_id: labId, module_key: moduleKey, in_scope: true },
+    { onConflict: "lab_id,module_key" }
+  );
+  if (error) throw error;
 }
 
 // ---- writes: only persist what actually changed, mirroring the original prototype's rule of only

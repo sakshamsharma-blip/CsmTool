@@ -7,6 +7,8 @@ import {
   fetchLabAdoption, saveLabAdoption, computeLabScores,
 } from "../lib/adoption";
 import { fetchLabActivity, logActivity, ACTIVITY_ICONS } from "../lib/activity";
+import { fetchAllCollectionsItems, addCollectionsItem, markItemCollected } from "../lib/collections";
+import Modal from "../components/Modal";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const EMPTY_ADOPTION = { scope: {}, paramScope: {}, paramState: {} };
@@ -29,6 +31,17 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
   const [activity, setActivity] = useState([]);
   const [loadingActivity, setLoadingActivity] = useState(SUPABASE_CONFIGURED);
   const [activityError, setActivityError] = useState(null);
+
+  const [collItems, setCollItems] = useState([]);
+  const [loadingColl, setLoadingColl] = useState(SUPABASE_CONFIGURED);
+  const [collError, setCollError] = useState(null);
+  const [collManualInputs, setCollManualInputs] = useState({});
+  const [addItemOpen, setAddItemOpen] = useState(false);
+  const [addItemLabel, setAddItemLabel] = useState("");
+  const [addItemAmount, setAddItemAmount] = useState("");
+  const [addItemTrial, setAddItemTrial] = useState(false);
+  const [addItemError, setAddItemError] = useState(false);
+
   const nameById = {};
   Object.entries(idByName || {}).forEach(([n, id]) => { nameById[id] = n; });
 
@@ -75,6 +88,47 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lab.id]);
+
+  async function loadCollections() {
+    if (!SUPABASE_CONFIGURED) { setCollItems([]); setLoadingColl(false); return; }
+    setLoadingColl(true);
+    setCollError(null);
+    try {
+      const all = await fetchAllCollectionsItems();
+      setCollItems(all.filter((i) => i.labId === lab.id));
+    } catch (err) {
+      setCollError(err.message || "Failed to load collections.");
+    } finally {
+      setLoadingColl(false);
+    }
+  }
+  useEffect(() => {
+    loadCollections();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lab.id]);
+
+  async function handleMarkItemCollected(item) {
+    const val = parseFloat(collManualInputs[item.id]);
+    if (!val || val < 0) { showToast("Enter a valid amount."); return; }
+    try {
+      await markItemCollected(item.id, val, lab.id, idByName?.[lab.csm]);
+      await loadCollections();
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+
+  async function handleAddCollItem() {
+    if (!addItemLabel.trim()) { setAddItemError(true); return; }
+    if (!addItemTrial && (!addItemAmount || parseFloat(addItemAmount) <= 0)) { setAddItemError(true); return; }
+    try {
+      await addCollectionsItem({
+        labId: lab.id, moduleKey: null, paramName: null, label: addItemLabel.trim(),
+        amount: addItemTrial ? 0 : parseFloat(addItemAmount), isTrial: addItemTrial, csmId: idByName?.[lab.csm],
+      });
+      setAddItemOpen(false); setAddItemLabel(""); setAddItemAmount(""); setAddItemTrial(false); setAddItemError(false);
+      await loadCollections();
+      showToast("Collections item added.");
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
 
   const plan = plans.find((p) => p.id === lab.plan) || plans[0];
   const hasDraftChanges =
@@ -265,6 +319,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
     { key: "details", label: "Lab Details" },
     ...(lab.type === "Parent" ? [{ key: "childlabs", label: `Child Labs (${children.length})` }] : []),
     { key: "adoption", label: "Adoption" },
+    { key: "collections", label: `Collections${collItems.length ? ` (${collItems.length})` : ""}` },
     { key: "history", label: `Lab History${activity.length ? ` (${activity.length})` : ""}` },
   ];
 
@@ -322,7 +377,6 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
             {t.label}
           </button>
         ))}
-        <button className="tabbtn tabdisabled" title="Not built yet">Collections <span className="concept-tag">Planned</span></button>
       </div>
 
       {tab === "details" && (
@@ -551,6 +605,78 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
               Adoption features are always tracked on status, Expansion features are gated behind "Mark purchased" until bought. Edits stay local to this
               screen until you hit <b>Save Changes</b>.
             </div>
+          </div>
+        )
+      )}
+
+      {tab === "collections" && (
+        loadingColl ? (
+          <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading collections…</div>
+        ) : collError ? (
+          <div className="warn-banner" style={{ background: "var(--bad-bg)", color: "var(--bad)", borderColor: "#f3b8b8" }}>Couldn't load collections — {collError}</div>
+        ) : !SUPABASE_CONFIGURED ? (
+          <div className="table-card" style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Demo mode — Collections isn't tracked without a database connected.</div>
+        ) : (
+          <div className="table-card" style={{ padding: "6px 20px 20px" }}>
+            <div className="banner" style={{ background: "#eef4ff", border: "1px solid #cfe0fb" }}>
+              <span className="badge" style={{ background: "#1948a8" }}>BASIC MANUAL TRACKER</span>
+              <span>Logged manually — no Zoho Books sync yet. Items appear automatically when a pitch on My Portfolio is marked Added, or add one directly.</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", margin: "10px 0" }}>
+              <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={() => setAddItemOpen(true)}>+ Add Item</button>
+            </div>
+            {!collItems.length ? (
+              <div style={{ color: "var(--text-faint)", fontSize: 12, padding: "10px 0" }}>No items yet for {lab.name}.</div>
+            ) : (
+              <div className="table-scroll"><table className="child-mini">
+                <thead><tr><th>Feature</th><th>Added</th><th>Owed</th><th>Collected</th><th>Status</th></tr></thead>
+                <tbody>{collItems.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.label}{item.isTrial && <span className="cat-tag" style={{ background: "#eef2ff", color: "#4338ca" }}> Trial/Free</span>}</td>
+                    <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{new Date(item.addedDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</td>
+                    <td className="mrr-cell">{item.isTrial ? "—" : fmtINR(item.amount)}</td>
+                    <td>
+                      {item.isTrial ? "—" : item.collectedManual === null ? (
+                        <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <input type="number" placeholder="₹ collected" value={collManualInputs[item.id] || ""} onChange={(e) => setCollManualInputs((m) => ({ ...m, [item.id]: e.target.value }))}
+                            style={{ width: 92, border: "1px solid var(--border)", borderRadius: 6, padding: "4px 6px", fontSize: 11.5 }} />
+                          <button className="mark-purchased" onClick={() => handleMarkItemCollected(item)}>Save</button>
+                        </span>
+                      ) : fmtINR(item.collectedManual)}
+                    </td>
+                    <td><span className={`status-chip ${item.status === "Pending" ? "st-InProgress" : "st-Adopted"}`} style={{ cursor: "default" }}>{item.status}</span></td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )}
+            <Modal
+              open={addItemOpen}
+              title="Add Collections Item"
+              onClose={() => setAddItemOpen(false)}
+              actions={[
+                { label: "Cancel", className: "btn-ghost", onClick: () => setAddItemOpen(false) },
+                { label: "Add Item", className: "btn-primary", onClick: handleAddCollItem },
+              ]}
+            >
+              <div className="tmpl-field" style={{ marginBottom: 12 }}>
+                <label>Feature / Description</label>
+                <input value={addItemLabel} onChange={(e) => setAddItemLabel(e.target.value)} placeholder="e.g. Home Collection add-on"
+                  style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
+              </div>
+              <div className="tmpl-field" style={{ marginBottom: 12 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, cursor: "pointer" }}>
+                  <input type="checkbox" checked={addItemTrial} onChange={(e) => setAddItemTrial(e.target.checked)} /> Trial / free (nothing owed yet)
+                </label>
+              </div>
+              {!addItemTrial && (
+                <div className="tmpl-field">
+                  <label>Amount Owed (₹)</label>
+                  <input type="number" min="0" value={addItemAmount} onChange={(e) => setAddItemAmount(e.target.value)}
+                    style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
+                </div>
+              )}
+              {addItemError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>Give it a description and an amount (or mark it trial/free).</div>}
+            </Modal>
           </div>
         )
       )}

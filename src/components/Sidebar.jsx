@@ -1,13 +1,14 @@
 import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
 
 const LIVE_NAV = [
+  { key: "dashboard", icon: "📊", label: "Dashboard" },
+  { key: "portfolio", icon: "⭐", label: "My Portfolio" },
   { key: "list", icon: "☰", label: "Customer Master (Total Labs)" },
+  { key: "collections", icon: "💰", label: "Collections" },
+  { key: "visits", icon: "📅", label: "Visits & Meetings" },
   { key: "adoption-template", icon: "📈", label: "Adoption Template" },
   { key: "plans", icon: "💳", label: "Plans" },
   { key: "csm-setup", icon: "👥", label: "CSM Setup" },
-];
-const PLANNED_NAV = [
-  "Dashboard", "My Portfolio", "Collections", "Visits & Meetings",
 ];
 
 export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCurrentCSM }) {
@@ -34,14 +35,6 @@ export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCu
             <span className="ico">{item.icon}</span>
             <span className="lbl">{item.label}</span>
             <span className="live-tag">Live</span>
-          </div>
-        ))}
-        <div className="nav-group-label">Coming next</div>
-        {PLANNED_NAV.map((label) => (
-          <div key={label} className="nav-item disabled" title="Not wired to the database yet">
-            <span className="ico">•</span>
-            <span className="lbl">{label}</span>
-            <span className="planned-tag">Planned</span>
           </div>
         ))}
       </div>

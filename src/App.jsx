@@ -18,6 +18,10 @@ import LabsView from "./views/LabsView";
 import PlansView from "./views/PlansView";
 import AdoptionTemplateView from "./views/AdoptionTemplateView";
 import CsmSetupView from "./views/CsmSetupView";
+import PortfolioView from "./views/PortfolioView";
+import DashboardView from "./views/DashboardView";
+import CollectionsView from "./views/CollectionsView";
+import VisitsView from "./views/VisitsView";
 
 export default function App() {
   const [authChecked, setAuthChecked] = useState(!SUPABASE_CONFIGURED);
@@ -221,6 +225,18 @@ export default function App() {
           {view === "adoption-template" && <AdoptionTemplateView modules={modules} />}
           {view === "csm-setup" && (
             <CsmSetupView csmDirectory={csmDirectory} idByName={idByName} onSaveCsm={handleSaveCsm} />
+          )}
+          {view === "dashboard" && (
+            <DashboardView labs={labs} modules={modules} plans={plans} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+          )}
+          {view === "portfolio" && (
+            <PortfolioView labs={labs} modules={modules} plans={plans} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+          )}
+          {view === "collections" && (
+            <CollectionsView labs={labs} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+          )}
+          {view === "visits" && (
+            <VisitsView labs={labs} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "lab-detail" && detailLab && (
             <LabDetailView
