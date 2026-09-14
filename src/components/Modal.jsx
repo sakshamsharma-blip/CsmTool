@@ -7,7 +7,7 @@ export default function Modal({ open, title, children, actions, onClose }) {
         <div>{children}</div>
         <div className="modal-actions">
           {actions?.map((a, i) => (
-            <button key={i} className={`btn ${a.className || "btn-ghost"}`} onClick={a.onClick}>
+            <button key={i} className={`btn ${a.className || "btn-ghost"}`} onClick={a.onClick} disabled={!!a.disabled}>
               {a.label}
             </button>
           ))}

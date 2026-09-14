@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR } from "../lib/format";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
-import { fetchAllCollectionsItems, addCollectionsItem, markItemCollected } from "../lib/collections";
+import { fetchAllCollectionsItems, addCollectionsItem, logCollectionsReminder, labCollectionsSummary, AGING_COLORS } from "../lib/collections";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
 
@@ -15,7 +15,6 @@ export default function CollectionsView({ labs, csmDirectory, currentCSM, idByNa
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
-  const [manualInputs, setManualInputs] = useState({}); // itemId -> typed amount string
 
   const [addOpen, setAddOpen] = useState(false);
   const [addLabId, setAddLabId] = useState("");
@@ -52,18 +51,20 @@ export default function CollectionsView({ labs, csmDirectory, currentCSM, idByNa
   labs.forEach((l) => { labsById[l.id] = l; });
 
   const scoped = items.filter((i) => flatIds.has(i.labId));
-  const pending = scoped.filter((i) => i.status === "Pending");
-  const totalOwed = pending.reduce((s, i) => s + (i.amount || 0), 0);
-  const totalCollected = scoped.reduce((s, i) => s + (i.collectedManual || 0), 0);
 
-  async function handleMarkCollected(item) {
-    const val = parseFloat(manualInputs[item.id]);
-    if (!val || val < 0) { showToast("Enter a valid amount."); return; }
-    try {
-      await markItemCollected(item.id, val, item.labId, idByName[labsById[item.labId]?.csm]);
-      await loadAll();
-    } catch (err) { showToast(`⚠ ${err.message}`); }
-  }
+  // Group into one row per lab, matching the prototype's portfolio-wide Collections list —
+  // itemized owed/collected/Zoho detail lives on that lab's own Collections tab.
+  const byLab = {};
+  scoped.forEach((i) => { (byLab[i.labId] = byLab[i.labId] || []).push(i); });
+  const labSummaries = Object.entries(byLab)
+    .map(([labId, labItems]) => ({ lab: labsById[labId], labId, items: labItems, ...labCollectionsSummary(labItems) }))
+    .filter((s) => s.lab)
+    .sort((a, b) => b.daysOverdue - a.daysOverdue || b.outstanding - a.outstanding);
+
+  const totalOutstanding = labSummaries.reduce((s, l) => s + l.outstanding, 0);
+  const overdueLabs = labSummaries.filter((l) => l.bucket === "Overdue" || l.bucket === "Critical").length;
+  const criticalLabs = labSummaries.filter((l) => l.bucket === "Critical").length;
+  const openConflicts = labSummaries.reduce((s, l) => s + l.openConflicts, 0);
 
   const labOptions = [];
   allRows.forEach((r) => { labOptions.push(r); r.children.forEach((c) => labOptions.push(c)); });
@@ -83,56 +84,56 @@ export default function CollectionsView({ labs, csmDirectory, currentCSM, idByNa
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
+  async function handleLogReminder(summary) {
+    try {
+      await logCollectionsReminder(summary.labId, idByName[summary.lab?.csm], summary.lab?.name);
+      showToast(`Reminder logged for ${summary.lab.name}.`);
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+
   return (
     <div>
       <h1 className="page-title">Collections</h1>
       <p className="page-sub">Outstanding dues for labs assigned to <b>{scopeLabel}</b>.</p>
 
       <div className="banner" style={{ background: "#eef4ff", border: "1px solid #cfe0fb" }}>
-        <span className="badge" style={{ background: "#1948a8" }}>BASIC MANUAL TRACKER</span>
-        <span>Itemized owed/collected, logged manually — no Zoho Books sync yet. Items are created automatically when a pitch on My Portfolio is marked Added, or add one directly below.</span>
+        <span className="badge" style={{ background: "#1948a8" }}>ZOHO BOOKS SYNC — CONCEPT</span>
+        <span>Amounts collected against each lab's Zoho figure are simulated (no live Zoho Books sync yet — that's still a requirement going in). Mismatches surface as a Conflict that needs a CSM's resolution note.</span>
       </div>
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
 
       <div className="summary-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 18 }}>
-        <div className="stile"><div className="sval">{fmtINR(totalOwed)}</div><div className="slabel">Outstanding (Pending)</div></div>
-        <div className="stile"><div className="sval" style={{ color: "var(--ok)" }}>{fmtINR(totalCollected)}</div><div className="slabel">Collected To Date</div></div>
-        <div className="stile"><div className="sval">{pending.length}</div><div className="slabel">Pending Items</div></div>
-        <div className="stile"><div className="sval">{scoped.length}</div><div className="slabel">Total Items</div></div>
+        <div className="stile"><div className="sval">{fmtINR(totalOutstanding)}</div><div className="slabel">Total Outstanding</div></div>
+        <div className="stile"><div className="sval" style={{ color: overdueLabs > 0 ? "var(--warn)" : "var(--text)" }}>{overdueLabs}</div><div className="slabel">Overdue Labs</div></div>
+        <div className="stile"><div className="sval" style={{ color: criticalLabs > 0 ? "var(--bad)" : "var(--text)" }}>{criticalLabs}</div><div className="slabel">Critical</div></div>
+        <div className="stile"><div className="sval" style={{ color: openConflicts > 0 ? "var(--bad)" : "var(--text)" }}>{openConflicts}</div><div className="slabel">Open Conflicts</div></div>
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={() => setAddOpen(true)}>+ Add Item</button>
       </div>
 
-      {!scoped.length ? (
+      {!labSummaries.length ? (
         <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>No collections items for {scopeLabel} yet.</div>
       ) : (
         <div className="table-card"><div className="table-scroll"><table className="child-mini">
-          <thead><tr><th>Lab</th><th>Feature</th><th>Added</th><th>Owed</th><th>Collected</th><th>Status</th><th></th></tr></thead>
-          <tbody>{scoped.map((item) => {
-            const lab = labsById[item.labId];
-            return (
-              <tr key={item.id}>
-                <td className="lab-name clickable" onClick={() => onOpenLab(item.labId)}>{lab ? lab.name : item.labId}</td>
-                <td>{item.label}{item.isTrial && <span className="cat-tag" style={{ background: "#eef2ff", color: "#4338ca" }}> Trial/Free</span>}</td>
-                <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{new Date(item.addedDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</td>
-                <td className="mrr-cell">{item.isTrial ? "—" : fmtINR(item.amount)}</td>
-                <td>
-                  {item.isTrial ? "—" : item.collectedManual === null ? (
-                    <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <input type="number" placeholder="₹ collected" value={manualInputs[item.id] || ""} onChange={(e) => setManualInputs((m) => ({ ...m, [item.id]: e.target.value }))}
-                        style={{ width: 92, border: "1px solid var(--border)", borderRadius: 6, padding: "4px 6px", fontSize: 11.5 }} />
-                      <button className="mark-purchased" onClick={() => handleMarkCollected(item)}>Save</button>
-                    </span>
-                  ) : fmtINR(item.collectedManual)}
-                </td>
-                <td><span className={`status-chip ${item.status === "Pending" ? "st-InProgress" : "st-Adopted"}`} style={{ cursor: "default" }}>{item.status}</span></td>
-                <td></td>
-              </tr>
-            );
-          })}</tbody>
+          <thead><tr><th>Lab</th><th>Outstanding</th><th>Days Overdue</th><th>Status</th><th>Last Payment</th><th></th></tr></thead>
+          <tbody>{labSummaries.map((s) => (
+            <tr key={s.labId}>
+              <td className="lab-name clickable" onClick={() => onOpenLab(s.labId)}>
+                {s.lab.name}
+                {s.openConflicts > 0 && <span className="cat-tag" style={{ background: "#fde8e8", color: "#b42318" }}> {s.openConflicts} conflict{s.openConflicts > 1 ? "s" : ""}</span>}
+              </td>
+              <td className="mrr-cell">{fmtINR(s.outstanding)}</td>
+              <td>{s.openCount ? `${s.daysOverdue}d` : "—"}</td>
+              <td><span className="status-chip" style={{ background: "transparent", border: `1px solid ${AGING_COLORS[s.bucket]}`, color: AGING_COLORS[s.bucket], cursor: "default" }}>{s.bucket}</span></td>
+              <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>
+                {s.lastPayment ? new Date(s.lastPayment).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "—"}
+              </td>
+              <td><span className="mark-purchased" onClick={() => handleLogReminder(s)}>Log Reminder</span></td>
+            </tr>
+          ))}</tbody>
         </table></div></div>
       )}
 

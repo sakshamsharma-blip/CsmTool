@@ -1,5 +1,27 @@
 import { Fragment, useMemo, useState } from "react";
-import { fmtINR, segmentFor } from "../lib/format";
+import { fmtINR, segmentFor, SEG_BANDS } from "../lib/format";
+
+const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
+const CSV_COLUMNS = ["id", "name", "type", "parent", "csm", "region", "city", "state", "country", "mrr", "status"];
+
+function exportLabsCsv(labs) {
+  const header = CSV_COLUMNS.join(",");
+  const lines = labs.map((l) => CSV_COLUMNS.map((c) => {
+    const v = l[c] ?? "";
+    const s = String(v).replace(/"/g, '""');
+    return /[",\n]/.test(s) ? `"${s}"` : s;
+  }).join(","));
+  const csv = [header, ...lines].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `total-labs-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 function computeRows(labs) {
   const parents = labs.filter((l) => l.type === "Parent");
@@ -47,7 +69,11 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab })
           <h1 className="page-title">Total Labs</h1>
           <p className="page-sub">The lab master record — Customer Master.</p>
         </div>
-        <button className="btn btn-primary" onClick={onOpenAddDrawer}>+ Add New Lab</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-ghost" onClick={() => exportLabsCsv(labs)}>Export</button>
+          <button className="btn btn-ghost" disabled title="Coming next — bulk CSV import" style={{ opacity: 0.55, cursor: "not-allowed" }}>Import Labs</button>
+          <button className="btn btn-primary" onClick={onOpenAddDrawer}>+ Add New Lab</button>
+        </div>
       </div>
 
       <div className="tiles">
@@ -127,6 +153,23 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab })
           })}
         </tbody>
       </table>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 18 }}>
+        <div className="side-card">
+          <h4>Segment Guide</h4>
+          {SEG_BANDS.map((b) => (
+            <div key={b.code} className="seg-row">
+              <span><span className="seg-badge" style={{ background: b.color }}>{b.code}</span> {SEG_NAME[b.code]}</span>
+              <span style={{ color: "var(--text-dim)" }}>{fmtINR(b.min)}+ MRR</span>
+            </div>
+          ))}
+        </div>
+        <div className="side-card">
+          <h4>Region Guide</h4>
+          <div className="seg-row"><span><b>Domestic</b></span><span style={{ color: "var(--text-dim)" }}>Labs billed and operated within India</span></div>
+          <div className="seg-row"><span><b>ROW</b></span><span style={{ color: "var(--text-dim)" }}>Rest of World — international labs</span></div>
+        </div>
       </div>
     </div>
   );

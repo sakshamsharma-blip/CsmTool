@@ -3,7 +3,7 @@ import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
 import { fetchAllLabsAdoption, computeSavedLabScores } from "../lib/adoption";
-import { fetchAllCollectionsItems } from "../lib/collections";
+import { fetchAllCollectionsItems, labCollectionsSummary, AGING_COLORS } from "../lib/collections";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask, getOpenTasksFor } from "../lib/tasks";
 import ScopeToggle from "../components/ScopeToggle";
 import BarChart from "../components/BarChart";
@@ -72,10 +72,18 @@ export default function DashboardView({ labs, modules, plans, csmDirectory, curr
   const rowIds = new Set();
   rows.forEach((r) => { rowIds.add(r.id); r.children.forEach((c) => rowIds.add(c.id)); });
   const scopedItems = collectionsItems.filter((i) => rowIds.has(i.labId));
-  const pendingCount = scopedItems.filter((i) => i.status === "Pending").length;
-  const resolvedCount = scopedItems.filter((i) => i.status !== "Pending").length;
-  const outstandingTotal = scopedItems.filter((i) => i.status === "Pending").reduce((s, i) => s + (i.amount || 0), 0);
+  const outstandingTotal = scopedItems.filter((i) => i.status === "Pending" || i.status === "Conflict").reduce((s, i) => s + (i.amount || 0), 0);
   const collectedTotal = scopedItems.reduce((s, i) => s + (i.collectedManual || 0), 0);
+
+  // Collections Aging — one bucket per lab (its oldest open item), matching the prototype's
+  // 4-bucket chart rather than a raw item count.
+  const itemsByLab = {};
+  scopedItems.forEach((i) => { (itemsByLab[i.labId] = itemsByLab[i.labId] || []).push(i); });
+  const agingCounts = { Current: 0, "Due Soon": 0, Overdue: 0, Critical: 0 };
+  Object.values(itemsByLab).forEach((labItems) => {
+    const s = labCollectionsSummary(labItems);
+    if (s.openCount) agingCounts[s.bucket] += 1;
+  });
 
   async function handleToggleDone(task) {
     try { await apiToggleTaskDone(task); await loadAll(); } catch (err) { showToast(`⚠ ${err.message}`); }
@@ -125,10 +133,12 @@ export default function DashboardView({ labs, modules, plans, csmDirectory, curr
           ]} />
         </div>
         <div className="table-card" style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Collections — This Scope</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Collections Aging</div>
           <BarChart labelWidth={100} valueFmt={(v) => String(v)} data={[
-            { label: "Pending", value: pendingCount, color: "var(--warn)" },
-            { label: "Collected", value: resolvedCount, color: "var(--ok)" },
+            { label: "Current", value: agingCounts.Current, color: AGING_COLORS.Current },
+            { label: "Due Soon", value: agingCounts["Due Soon"], color: AGING_COLORS["Due Soon"] },
+            { label: "Overdue", value: agingCounts.Overdue, color: AGING_COLORS.Overdue },
+            { label: "Critical", value: agingCounts.Critical, color: AGING_COLORS.Critical },
           ]} />
           <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 10 }}>{fmtINR(outstandingTotal)} outstanding · {fmtINR(collectedTotal)} collected to date</div>
         </div>

@@ -116,22 +116,24 @@ export default function App() {
     showToast(`${lab.name} saved.`);
   }
 
-  async function handleReassignCsm(labId, newCsm) {
-    setLabs((ls) => ls.map((l) => (l.id === labId ? { ...l, csm: newCsm } : l)));
+  async function handleReassignCsm(labId, newCsm, extraLabIds = []) {
+    const ids = [labId, ...extraLabIds];
+    setLabs((ls) => ls.map((l) => (ids.includes(l.id) ? { ...l, csm: newCsm } : l)));
     if (SUPABASE_CONFIGURED) {
-      try { await updateLabCsm(labId, newCsm, idByName); }
+      try { await Promise.all(ids.map((id) => updateLabCsm(id, newCsm, idByName))); }
       catch (err) { console.error(err); showToast(`⚠ Reassignment not saved to the database — ${err.message}`); return; }
     }
-    showToast("CSM reassigned.");
+    showToast(ids.length > 1 ? `CSM reassigned for ${ids.length} labs.` : "CSM reassigned.");
   }
 
-  async function handleChangePlan(labId, newPlanId) {
-    setLabs((ls) => ls.map((l) => (l.id === labId ? { ...l, plan: newPlanId } : l)));
+  async function handleChangePlan(labId, newPlanId, extraLabIds = []) {
+    const ids = [labId, ...extraLabIds];
+    setLabs((ls) => ls.map((l) => (ids.includes(l.id) ? { ...l, plan: newPlanId } : l)));
     if (SUPABASE_CONFIGURED) {
-      try { await updateLabPlan(labId, newPlanId); }
+      try { await Promise.all(ids.map((id) => updateLabPlan(id, newPlanId))); }
       catch (err) { console.error(err); showToast(`⚠ Plan change not saved to the database — ${err.message}`); return; }
     }
-    showToast("Plan changed.");
+    showToast(ids.length > 1 ? `Plan changed for ${ids.length} labs.` : "Plan changed.");
   }
 
   async function handleToggleModule(planId, moduleKey) {
@@ -283,7 +285,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={setView} csmDirectory={csmDirectory} currentCSM={currentCSM} setCurrentCSM={setCurrentCSM} />
+      <Sidebar view={view} setView={setView} csmDirectory={csmDirectory} currentCSM={currentCSM} setCurrentCSM={setCurrentCSM} onOpenAddDrawer={() => setAddDrawerOpen(true)} />
       <div className="main">
         <TopBar currentCSM={currentCSM} />
         <div className="content">

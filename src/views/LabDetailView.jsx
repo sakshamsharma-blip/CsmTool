@@ -7,7 +7,10 @@ import {
   fetchLabAdoption, saveLabAdoption, computeLabScores,
 } from "../lib/adoption";
 import { fetchLabActivity, logActivity, ACTIVITY_ICONS } from "../lib/activity";
-import { fetchAllCollectionsItems, addCollectionsItem, markItemCollected } from "../lib/collections";
+import {
+  fetchAllCollectionsItems, addCollectionsItem, markItemCollected, resolveConflict,
+  logCollectionsReminder, labCollectionsSummary, AGING_COLORS,
+} from "../lib/collections";
 import Modal from "../components/Modal";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
@@ -41,12 +44,20 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
   const [addItemAmount, setAddItemAmount] = useState("");
   const [addItemTrial, setAddItemTrial] = useState(false);
   const [addItemError, setAddItemError] = useState(false);
+  const [resolveItem, setResolveItem] = useState(null);
+  const [resolveComment, setResolveComment] = useState("");
+  const [resolveError, setResolveError] = useState(false);
 
   const nameById = {};
   Object.entries(idByName || {}).forEach(([n, id]) => { nameById[id] = n; });
 
   const [newCsm, setNewCsm] = useState(lab.csm);
   const [newPlan, setNewPlan] = useState(lab.plan);
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [cascadeReassign, setCascadeReassign] = useState(false);
+  const [changePlanOpen, setChangePlanOpen] = useState(false);
+  const [cascadePlan, setCascadePlan] = useState(false);
+  const [planReason, setPlanReason] = useState("");
 
   useEffect(() => {
     setTab("details");
@@ -56,6 +67,11 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
     setDraftParams({});
     setNewCsm(lab.csm);
     setNewPlan(lab.plan);
+    setReassignOpen(false);
+    setChangePlanOpen(false);
+    setCascadeReassign(false);
+    setCascadePlan(false);
+    setPlanReason("");
     if (!SUPABASE_CONFIGURED) {
       setSaved(EMPTY_ADOPTION);
       setLoadingAdoption(false);
@@ -111,8 +127,30 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
     const val = parseFloat(collManualInputs[item.id]);
     if (!val || val < 0) { showToast("Enter a valid amount."); return; }
     try {
-      await markItemCollected(item.id, val, lab.id, idByName?.[lab.csm]);
+      const status = await markItemCollected(item.id, val, item.amount, lab.id, idByName?.[lab.csm]);
       await loadCollections();
+      showToast(status === "Matched" ? "Collected — matches Zoho." : "Collected — doesn't match Zoho, flagged as a conflict.");
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+
+  async function handleResolveConflict() {
+    if (!resolveComment.trim()) { setResolveError(true); return; }
+    try {
+      await resolveConflict(resolveItem.id, resolveComment.trim(), lab.id, idByName?.[lab.csm]);
+      setResolveItem(null); setResolveComment(""); setResolveError(false);
+      await loadCollections();
+      showToast("Conflict resolved.");
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+
+  async function handleLogReminder() {
+    try {
+      await logCollectionsReminder(lab.id, idByName?.[lab.csm], lab.name);
+      setActivity((a) => [
+        { id: "tmp" + Date.now(), source: "system", kind: "Collections Reminder", title: "Reminder sent", meta: `Payment reminder logged for ${lab.name}`, csm_id: idByName?.[lab.csm], created_at: new Date().toISOString() },
+        ...a,
+      ]);
+      showToast("Reminder logged.");
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
@@ -286,12 +324,16 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
 
   async function handleReassignClick() {
     const oldCsm = lab.csm;
-    await onReassignCsm(lab.id, newCsm);
+    const extraIds = cascadeReassign ? children.map((c) => c.id) : [];
+    await onReassignCsm(lab.id, newCsm, extraIds);
+    setReassignOpen(false);
+    setCascadeReassign(false);
     if (SUPABASE_CONFIGURED && oldCsm !== newCsm) {
       const csmId = idByName?.[newCsm];
-      logActivity(lab.id, { kind: "Lab Reassigned", title: "CSM reassigned", meta: `${oldCsm} → ${newCsm}`, csmId })
+      const meta = `${oldCsm} → ${newCsm}` + (extraIds.length ? ` (+ ${extraIds.length} child lab${extraIds.length > 1 ? "s" : ""})` : "");
+      logActivity(lab.id, { kind: "Lab Reassigned", title: "CSM reassigned", meta, csmId })
         .then(() => setActivity((a) => [
-          { id: "tmp" + Date.now(), source: "system", kind: "Lab Reassigned", title: "CSM reassigned", meta: `${oldCsm} → ${newCsm}`, csm_id: csmId, created_at: new Date().toISOString() },
+          { id: "tmp" + Date.now(), source: "system", kind: "Lab Reassigned", title: "CSM reassigned", meta, csm_id: csmId, created_at: new Date().toISOString() },
           ...a,
         ]))
         .catch((err) => console.error(err));
@@ -301,16 +343,23 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
   async function handleChangePlanClick() {
     const oldPlanName = plan.name;
     const newPlanName = plans.find((p) => p.id === newPlan)?.name || newPlan;
-    await onChangePlan(lab.id, newPlan);
+    const extraIds = cascadePlan ? children.map((c) => c.id) : [];
+    await onChangePlan(lab.id, newPlan, extraIds);
+    setChangePlanOpen(false);
+    setCascadePlan(false);
     if (SUPABASE_CONFIGURED && lab.plan !== newPlan) {
       const csmId = idByName?.[lab.csm];
-      logActivity(lab.id, { kind: "Plan Changed", title: "Plan changed", meta: `${oldPlanName} → ${newPlanName}`, csmId })
+      let meta = `${oldPlanName} → ${newPlanName}`;
+      if (extraIds.length) meta += ` (+ ${extraIds.length} child lab${extraIds.length > 1 ? "s" : ""})`;
+      if (planReason.trim()) meta += ` — ${planReason.trim()}`;
+      logActivity(lab.id, { kind: "Plan Changed", title: "Plan changed", meta, csmId })
         .then(() => setActivity((a) => [
-          { id: "tmp" + Date.now(), source: "system", kind: "Plan Changed", title: "Plan changed", meta: `${oldPlanName} → ${newPlanName}`, csm_id: csmId, created_at: new Date().toISOString() },
+          { id: "tmp" + Date.now(), source: "system", kind: "Plan Changed", title: "Plan changed", meta, csm_id: csmId, created_at: new Date().toISOString() },
           ...a,
         ]))
         .catch((err) => console.error(err));
     }
+    setPlanReason("");
   }
 
   const seg = segmentFor(effectiveMRR(lab));
@@ -396,28 +445,64 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
             </div>
           ))}
 
-          <div style={{ display: "flex", gap: 24, marginTop: 18, paddingTop: 18, borderTop: "1px solid var(--border)", flexWrap: "wrap" }}>
-            <div className="tmpl-field" style={{ flex: "1 1 220px" }}>
-              <label>Reassign CSM</label>
-              <div style={{ display: "flex", gap: 8 }}>
-                <select value={newCsm} onChange={(e) => setNewCsm(e.target.value)} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
-                  {csmNames.map((n) => <option key={n}>{n}</option>)}
-                </select>
-                <button className="btn btn-ghost" disabled={newCsm === lab.csm} onClick={handleReassignClick}>Save</button>
-              </div>
-            </div>
-            <div className="tmpl-field" style={{ flex: "1 1 220px" }}>
-              <label>Change Plan</label>
-              <div style={{ display: "flex", gap: 8 }}>
-                <select value={newPlan} onChange={(e) => setNewPlan(e.target.value)} style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
-                  {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-                <button className="btn btn-ghost" disabled={newPlan === lab.plan} onClick={handleChangePlanClick}>Save</button>
-              </div>
-            </div>
+          <div style={{ display: "flex", gap: 10, marginTop: 18, paddingTop: 18, borderTop: "1px solid var(--border)", flexWrap: "wrap" }}>
+            <button className="btn btn-ghost" onClick={() => { setNewCsm(lab.csm); setReassignOpen(true); }}>Reassign CSM</button>
+            <button className="btn btn-ghost" onClick={() => { setNewPlan(lab.plan); setPlanReason(""); setChangePlanOpen(true); }}>Change Plan</button>
           </div>
         </div>
       )}
+
+      <Modal
+        open={reassignOpen}
+        title="Reassign CSM"
+        onClose={() => setReassignOpen(false)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setReassignOpen(false) },
+          { label: "Reassign", className: "btn-primary", onClick: handleReassignClick, disabled: newCsm === lab.csm },
+        ]}
+      >
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>New CSM</label>
+          <select value={newCsm} onChange={(e) => setNewCsm(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
+            {csmNames.map((n) => <option key={n}>{n}</option>)}
+          </select>
+        </div>
+        {children.length > 0 && (
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, cursor: "pointer" }}>
+            <input type="checkbox" checked={cascadeReassign} onChange={(e) => setCascadeReassign(e.target.checked)} />
+            Also reassign {children.length} child lab{children.length > 1 ? "s" : ""}
+          </label>
+        )}
+      </Modal>
+
+      <Modal
+        open={changePlanOpen}
+        title="Change Plan"
+        onClose={() => setChangePlanOpen(false)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setChangePlanOpen(false) },
+          { label: "Change Plan", className: "btn-primary", onClick: handleChangePlanClick, disabled: newPlan === lab.plan },
+        ]}
+      >
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>New Plan</label>
+          <select value={newPlan} onChange={(e) => setNewPlan(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
+            {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>Reason (optional)</label>
+          <textarea value={planReason} onChange={(e) => setPlanReason(e.target.value)} rows={2}
+            placeholder="e.g. Upsell to Growth after Q3 review"
+            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", resize: "vertical" }} />
+        </div>
+        {children.length > 0 && (
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, cursor: "pointer" }}>
+            <input type="checkbox" checked={cascadePlan} onChange={(e) => setCascadePlan(e.target.checked)} />
+            Also move {children.length} child lab{children.length > 1 ? "s" : ""} to this plan
+          </label>
+        )}
+      </Modal>
 
       {tab === "childlabs" && (
         children.length === 0 ? (
@@ -619,17 +704,31 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
         ) : (
           <div className="table-card" style={{ padding: "6px 20px 20px" }}>
             <div className="banner" style={{ background: "#eef4ff", border: "1px solid #cfe0fb" }}>
-              <span className="badge" style={{ background: "#1948a8" }}>BASIC MANUAL TRACKER</span>
-              <span>Logged manually — no Zoho Books sync yet. Items appear automatically when a pitch on My Portfolio is marked Added, or add one directly.</span>
+              <span className="badge" style={{ background: "#1948a8" }}>ZOHO BOOKS SYNC — CONCEPT</span>
+              <span>Zoho figures are simulated — no live sync yet. Items appear automatically when a pitch on My Portfolio is marked Added, or add one directly.</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", margin: "10px 0" }}>
+
+            {(() => {
+              const s = labCollectionsSummary(collItems);
+              return (
+                <div className="summary-grid" style={{ margin: "12px 0" }}>
+                  <div className="stile"><div className="sval">{fmtINR(s.outstanding)}</div><div className="slabel">Outstanding</div></div>
+                  <div className="stile"><div className="sval">{s.openCount ? `${s.daysOverdue}d` : "—"}</div><div className="slabel">Days Overdue</div></div>
+                  <div className="stile"><div className="sval" style={{ color: AGING_COLORS[s.bucket] }}>{s.bucket}</div><div className="slabel">Status</div></div>
+                  <div className="stile"><div className="sval" style={{ fontSize: 12.5 }}>{s.lastPayment ? new Date(s.lastPayment).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "—"}</div><div className="slabel">Last Payment</div></div>
+                </div>
+              );
+            })()}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, margin: "10px 0" }}>
+              <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={handleLogReminder}>Log Reminder Sent</button>
               <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={() => setAddItemOpen(true)}>+ Add Item</button>
             </div>
             {!collItems.length ? (
               <div style={{ color: "var(--text-faint)", fontSize: 12, padding: "10px 0" }}>No items yet for {lab.name}.</div>
             ) : (
               <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Feature</th><th>Added</th><th>Owed</th><th>Collected</th><th>Status</th></tr></thead>
+                <thead><tr><th>Feature</th><th>Added</th><th>Owed</th><th>Collected (Manual)</th><th>Zoho</th><th>Status</th><th></th></tr></thead>
                 <tbody>{collItems.map((item) => (
                   <tr key={item.id}>
                     <td>{item.label}{item.isTrial && <span className="cat-tag" style={{ background: "#eef2ff", color: "#4338ca" }}> Trial/Free</span>}</td>
@@ -644,11 +743,46 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
                         </span>
                       ) : fmtINR(item.collectedManual)}
                     </td>
-                    <td><span className={`status-chip ${item.status === "Pending" ? "st-InProgress" : "st-Adopted"}`} style={{ cursor: "default" }}>{item.status}</span></td>
+                    <td>{item.isTrial ? "—" : item.collectedZoho !== null ? fmtINR(item.collectedZoho) : "—"}</td>
+                    <td>
+                      <span
+                        className={`status-chip ${item.status === "Pending" ? "st-InProgress" : item.status === "Conflict" ? "st-Critical" : "st-Adopted"}`}
+                        style={{ cursor: "default" }}
+                      >
+                        {item.status}
+                      </span>
+                    </td>
+                    <td>{item.status === "Conflict" && (
+                      <span className="mark-purchased" onClick={() => { setResolveItem(item); setResolveComment(""); setResolveError(false); }}>Resolve</span>
+                    )}</td>
                   </tr>
                 ))}</tbody>
               </table></div>
             )}
+            <Modal
+              open={!!resolveItem}
+              title="Resolve Collection Conflict"
+              onClose={() => setResolveItem(null)}
+              actions={[
+                { label: "Cancel", className: "btn-ghost", onClick: () => setResolveItem(null) },
+                { label: "Resolve", className: "btn-primary", onClick: handleResolveConflict },
+              ]}
+            >
+              {resolveItem && (
+                <>
+                  <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginBottom: 12 }}>
+                    <b>{resolveItem.label}</b> — manually logged as <b>{fmtINR(resolveItem.collectedManual)}</b>, Zoho shows <b>{fmtINR(resolveItem.collectedZoho)}</b>. Add a note explaining the mismatch before resolving.
+                  </div>
+                  <div className="tmpl-field">
+                    <label>Comment</label>
+                    <textarea value={resolveComment} onChange={(e) => setResolveComment(e.target.value)} rows={3}
+                      placeholder="e.g. Partial payment received, remainder due next cycle"
+                      style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", resize: "vertical" }} />
+                  </div>
+                  {resolveError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>A comment is required to resolve a conflict.</div>}
+                </>
+              )}
+            </Modal>
             <Modal
               open={addItemOpen}
               title="Add Collections Item"
