@@ -113,15 +113,17 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
         <div className="table-card" style={{ padding: "18px 20px", textAlign: "center", color: "var(--text-faint)", fontSize: 12.5 }}>No visits logged yet.</div>
       ) : (
         <div className="table-card"><div className="table-scroll"><table className="child-mini">
-          <thead><tr><th>Lab</th><th>Type</th><th>Date</th><th>Notes</th></tr></thead>
+          <thead><tr><th>Lab</th><th>Type</th><th>Date</th><th>Notes</th><th>Sentiment</th></tr></thead>
           <tbody>{recent.map((v) => {
             const lab = labsById[v.labId];
+            const sentColor = v.sentiment === "Positive" ? "var(--ok)" : v.sentiment === "At Risk" ? "var(--bad)" : "var(--text-dim)";
             return (
               <tr key={v.id}>
                 <td className="lab-name clickable" onClick={() => onOpenLab(v.labId)}>{lab ? lab.name : v.labId}</td>
                 <td>{v.type}</td>
                 <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{new Date(v.visitDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</td>
                 <td style={{ fontSize: 12 }}>{v.notes || "—"}</td>
+                <td>{v.sentiment ? <span style={{ fontSize: 11, fontWeight: 700, color: sentColor }}>{v.sentiment}</span> : "—"}</td>
               </tr>
             );
           })}</tbody>

@@ -19,8 +19,8 @@ const EMPTY_ADOPTION = { scope: {}, paramScope: {}, paramState: {} };
 function statusPillClass(s) { return "status-" + s.replace(" ", ""); }
 function initials(name) { return (name || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
 
-export default function LabDetailView({ lab, labs, modules, plans, csmNames, currentCSM, idByName, onBack, onOpenLab, onReassignCsm, onChangePlan, showToast }) {
-  const [tab, setTab] = useState("details");
+export default function LabDetailView({ lab, labs, modules, plans, csmNames, currentCSM, idByName, onBack, onOpenLab, onReassignCsm, onChangePlan, onLogCheckin, initialTab, showToast }) {
+  const [tab, setTab] = useState(initialTab || "details");
   const [expandedModule, setExpandedModule] = useState(null);
 
   const [saved, setSaved] = useState(EMPTY_ADOPTION);
@@ -60,7 +60,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
   const [planReason, setPlanReason] = useState("");
 
   useEffect(() => {
-    setTab("details");
+    setTab(initialTab || "details");
     setExpandedModule(null);
     setDraftScope({});
     setDraftParamScope({});
@@ -413,7 +413,12 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
           <div className="m"><div>Current ARR</div><div>{fmtINR(effectiveMRR(lab) * 12)}</div></div>
           <div className="m"><div>City, State</div><div>{lab.city ? lab.city + ", " : ""}{lab.state}</div></div>
         </div>
-        <button className="btn btn-ghost" onClick={() => guardedNav(onBack)}>&larr; Back to Total Labs</button>
+        <div style={{ display: "flex", gap: 8, flex: "none" }}>
+          {SUPABASE_CONFIGURED && onLogCheckin && (
+            <button className="btn btn-primary" onClick={() => guardedNav(onLogCheckin)}>+ Log Check-in</button>
+          )}
+          <button className="btn btn-ghost" onClick={() => guardedNav(onBack)}>&larr; Back to Total Labs</button>
+        </div>
       </div>
 
       <div className="tabbar">

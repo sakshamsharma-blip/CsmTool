@@ -25,6 +25,7 @@ import PortfolioView from "./views/PortfolioView";
 import DashboardView from "./views/DashboardView";
 import CollectionsView from "./views/CollectionsView";
 import VisitsView from "./views/VisitsView";
+import LogCheckinView from "./views/LogCheckinView";
 
 export default function App() {
   const [authChecked, setAuthChecked] = useState(!SUPABASE_CONFIGURED);
@@ -42,11 +43,16 @@ export default function App() {
   const [view, setView] = useState("list");
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
   const [detailLabId, setDetailLabId] = useState(null);
+  const [detailInitialTab, setDetailInitialTab] = useState("details");
   const detailLab = labs.find((l) => l.id === detailLabId) || null;
 
-  function openLabDetail(id) {
+  function openLabDetail(id, tab = "details") {
     setDetailLabId(id);
+    setDetailInitialTab(tab);
     setView("lab-detail");
+  }
+  function openLogCheckin() {
+    setView("log-checkin");
   }
   const [toastMsg, showToast] = useToast();
 
@@ -339,10 +345,23 @@ export default function App() {
               csmNames={csmNames}
               currentCSM={currentCSM}
               idByName={idByName}
+              initialTab={detailInitialTab}
               onBack={() => setView("list")}
               onOpenLab={openLabDetail}
               onReassignCsm={handleReassignCsm}
               onChangePlan={handleChangePlan}
+              onLogCheckin={openLogCheckin}
+              showToast={showToast}
+            />
+          )}
+          {view === "log-checkin" && detailLab && (
+            <LogCheckinView
+              lab={detailLab}
+              modules={modules}
+              plans={plans}
+              currentCSM={currentCSM}
+              idByName={idByName}
+              onDone={(tab) => openLabDetail(detailLab.id, tab)}
               showToast={showToast}
             />
           )}
