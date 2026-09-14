@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "./supabaseClient";
 import { fetchProfiles, upsertProfile, myProfileName } from "./lib/profiles";
-import { fetchCatalog, addModule, addModuleParam } from "./lib/catalog";
+import {
+  fetchCatalog, addModule, updateModule, deleteModule,
+  addModuleParam, updateModuleParam, deleteModuleParam,
+} from "./lib/catalog";
 import { fetchPlans, setPlanModule, setPlanExcludedParam } from "./lib/plans";
 import { fetchLabs, insertLab, updateLabCsm, updateLabPlan } from "./lib/labs";
 import { logActivity } from "./lib/activity";
@@ -132,13 +135,17 @@ export default function App() {
   }
 
   async function handleToggleModule(planId, moduleKey) {
-    let willInclude = false;
-    setPlans((ps) => ps.map((p) => {
-      if (p.id !== planId) return p;
-      const has = p.modules.includes(moduleKey);
-      willInclude = !has;
-      return { ...p, modules: has ? p.modules.filter((k) => k !== moduleKey) : [...p.modules, moduleKey] };
-    }));
+    // Compute the direction from the current `plans` state up front, synchronously — a
+    // setState updater's callback isn't guaranteed to run before the code right after the
+    // setPlans(...) call (confirmed: under this app's rendering path it runs later), so
+    // mutating a variable from inside the updater and reading it immediately below is
+    // unsafe and was sending the *previous* direction to the database.
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
+    const willInclude = !plan.modules.includes(moduleKey);
+    setPlans((ps) => ps.map((p) => (p.id === planId
+      ? { ...p, modules: willInclude ? [...p.modules, moduleKey] : p.modules.filter((k) => k !== moduleKey) }
+      : p)));
     if (SUPABASE_CONFIGURED) {
       try { await setPlanModule(planId, moduleKey, willInclude); }
       catch (err) { console.error(err); showToast(`⚠ Not saved to the database — ${err.message}`); }
@@ -146,13 +153,15 @@ export default function App() {
   }
 
   async function handleToggleParam(planId, moduleKey, paramName) {
-    let willExclude = false;
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
+    const excludedNow = (plan.excludedParams && plan.excludedParams[moduleKey]) || [];
+    const willExclude = !excludedNow.includes(paramName);
     setPlans((ps) => ps.map((p) => {
       if (p.id !== planId) return p;
       const excluded = { ...(p.excludedParams || {}) };
       const list = excluded[moduleKey] ? [...excluded[moduleKey]] : [];
       const idx = list.indexOf(paramName);
-      willExclude = idx < 0;
       if (idx >= 0) list.splice(idx, 1); else list.push(paramName);
       excluded[moduleKey] = list;
       return { ...p, excludedParams: excluded };
@@ -163,53 +172,72 @@ export default function App() {
     }
   }
 
-  // ---- Adoption Template (catalog): create a module or parameter, optionally wiring it
-  // straight into one or more Plans so there's no separate trip to the Plans screen. ----
-  async function handleAddModule({ key, name, icon, weight, planIds }) {
-    const newModule = { key, name, icon, weight, params: [] };
+  // ---- Adoption Template (catalog): the Module Builder screen's CRUD for modules and
+  // their parameters. Which Plans a module/param belongs to is handled separately by the
+  // existing handleToggleModule/handleToggleParam (same functions the Plans screen uses) —
+  // the Module Builder's own "Apply Rules" panel just calls those for whichever module is
+  // selected, so assigning a brand-new module/param to a Plan is available immediately,
+  // right where it was created, with no separate trip to the Plans screen required. ----
+  async function handleAddModule({ key, name, icon, weight, description }) {
+    const newModule = { key, name, icon, weight, description, params: [] };
     setModules((ms) => [...ms, newModule]);
     if (SUPABASE_CONFIGURED) {
-      try {
-        await addModule({ key, name, icon, weight });
-        for (const planId of planIds) {
-          await setPlanModule(planId, key, true);
-        }
-      } catch (err) {
-        console.error(err);
-        showToast(`⚠ ${name} saved locally but NOT to the database — ${err.message}`);
-        return;
-      }
+      try { await addModule({ key, name, icon, weight, description }); }
+      catch (err) { console.error(err); showToast(`⚠ ${name} saved locally but NOT to the database — ${err.message}`); return; }
     }
-    if (planIds.length) {
-      setPlans((ps) => ps.map((p) => (planIds.includes(p.id) ? { ...p, modules: [...p.modules, key] } : p)));
-    }
-    showToast(`${name} module added${planIds.length ? ` to ${planIds.length} plan(s)` : ""}.`);
+    showToast(`${name} module added.`);
   }
 
-  async function handleAddModuleParam({ moduleKey, name, type, weight, category, excludePlanIds }) {
+  async function handleUpdateModule(key, patch) {
+    setModules((ms) => ms.map((m) => (m.key === key ? { ...m, ...patch } : m)));
+    if (SUPABASE_CONFIGURED) {
+      try { await updateModule(key, patch); }
+      catch (err) { console.error(err); showToast(`⚠ Not saved to the database — ${err.message}`); }
+    }
+  }
+
+  async function handleDeleteModule(key, name) {
+    if (SUPABASE_CONFIGURED) {
+      try { await deleteModule(key); }
+      catch (err) {
+        console.error(err);
+        showToast(`⚠ Couldn't delete ${name} — ${err.message}`);
+        return false;
+      }
+    }
+    setModules((ms) => ms.filter((m) => m.key !== key));
+    setPlans((ps) => ps.map((p) => ({ ...p, modules: p.modules.filter((k) => k !== key) })));
+    showToast(`${name} module deleted.`);
+    return true;
+  }
+
+  async function handleAddModuleParam({ moduleKey, name, type, weight, category }) {
     const newParam = { name, type, weight, category };
     setModules((ms) => ms.map((m) => (m.key === moduleKey ? { ...m, params: [...m.params, newParam] } : m)));
     if (SUPABASE_CONFIGURED) {
-      try {
-        await addModuleParam({ moduleKey, name, type, weight, category });
-        for (const planId of excludePlanIds) {
-          await setPlanExcludedParam(planId, moduleKey, name, true);
-        }
-      } catch (err) {
-        console.error(err);
-        showToast(`⚠ ${name} saved locally but NOT to the database — ${err.message}`);
-        return;
-      }
-    }
-    if (excludePlanIds.length) {
-      setPlans((ps) => ps.map((p) => {
-        if (!excludePlanIds.includes(p.id)) return p;
-        const excluded = { ...(p.excludedParams || {}) };
-        excluded[moduleKey] = [...(excluded[moduleKey] || []), name];
-        return { ...p, excludedParams: excluded };
-      }));
+      try { await addModuleParam({ moduleKey, name, type, weight, category }); }
+      catch (err) { console.error(err); showToast(`⚠ ${name} saved locally but NOT to the database — ${err.message}`); return; }
     }
     showToast(`${name} parameter added.`);
+  }
+
+  async function handleUpdateModuleParam(moduleKey, name, patch) {
+    setModules((ms) => ms.map((m) => {
+      if (m.key !== moduleKey) return m;
+      return { ...m, params: m.params.map((p) => (p.name === name ? { ...p, ...patch, name: patch.newName || p.name } : p)) };
+    }));
+    if (SUPABASE_CONFIGURED) {
+      try { await updateModuleParam(moduleKey, name, patch); }
+      catch (err) { console.error(err); showToast(`⚠ Not saved to the database — ${err.message}`); }
+    }
+  }
+
+  async function handleDeleteModuleParam(moduleKey, name) {
+    if (SUPABASE_CONFIGURED) {
+      try { await deleteModuleParam(moduleKey, name); }
+      catch (err) { console.error(err); showToast(`⚠ Couldn't delete ${name} — ${err.message}`); return; }
+    }
+    setModules((ms) => ms.map((m) => (m.key === moduleKey ? { ...m, params: m.params.filter((p) => p.name !== name) } : m)));
   }
 
   async function handleSaveCsm({ id, name, role }) {
@@ -272,7 +300,18 @@ export default function App() {
             <PlansView plans={plans} modules={modules} labs={labs} onToggleModule={handleToggleModule} onToggleParam={handleToggleParam} />
           )}
           {view === "adoption-template" && (
-            <AdoptionTemplateView modules={modules} plans={plans} onAddModule={handleAddModule} onAddModuleParam={handleAddModuleParam} />
+            <AdoptionTemplateView
+              modules={modules}
+              plans={plans}
+              onAddModule={handleAddModule}
+              onUpdateModule={handleUpdateModule}
+              onDeleteModule={handleDeleteModule}
+              onAddModuleParam={handleAddModuleParam}
+              onUpdateModuleParam={handleUpdateModuleParam}
+              onDeleteModuleParam={handleDeleteModuleParam}
+              onToggleModule={handleToggleModule}
+              onToggleParam={handleToggleParam}
+            />
           )}
           {view === "csm-setup" && (
             <CsmSetupView csmDirectory={csmDirectory} idByName={idByName} onSaveCsm={handleSaveCsm} />

@@ -1,232 +1,345 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { slugifyModuleKey } from "../lib/catalog";
-import { planIncludesModule } from "../lib/plans";
-import Modal from "../components/Modal";
+import { planIncludesModule, planIncludesParam } from "../lib/plans";
 
-const CATEGORY_OPTIONS = ["Adoption", "Expansion"];
 const TYPE_OPTIONS = [
   { value: "M", label: "Mandatory" },
   { value: "O", label: "Optional" },
 ];
+const CATEGORY_OPTIONS = ["Adoption", "Expansion"];
 
-export default function AdoptionTemplateView({ modules, plans, onAddModule, onAddModuleParam }) {
-  const [addModuleOpen, setAddModuleOpen] = useState(false);
-  const [modName, setModName] = useState("");
-  const [modKey, setModKey] = useState("");
-  const [modKeyTouched, setModKeyTouched] = useState(false);
-  const [modIcon, setModIcon] = useState("🧩");
-  const [modWeight, setModWeight] = useState("10");
-  const [modPlanIds, setModPlanIds] = useState([]);
-  const [modError, setModError] = useState("");
+export default function AdoptionTemplateView({
+  modules, plans,
+  onAddModule, onUpdateModule, onDeleteModule,
+  onAddModuleParam, onUpdateModuleParam, onDeleteModuleParam,
+  onToggleModule, onToggleParam,
+}) {
+  const [selectedKey, setSelectedKey] = useState(modules[0]?.key || null);
+  const selectedModule = modules.find((m) => m.key === selectedKey) || null;
 
-  const [addParamForModule, setAddParamForModule] = useState(null); // module object or null
-  const [paramName, setParamName] = useState("");
-  const [paramType, setParamType] = useState("O");
-  const [paramWeight, setParamWeight] = useState("10");
-  const [paramCategory, setParamCategory] = useState("Expansion");
-  const [paramExcludedPlanIds, setParamExcludedPlanIds] = useState([]); // plans (that have the module) unchecked = excluded
+  // draft = a locally-editable copy of the selected module (name/weight/description/params),
+  // re-synced only when the selection changes — so our own optimistic saves (which update
+  // the `modules` prop) don't fight with whatever the user is mid-typing.
+  const [draft, setDraft] = useState(null);
   const [paramError, setParamError] = useState("");
+  const [expandedParam, setExpandedParam] = useState(null); // param name whose per-Plan chips are open
+
+  useEffect(() => {
+    setParamError("");
+    setExpandedParam(null);
+    if (!selectedModule) { setDraft(null); return; }
+    setDraft({
+      key: selectedModule.key,
+      name: selectedModule.name,
+      icon: selectedModule.icon,
+      weight: selectedModule.weight,
+      description: selectedModule.description || "",
+      params: selectedModule.params.map((p) => ({ ...p, _origName: p.name })),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey]);
+
+  const [addingModule, setAddingModule] = useState(false);
+  const [newModName, setNewModName] = useState("");
+  const [newModKey, setNewModKey] = useState("");
+  const [newModKeyTouched, setNewModKeyTouched] = useState(false);
+  const [newModIcon, setNewModIcon] = useState("🧩");
+  const [newModWeight, setNewModWeight] = useState("10");
+  const [newModError, setNewModError] = useState("");
+
+  const totalModuleWeight = modules.reduce((sum, m) => sum + (Number(m.weight) || 0), 0);
 
   function openAddModule() {
-    setModName(""); setModKey(""); setModKeyTouched(false); setModIcon("🧩"); setModWeight("10");
-    setModPlanIds([]); setModError("");
-    setAddModuleOpen(true);
-  }
-
-  function handleModNameChange(v) {
-    setModName(v);
-    if (!modKeyTouched) setModKey(slugifyModuleKey(v));
-  }
-
-  function toggleModPlan(planId) {
-    setModPlanIds((ids) => (ids.includes(planId) ? ids.filter((id) => id !== planId) : [...ids, planId]));
+    setAddingModule(true);
+    setNewModName(""); setNewModKey(""); setNewModKeyTouched(false); setNewModIcon("🧩"); setNewModWeight("10"); setNewModError("");
   }
 
   function submitAddModule() {
-    const name = modName.trim();
-    const key = modKey.trim();
-    const weight = Number(modWeight);
-    if (!name) return setModError("Module name is required.");
-    if (!key) return setModError("Module key is required.");
-    if (modules.some((m) => m.key === key)) return setModError(`A module with key "${key}" already exists.`);
-    if (!Number.isFinite(weight) || weight <= 0) return setModError("Weight must be a positive number.");
-    onAddModule({ key, name, icon: modIcon.trim() || "🧩", weight, planIds: modPlanIds });
-    setAddModuleOpen(false);
+    const name = newModName.trim();
+    const key = newModKey.trim();
+    const weight = Number(newModWeight);
+    if (!name) return setNewModError("Name is required.");
+    if (!key) return setNewModError("Key is required.");
+    if (modules.some((m) => m.key === key)) return setNewModError(`A module with key "${key}" already exists.`);
+    if (!Number.isFinite(weight) || weight <= 0) return setNewModError("Weight must be a positive number.");
+    onAddModule({ key, name, icon: newModIcon.trim() || "🧩", weight, description: "" });
+    setAddingModule(false);
+    setSelectedKey(key);
   }
 
-  function openAddParam(mod) {
-    setParamName(""); setParamType("O"); setParamWeight("10"); setParamCategory("Expansion");
-    setParamExcludedPlanIds([]); setParamError("");
-    setAddParamForModule(mod);
-  }
-
-  function toggleParamPlan(planId) {
-    setParamExcludedPlanIds((ids) => (ids.includes(planId) ? ids.filter((id) => id !== planId) : [...ids, planId]));
-  }
-
-  function submitAddParam() {
-    const name = paramName.trim();
-    const weight = Number(paramWeight);
-    if (!name) return setParamError("Parameter name is required.");
-    if (addParamForModule.params.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
-      return setParamError(`"${name}" already exists on ${addParamForModule.name}.`);
+  async function handleDeleteModuleClick() {
+    if (!draft) return;
+    if (!window.confirm(`Delete the "${draft.name}" module? This fails safely if labs already have Collections recorded against it.`)) return;
+    const ok = await onDeleteModule(draft.key, draft.name);
+    if (ok) {
+      const remaining = modules.filter((m) => m.key !== draft.key);
+      setSelectedKey(remaining[0]?.key || null);
     }
-    if (!Number.isFinite(weight) || weight <= 0) return setParamError("Weight must be a positive number.");
-    onAddModuleParam({
-      moduleKey: addParamForModule.key,
-      name,
-      type: paramType,
-      weight,
-      category: paramCategory,
-      excludePlanIds: paramExcludedPlanIds,
-    });
-    setAddParamForModule(null);
   }
 
-  const plansWithModule = addParamForModule ? plans.filter((p) => planIncludesModule(p, addParamForModule.key)) : [];
-  const plansWithoutModule = addParamForModule ? plans.filter((p) => !planIncludesModule(p, addParamForModule.key)) : [];
+  function handleModuleFieldChange(field, value) {
+    setDraft((d) => ({ ...d, [field]: value }));
+  }
+  function handleModuleFieldBlur(field) {
+    if (!draft) return;
+    const value = field === "weight" ? (Number(draft.weight) || 1) : draft[field];
+    if (field === "weight" && value !== draft.weight) setDraft((d) => ({ ...d, weight: value }));
+    onUpdateModule(draft.key, { [field]: value });
+  }
+
+  function updateDraftParam(idx, patch) {
+    setDraft((d) => ({ ...d, params: d.params.map((p, i) => (i === idx ? { ...p, ...patch } : p)) }));
+  }
+
+  function persistParamRow(idx, overridePatch = {}) {
+    const row = { ...draft.params[idx], ...overridePatch };
+    const name = (row.name || "").trim();
+    if (!name) return;
+    const dupe = draft.params.some((p, i) => i !== idx && p.name.trim().toLowerCase() === name.toLowerCase());
+    if (dupe) { setParamError(`"${name}" already exists on ${draft.name}.`); return; }
+    setParamError("");
+    const weight = Number(row.weight) || 1;
+    if (row._isNew) {
+      onAddModuleParam({ moduleKey: draft.key, name, type: row.type, weight, category: row.category });
+      updateDraftParam(idx, { name, weight, _isNew: false, _origName: name });
+    } else {
+      onUpdateModuleParam(draft.key, row._origName, { newName: name !== row._origName ? name : undefined, type: row.type, weight, category: row.category });
+      updateDraftParam(idx, { name, weight, _origName: name });
+    }
+  }
+
+  function addParamRow() {
+    setDraft((d) => ({ ...d, params: [...d.params, { name: "", type: "O", weight: 10, category: "Expansion", _isNew: true }] }));
+  }
+
+  function deleteParamRow(idx) {
+    const row = draft.params[idx];
+    if (row._isNew) { setDraft((d) => ({ ...d, params: d.params.filter((_, i) => i !== idx) })); return; }
+    if (!window.confirm(`Delete parameter "${row.name}"? This won't affect adoption already recorded for labs.`)) return;
+    onDeleteModuleParam(draft.key, row.name);
+    setDraft((d) => ({ ...d, params: d.params.filter((_, i) => i !== idx) }));
+  }
+
+  const paramWeightTotal = draft ? draft.params.reduce((s, p) => s + (Number(p.weight) || 0), 0) : 0;
+  const plansWithSelectedModule = draft ? plans.filter((p) => planIncludesModule(p, draft.key)) : [];
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+      <h1 className="page-title">Adoption Template</h1>
+      <p className="page-sub">
+        The shared catalog every Plan draws from — every module and parameter that exists in the product, its
+        weighting, and its Adoption/Expansion category. Adding or removing a parameter here changes what exists for
+        every Plan to include or exclude — it doesn't rewrite adoption statuses already recorded per lab. Which of
+        these a lab actually gets by default is decided per-Plan (Apply Rules, right) — a lab's real day-to-day
+        adoption can still differ from that on its own Adoption tab.
+      </p>
+
+      <div className="tmpl-layout">
+        <div className="tmpl-list-card">
+          <div className="tmpl-list-head">
+            <h3>Module Builder</h3>
+            <button className="icon-btn" title="Add module" onClick={openAddModule}>+</button>
+          </div>
+          {addingModule && (
+            <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
+              <input
+                className="tname-input"
+                style={{ width: "100%", marginBottom: 6 }}
+                placeholder="Module name"
+                value={newModName}
+                autoFocus
+                onChange={(e) => { setNewModName(e.target.value); if (!newModKeyTouched) setNewModKey(slugifyModuleKey(e.target.value)); }}
+              />
+              <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                <input className="tw-input" style={{ width: 44 }} value={newModIcon} onChange={(e) => setNewModIcon(e.target.value)} title="Icon" />
+                <input
+                  className="tname-input"
+                  style={{ flex: 1, fontWeight: 400, fontSize: 12 }}
+                  placeholder="key"
+                  value={newModKey}
+                  onChange={(e) => { setNewModKey(slugifyModuleKey(e.target.value)); setNewModKeyTouched(true); }}
+                />
+                <input className="tw-input" type="number" min="1" value={newModWeight} onChange={(e) => setNewModWeight(e.target.value)} title="Weight" />
+              </div>
+              {newModError && <div style={{ color: "var(--bad)", fontSize: 11.5, marginBottom: 6 }}>{newModError}</div>}
+              <div style={{ display: "flex", gap: 6 }}>
+                <button className="btn btn-primary" style={{ flex: 1, padding: "6px 0", fontSize: 12 }} onClick={submitAddModule}>Save</button>
+                <button className="btn btn-ghost" style={{ flex: 1, padding: "6px 0", fontSize: 12 }} onClick={() => setAddingModule(false)}>Cancel</button>
+              </div>
+            </div>
+          )}
+          <div className="tmpl-list">
+            {modules.map((m) => (
+              <div
+                key={m.key}
+                className={`tmpl-list-row${m.key === selectedKey ? " selected" : ""}`}
+                onClick={() => setSelectedKey(m.key)}
+              >
+                <span>{m.icon}</span>
+                <span className="tlname">{m.name}</span>
+                <span className="tlweight">{m.weight}%</span>
+              </div>
+            ))}
+          </div>
+          <div className="tmpl-list-foot">
+            <span>Total weightage</span>
+            <span><b>{totalModuleWeight}%</b></span>
+          </div>
+        </div>
+
+        <div className="tmpl-config-card">
+          {!draft ? (
+            <div className="empty-params">No modules yet — add one on the left to get started.</div>
+          ) : (
+            <>
+              <div className="tmpl-config-head">
+                <div>
+                  <h3>Module Configuration — {draft.name}</h3>
+                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                    {draft.params.length} parameter{draft.params.length === 1 ? "" : "s"} · {paramWeightTotal}% allocated within this module
+                  </div>
+                </div>
+                <button className="btn btn-ghost" style={{ color: "var(--bad)", borderColor: "#f3c9c2" }} onClick={handleDeleteModuleClick}>
+                  Delete Module
+                </button>
+              </div>
+
+              <div className="tmpl-field-row">
+                <div className="tmpl-field">
+                  <label>Module Name</label>
+                  <input value={draft.name} onChange={(e) => handleModuleFieldChange("name", e.target.value)} onBlur={() => handleModuleFieldBlur("name")} />
+                </div>
+                <div className="tmpl-field">
+                  <label>Weightage (% of overall score)</label>
+                  <input type="number" min="1" value={draft.weight} onChange={(e) => handleModuleFieldChange("weight", e.target.value)} onBlur={() => handleModuleFieldBlur("weight")} />
+                </div>
+              </div>
+              <div className="tmpl-field" style={{ marginBottom: 16 }}>
+                <label>Description (optional)</label>
+                <textarea
+                  placeholder="What this module covers, for other CSMs reading the template…"
+                  value={draft.description}
+                  onChange={(e) => handleModuleFieldChange("description", e.target.value)}
+                  onBlur={() => handleModuleFieldBlur("description")}
+                />
+              </div>
+
+              <h4 style={{ margin: "0 0 4px", fontSize: 12.5 }}>Adoption Parameters</h4>
+              <p style={{ fontSize: 11.5, color: "var(--text-faint)", margin: "0 0 10px", lineHeight: 1.5 }}>
+                Mandatory parameters drive the Mandatory Completion score; Optional ones only count toward Overall
+                Adoption. Category decides how a lab experiences the feature: Adoption is base-plan, tracked purely
+                on rollout status; Expansion is an add-on, pitched in My Portfolio until bought. Click "Plans" on a
+                row to include/exclude it for specific Plans that already have this module.
+              </p>
+
+              <div className="tparam-table-head">
+                <span style={{ width: 98 }}>Type</span>
+                <span className="pname">Parameter Name</span>
+                <span style={{ width: 104 }}>Category</span>
+                <span style={{ width: 50 }}>Wt.</span>
+                <span style={{ width: 50 }}>Plans</span>
+                <span style={{ width: 22 }}></span>
+              </div>
+              {draft.params.length === 0 && <div className="empty-params">No parameters yet — add one below.</div>}
+              {draft.params.map((p, idx) => {
+                const includedCount = plansWithSelectedModule.filter((pl) => planIncludesParam(pl, draft.key, p._origName || p.name)).length;
+                return (
+                  <div key={p._isNew ? `new-${idx}` : p._origName}>
+                    <div className="tparam-row">
+                      <select style={{ width: 98 }} className="tw-input" value={p.type} onChange={(e) => { updateDraftParam(idx, { type: e.target.value }); persistParamRow(idx, { type: e.target.value }); }}>
+                        {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                      <input
+                        className="tname-input pname"
+                        placeholder="Parameter name"
+                        value={p.name}
+                        autoFocus={p._isNew}
+                        onChange={(e) => updateDraftParam(idx, { name: e.target.value })}
+                        onBlur={() => persistParamRow(idx)}
+                      />
+                      <select style={{ width: 104 }} className="tw-input" value={p.category} onChange={(e) => { updateDraftParam(idx, { category: e.target.value }); persistParamRow(idx, { category: e.target.value }); }}>
+                        {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <input
+                        className="tw-input"
+                        style={{ width: 50 }}
+                        type="number"
+                        min="1"
+                        value={p.weight}
+                        onChange={(e) => updateDraftParam(idx, { weight: e.target.value })}
+                        onBlur={() => persistParamRow(idx)}
+                      />
+                      <button
+                        className="mark-purchased"
+                        style={{ width: 50, textAlign: "left", opacity: p._isNew ? 0.4 : 1, cursor: p._isNew ? "default" : "pointer" }}
+                        disabled={p._isNew}
+                        onClick={() => setExpandedParam((k) => (k === (p._origName || p.name) ? null : (p._origName || p.name)))}
+                      >
+                        {p._isNew ? "—" : `${includedCount}/${plansWithSelectedModule.length}`}
+                      </button>
+                      <button className="icon-btn" title="Delete parameter" onClick={() => deleteParamRow(idx)}>×</button>
+                    </div>
+                    {expandedParam === (p._origName || p.name) && !p._isNew && (
+                      <div style={{ padding: "4px 0 10px 84px" }}>
+                        {plansWithSelectedModule.length === 0 ? (
+                          <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>No Plan currently includes {draft.name}.</div>
+                        ) : (
+                          <div className="rule-chip-row">
+                            {plansWithSelectedModule.map((pl) => (
+                              <label key={pl.id} className="rule-chip">
+                                <input
+                                  type="checkbox"
+                                  checked={planIncludesParam(pl, draft.key, p._origName || p.name)}
+                                  onChange={() => onToggleParam(pl.id, draft.key, p._origName || p.name)}
+                                />
+                                {pl.name}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <button className="btn btn-ghost" style={{ marginTop: 10, fontSize: 12.5 }} onClick={addParamRow}>+ Add Parameter</button>
+              {paramError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>{paramError}</div>}
+              <div style={{ textAlign: "right", fontSize: 11.5, color: "var(--text-faint)", marginTop: 6 }}>
+                Parameters total: {paramWeightTotal}%
+              </div>
+            </>
+          )}
+        </div>
+
         <div>
-          <h1 className="page-title">Adoption Template</h1>
-          <p className="page-sub">
-            The shared catalog every Plan draws from — every module and parameter that exists in the product, its
-            weighting, and its Adoption/Expansion category. Which of these a lab actually gets by default is decided
-            per-Plan (here, at creation, or later on the Plans screen) — and a lab's real, day-to-day adoption can
-            still differ from its Plan on top of that, since every lab has its own custom scope on the Adoption tab.
-          </p>
-        </div>
-        <button className="btn btn-primary" style={{ flex: "none" }} onClick={openAddModule}>+ Add Module</button>
-      </div>
-
-      {modules.map((mod) => (
-        <div key={mod.key} className="side-card" style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <h3 style={{ margin: 0 }}>{mod.icon} {mod.name}</h3>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Weight {mod.weight}</span>
-              <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => openAddParam(mod)}>
-                + Add Parameter
-              </button>
-            </div>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {mod.params.map((p) => (
-              <span key={p.name} className={`cat-tag cat-${p.category}`} title={`${p.type === "M" ? "Mandatory" : "Optional"} · weight ${p.weight}`}>
-                {p.name}
-              </span>
-            ))}
-            {mod.params.length === 0 && <span style={{ fontSize: 12, color: "var(--text-faint)" }}>No parameters yet.</span>}
-          </div>
-        </div>
-      ))}
-
-      <Modal
-        open={addModuleOpen}
-        title="Add Module"
-        onClose={() => setAddModuleOpen(false)}
-        actions={[
-          { label: "Cancel", onClick: () => setAddModuleOpen(false) },
-          { label: "Add Module", className: "btn-primary", onClick: submitAddModule },
-        ]}
-      >
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label>Name <span className="req">*</span></label>
-            <input value={modName} onChange={(e) => handleModNameChange(e.target.value)} placeholder="e.g. Referral Portal" autoFocus />
-          </div>
-          <div className="field">
-            <label>Key (unique, internal) <span className="req">*</span></label>
-            <input value={modKey} onChange={(e) => { setModKey(slugifyModuleKey(e.target.value)); setModKeyTouched(true); }} placeholder="e.g. referralportal" />
-          </div>
-          <div className="field">
-            <label>Icon (emoji)</label>
-            <input value={modIcon} onChange={(e) => setModIcon(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Weight <span className="req">*</span></label>
-            <input type="number" value={modWeight} onChange={(e) => setModWeight(e.target.value)} min="1" />
-          </div>
-        </div>
-        <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Include in these Plans (optional)</div>
-          <div style={{ fontSize: 12, color: "var(--text-faint)", marginBottom: 8 }}>
-            You can skip this and add it to Plans later — a lab's actual adoption can still differ from its Plan regardless.
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            {plans.map((p) => (
-              <label key={p.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 400 }}>
-                <input type="checkbox" checked={modPlanIds.includes(p.id)} onChange={() => toggleModPlan(p.id)} />
-                {p.name}
-              </label>
-            ))}
-          </div>
-        </div>
-        {modError && <div style={{ color: "var(--danger, #d92d20)", fontSize: 12.5, marginTop: 10 }}>{modError}</div>}
-      </Modal>
-
-      <Modal
-        open={!!addParamForModule}
-        title={addParamForModule ? `Add Parameter — ${addParamForModule.name}` : ""}
-        onClose={() => setAddParamForModule(null)}
-        actions={[
-          { label: "Cancel", onClick: () => setAddParamForModule(null) },
-          { label: "Add Parameter", className: "btn-primary", onClick: submitAddParam },
-        ]}
-      >
-        {addParamForModule && (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div className="field" style={{ gridColumn: "1 / -1" }}>
-                <label>Name <span className="req">*</span></label>
-                <input value={paramName} onChange={(e) => setParamName(e.target.value)} placeholder="e.g. Referral Tracking" autoFocus />
+          {draft && (
+            <div className="rules-card">
+              <h3>Apply Rules</h3>
+              <div className="rules-sub">
+                Choose which Plans include {draft.name} by default. It doesn't override a lab's own Adoption tab —
+                labs still get exceptions from their own scope.
               </div>
-              <div className="field">
-                <label>Type</label>
-                <select value={paramType} onChange={(e) => setParamType(e.target.value)}>
-                  {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
-              <div className="field">
-                <label>Weight <span className="req">*</span></label>
-                <input type="number" value={paramWeight} onChange={(e) => setParamWeight(e.target.value)} min="1" />
-              </div>
-              <div className="field">
-                <label>Category</label>
-                <select value={paramCategory} onChange={(e) => setParamCategory(e.target.value)}>
-                  {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Plans</div>
-              <div style={{ fontSize: 12, color: "var(--text-faint)", marginBottom: 8 }}>
-                By default this parameter is included in every Plan that already has {addParamForModule.name}. Uncheck
-                a plan to exclude it there. (A lab's actual adoption can still be customized further on its own Adoption tab.)
-              </div>
-              {plansWithModule.length === 0 && (
-                <div style={{ fontSize: 12.5, color: "var(--text-faint)" }}>No Plan currently includes {addParamForModule.name}.</div>
-              )}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                {plansWithModule.map((p) => (
-                  <label key={p.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 400 }}>
-                    <input type="checkbox" checked={!paramExcludedPlanIds.includes(p.id)} onChange={() => toggleParamPlan(p.id)} />
-                    {p.name}
+              <div className="rules-section">
+                <div className="rlabel">Plans</div>
+                {plans.map((pl) => (
+                  <label key={pl.id} className="rule-row">
+                    <input type="checkbox" checked={planIncludesModule(pl, draft.key)} onChange={() => onToggleModule(pl.id, draft.key)} />
+                    <span className="rmain">{pl.name}</span>
                   </label>
                 ))}
               </div>
-              {plansWithoutModule.length > 0 && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-faint)" }}>
-                  Doesn't apply to: {plansWithoutModule.map((p) => p.name).join(", ")} (module not in these Plans)
-                </div>
-              )}
+              <div className="rules-match">
+                <span>Plans including this module</span>
+                <b>{plansWithSelectedModule.length} of {plans.length}</b>
+              </div>
+              <div className="rules-note">
+                A new parameter added above is included by default in every Plan that already has this module — use
+                the "Plans" count on its row to exclude it from specific Plans instead.
+              </div>
             </div>
-            {paramError && <div style={{ color: "var(--danger, #d92d20)", fontSize: 12.5, marginTop: 10 }}>{paramError}</div>}
-          </>
-        )}
-      </Modal>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
