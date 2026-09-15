@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllVisits, addVisit } from "../lib/visits";
-import { taskBucket } from "../lib/tasks";
+import { taskBucket, addTask } from "../lib/tasks";
 import { hasLeadAccess } from "../lib/roles";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
@@ -71,6 +71,24 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
         notes: logNotes, nextFollowupDate: logFollowup || null, nextFollowupReason: logFollowupReason,
         sentiment: logSentiment || null,
       });
+
+      // Same rule the full Log Check-in flow follows — a next-follow-up date always creates a
+      // real task too, so it shows up under Tasks/Dashboard on the day it's due, not just in this
+      // page's own "Upcoming" list (which only reads the raw visit record).
+      if (logFollowup) {
+        const lab = labsById[logLabId];
+        await addTask({
+          labId: logLabId,
+          desc: `Follow-up — ${lab ? lab.name : logLabId}${logFollowupReason ? `: ${logFollowupReason}` : ""}`,
+          owners: [currentCSM],
+          type: "follow-up",
+          repeat: "none",
+          due: logFollowup,
+          idByName,
+          assignedByName: currentCSM,
+        });
+      }
+
       setLogOpen(false); setLogLabId(""); setLogType("Visit"); setLogNotes(""); setLogFollowup(""); setLogFollowupReason(""); setLogSentiment(""); setLogError(false);
       await loadAll();
       showToast("Visit logged.");
