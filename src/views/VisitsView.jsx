@@ -26,6 +26,7 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
   const [logNotes, setLogNotes] = useState("");
   const [logFollowup, setLogFollowup] = useState("");
   const [logFollowupReason, setLogFollowupReason] = useState("");
+  const [logSentiment, setLogSentiment] = useState("");
   const [logError, setLogError] = useState(false);
 
   async function loadAll() {
@@ -68,8 +69,9 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
       await addVisit({
         labId: logLabId, csmId: idByName[labsById[logLabId]?.csm], type: logType, visitDate: logDate,
         notes: logNotes, nextFollowupDate: logFollowup || null, nextFollowupReason: logFollowupReason,
+        sentiment: logSentiment || null,
       });
-      setLogOpen(false); setLogLabId(""); setLogType("Visit"); setLogNotes(""); setLogFollowup(""); setLogFollowupReason(""); setLogError(false);
+      setLogOpen(false); setLogLabId(""); setLogType("Visit"); setLogNotes(""); setLogFollowup(""); setLogFollowupReason(""); setLogSentiment(""); setLogError(false);
       await loadAll();
       showToast("Visit logged.");
     } catch (err) { showToast(`⚠ ${err.message}`); }
@@ -162,6 +164,15 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
           <label>Notes</label>
           <textarea rows="2" style={fieldStyle} value={logNotes} onChange={(e) => setLogNotes(e.target.value)} placeholder="What was discussed" />
+        </div>
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>Sentiment (optional)</label>
+          <select style={fieldStyle} value={logSentiment} onChange={(e) => setLogSentiment(e.target.value)}>
+            <option value="">Not set</option>
+            <option value="Positive">Positive</option>
+            <option value="Neutral">Neutral</option>
+            <option value="At Risk">At Risk</option>
+          </select>
         </div>
         <div className="tmpl-field-row" style={{ marginBottom: 4, display: "flex", gap: 10 }}>
           <div className="tmpl-field" style={{ flex: 1 }}>
