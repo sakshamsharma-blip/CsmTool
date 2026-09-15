@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { fmtINR, segmentFor } from "../lib/format";
+import { fmtMoney, toINR, segmentFor, nativeCurrency } from "../lib/format";
 
 const SEG_LABELS = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 
@@ -18,9 +18,12 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
 
   const mrr = parseFloat(form.mrr) || 0;
   const arr = mrr * 12;
-  const seg = segmentFor(mrr);
-  const totalManaged = labs.reduce((s, r) => s + (r.mrr || 0), 0) + mrr;
-  const weight = totalManaged ? (mrr / totalManaged) * 100 : 0;
+  const currency = nativeCurrency(form.region);
+  const currencySymbol = currency === "USD" ? "$" : "₹";
+  const seg = segmentFor(toINR(mrr, form.region));
+  // Existing labs may be in either currency — normalize to INR before adding this one in.
+  const totalManaged = labs.reduce((s, r) => s + toINR(r.mrr || 0, r.region), 0) + toINR(mrr, form.region);
+  const weight = totalManaged ? (toINR(mrr, form.region) / totalManaged) * 100 : 0;
   const parents = labs.filter((l) => l.type === "Parent");
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
@@ -149,10 +152,13 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
             <div className="fsection">
               <h4>4. Revenue Information</h4>
               <div className="frow two">
-                <div className="field"><label>Current MRR (₹) <span className="req">*</span></label>
-                  <input type="number" value={form.mrr} onChange={(e) => set("mrr", e.target.value)} placeholder="Enter Monthly Recurring Revenue" />
-                  <div className="hint">Enter amount without commas. Example: 90000</div></div>
-                <div className="field"><label>Current ARR (₹)</label><input readOnly value={mrr ? fmtINR(arr) : "Auto calculated (MRR × 12)"} /></div>
+                <div className="field"><label>Current MRR ({currencySymbol}) <span className="req">*</span></label>
+                  <input type="number" value={form.mrr} onChange={(e) => set("mrr", e.target.value)} placeholder={`Enter Monthly Recurring Revenue in ${currency}`} />
+                  <div className="hint">
+                    Enter amount without commas, in {currency} ({form.region} labs bill in {currency}). Example: 90000
+                    {mrr > 0 && <> — {fmtMoney(mrr, form.region)}</>}
+                  </div></div>
+                <div className="field"><label>Current ARR ({currencySymbol})</label><input readOnly value={mrr ? fmtMoney(arr, form.region) : "Auto calculated (MRR × 12)"} /></div>
               </div>
               <div className="side-card" style={{ marginTop: 4 }}>
                 <h4>Segment Guide (based on MRR)</h4>
@@ -179,7 +185,7 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
                 <li>All values can be edited after saving</li>
               </ul>
               <div className="calc-summary">
-                <div className="row"><span>ARR</span><b>{fmtINR(arr)}</b></div>
+                <div className="row"><span>ARR</span><b>{fmtMoney(arr, form.region)}</b></div>
                 <div className="row"><span>Segment</span><b>{mrr ? seg.code : "—"}</b></div>
                 <div className="row"><span>Account Weightage</span><b>{weight.toFixed(1)}%</b></div>
               </div>

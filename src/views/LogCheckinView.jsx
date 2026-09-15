@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
-import { fmtINR, segmentFor } from "../lib/format";
+import { fmtMoney, toINR, segmentFor } from "../lib/format";
 import { fetchLabAdoption, computeSavedLabScores } from "../lib/adoption";
 import { fetchLabActivity, ACTIVITY_ICONS } from "../lib/activity";
 import { fetchAllVisits, addVisit } from "../lib/visits";
@@ -38,7 +38,7 @@ function plusDays(n) {
 
 export default function LogCheckinView({ lab, modules, plans, currentCSM, idByName, onDone, showToast }) {
   const plan = plans.find((p) => p.id === lab.plan) || plans[0];
-  const seg = segmentFor(lab.mrr || 0);
+  const seg = segmentFor(toINR(lab.mrr || 0, lab.region));
 
   const [type, setType] = useState("Visit");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -309,7 +309,7 @@ export default function LogCheckinView({ lab, modules, plans, currentCSM, idByNa
             <div className="seg-row"><span>Plan</span><span>{plan.name}</span></div>
             <div className="seg-row"><span>CSM</span><span>{lab.csm}</span></div>
             <div className="seg-row"><span>Segment</span><span><span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span></span></div>
-            <div className="seg-row"><span>MRR</span><span>{fmtINR(lab.mrr || 0)}</span></div>
+            <div className="seg-row"><span>MRR</span><span>{fmtMoney(lab.mrr || 0, lab.region)}</span></div>
           </div>
 
           <div className="side-card">

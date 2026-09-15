@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
-import { fmtINR, segmentFor } from "../lib/format";
+import { fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
 import { fetchAllLabsAdoption, computeSavedLabScores } from "../lib/adoption";
 import {
@@ -206,7 +206,7 @@ export default function PortfolioView({ labs, modules, plans, csmDirectory, curr
       {!rows.length ? (
         <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>No labs assigned to {scopeLabel} yet.</div>
       ) : rows.map((lab) => {
-        const seg = segmentFor(lab.mrr);
+        const seg = segmentFor(toINR(lab.mrr, lab.region));
         const scores = computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id]);
         const isOpen = expandedLab === lab.id;
         const ringColor = scores.overallPct >= 75 ? "var(--ok)" : scores.overallPct >= 40 ? "var(--warn)" : "var(--bad)";
@@ -232,7 +232,7 @@ export default function PortfolioView({ labs, modules, plans, csmDirectory, curr
                 </div>
               </div>
               <div style={{ textAlign: "right", fontSize: 12, flex: "none" }}>
-                <div style={{ fontWeight: 700 }}>{fmtINR(lab.mrr)}</div>
+                <div style={{ fontWeight: 700 }}>{fmtMoney(lab.mrr, lab.region)}</div>
                 <div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>MRR</div>
               </div>
               <span className={`status-pill status-${lab.status.replace(" ", "")}`} style={{ flex: "none" }}>{lab.status}</span>

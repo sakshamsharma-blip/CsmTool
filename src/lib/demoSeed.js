@@ -15,4 +15,5 @@ export const DEMO_LABS = [
   { id: "831", name: "Span Diagnostics", type: "Parent", parent: null, csm: "Aseem Khan", plan: "premium", region: "Domestic", state: "Gujarat", country: "India", mrr: 40000, status: "Active" },
   { id: "832", name: "Truemedix Lab", type: "Parent", parent: null, csm: "Aseem Khan", plan: "starter", region: "Domestic", state: "Gujarat", country: "India", mrr: 35000, status: "At Risk" },
   { id: "833", name: "Cadabams Group", type: "Parent", parent: null, csm: "Mazhar Shaikh", plan: "enterprise", region: "Domestic", state: "Tamil Nadu", country: "India", mrr: 120000, status: "Active" },
+  { id: "834", name: "Nairobi Precision Labs", type: "Parent", parent: null, csm: "Mazhar Shaikh", plan: "premium", region: "ROW", state: "—", country: "Kenya", mrr: 1400, status: "Active" },
 ];

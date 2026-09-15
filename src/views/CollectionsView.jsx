@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
-import { fmtINR } from "../lib/format";
+import { fmtINR, fmtMoney, toINR } from "../lib/format";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
-import { fetchAllCollectionsItems, addCollectionsItem, logCollectionsReminder, labCollectionsSummary, AGING_COLORS } from "../lib/collections";
+import { fetchAllCollectionsItems, addCollectionsItem, logCollectionsReminder, labCollectionsSummary, daysSince, agingBucket, AGING_COLORS } from "../lib/collections";
+import { fetchAllInvoices, invoiceBalance, isInvoiceOpen } from "../lib/invoices";
 import { hasLeadAccess } from "../lib/roles";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
@@ -14,6 +15,7 @@ export default function CollectionsView({ labs, csmDirectory, currentCSM, idByNa
   const csmNames = csmDirectory.map((c) => c.name);
 
   const [items, setItems] = useState([]);
+  const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
 
@@ -28,7 +30,11 @@ export default function CollectionsView({ labs, csmDirectory, currentCSM, idByNa
     if (!SUPABASE_CONFIGURED) { setLoading(false); return; }
     setLoading(true);
     setError(null);
-    try { setItems(await fetchAllCollectionsItems()); }
+    try {
+      const [collItems, inv] = await Promise.all([fetchAllCollectionsItems(), fetchAllInvoices()]);
+      setItems(collItems);
+      setInvoices(inv);
+    }
     catch (err) { setError(err.message || "Failed to load collections."); }
     finally { setLoading(false); }
   }
@@ -52,20 +58,40 @@ export default function CollectionsView({ labs, csmDirectory, currentCSM, idByNa
   labs.forEach((l) => { labsById[l.id] = l; });
 
   const scoped = items.filter((i) => flatIds.has(i.labId));
+  const scopedInvoices = invoices.filter((iv) => flatIds.has(iv.labId));
 
   // Group into one row per lab, matching the prototype's portfolio-wide Collections list —
-  // itemized owed/collected/Zoho detail lives on that lab's own Collections tab.
+  // itemized owed/collected detail (both pitch-add-on items and uploaded invoices) lives on
+  // that lab's own Collections tab.
   const byLab = {};
   scoped.forEach((i) => { (byLab[i.labId] = byLab[i.labId] || []).push(i); });
-  const labSummaries = Object.entries(byLab)
-    .map(([labId, labItems]) => ({ lab: labsById[labId], labId, items: labItems, ...labCollectionsSummary(labItems) }))
-    .filter((s) => s.lab)
+  const invByLab = {};
+  scopedInvoices.forEach((iv) => { (invByLab[iv.labId] = invByLab[iv.labId] || []).push(iv); });
+
+  const labSummaries = Object.entries(labsById)
+    .filter(([labId]) => flatIds.has(labId))
+    .map(([labId, lab]) => {
+      const labItems = byLab[labId] || [];
+      const labInvoices = invByLab[labId] || [];
+      if (!labItems.length && !labInvoices.length) return null;
+      const itemSummary = labCollectionsSummary(labItems);
+      const openInvoices = labInvoices.filter(isInvoiceOpen);
+      const invoiceOutstanding = openInvoices.reduce((s, iv) => s + invoiceBalance(iv), 0);
+      const invoiceOldestDays = openInvoices.reduce((max, iv) => Math.max(max, daysSince(iv.dueDate)), 0);
+      const outstanding = itemSummary.outstanding + invoiceOutstanding;
+      const openCount = itemSummary.openCount + openInvoices.length;
+      const daysOverdue = Math.max(itemSummary.daysOverdue, invoiceOldestDays);
+      const bucket = openCount ? agingBucket(daysOverdue) : "Current";
+      const lastPayment = [itemSummary.lastPayment, ...labInvoices.map((iv) => iv.collectedAt)].filter(Boolean).sort((a, b) => new Date(b) - new Date(a))[0] || null;
+      return { lab, labId, items: labItems, outstanding, openCount, daysOverdue, bucket, lastPayment };
+    })
+    .filter(Boolean)
     .sort((a, b) => b.daysOverdue - a.daysOverdue || b.outstanding - a.outstanding);
 
-  const totalOutstanding = labSummaries.reduce((s, l) => s + l.outstanding, 0);
+  // Labs can be in different currencies — convert each to INR before adding into the totals.
+  const totalOutstanding = labSummaries.reduce((s, l) => s + toINR(l.outstanding, l.lab.region), 0);
   const overdueLabs = labSummaries.filter((l) => l.bucket === "Overdue" || l.bucket === "Critical").length;
   const criticalLabs = labSummaries.filter((l) => l.bucket === "Critical").length;
-  const openConflicts = labSummaries.reduce((s, l) => s + l.openConflicts, 0);
 
   const labOptions = [];
   allRows.forEach((r) => { labOptions.push(r); r.children.forEach((c) => labOptions.push(c)); });
@@ -97,18 +123,17 @@ export default function CollectionsView({ labs, csmDirectory, currentCSM, idByNa
       <h1 className="page-title">Collections</h1>
       <p className="page-sub">Outstanding dues for labs assigned to <b>{scopeLabel}</b>.</p>
 
-      <div className="banner" style={{ background: "#eef4ff", border: "1px solid #cfe0fb" }}>
-        <span className="badge" style={{ background: "#1948a8" }}>ZOHO BOOKS SYNC — CONCEPT</span>
-        <span>Amounts collected against each lab's Zoho figure are simulated (no live Zoho Books sync yet — that's still a requirement going in). Mismatches surface as a Conflict that needs a CSM's resolution note.</span>
+      <div className="banner">
+        <span className="badge">HOW THIS WORKS</span>
+        <span>Upload a lab's invoice on its own Collections tab — the invoice date, amount and type (Monthly vs. one-off Pro-Rata) are read automatically and you confirm before saving. A Monthly invoice updates that lab's MRR; either type tracks what's still owed here. Due date is the invoice date plus that lab's Credit Days, not the invoice's own due date field.</span>
       </div>
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
 
-      <div className="summary-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 18 }}>
+      <div className="summary-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 18 }}>
         <div className="stile"><div className="sval">{fmtINR(totalOutstanding)}</div><div className="slabel">Total Outstanding</div></div>
         <div className="stile"><div className="sval" style={{ color: overdueLabs > 0 ? "var(--warn)" : "var(--text)" }}>{overdueLabs}</div><div className="slabel">Overdue Labs</div></div>
         <div className="stile"><div className="sval" style={{ color: criticalLabs > 0 ? "var(--bad)" : "var(--text)" }}>{criticalLabs}</div><div className="slabel">Critical</div></div>
-        <div className="stile"><div className="sval" style={{ color: openConflicts > 0 ? "var(--bad)" : "var(--text)" }}>{openConflicts}</div><div className="slabel">Open Conflicts</div></div>
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
@@ -122,11 +147,8 @@ export default function CollectionsView({ labs, csmDirectory, currentCSM, idByNa
           <thead><tr><th>Lab</th><th>Outstanding</th><th>Days Overdue</th><th>Status</th><th>Last Payment</th><th></th></tr></thead>
           <tbody>{labSummaries.map((s) => (
             <tr key={s.labId}>
-              <td className="lab-name clickable" onClick={() => onOpenLab(s.labId)}>
-                {s.lab.name}
-                {s.openConflicts > 0 && <span className="cat-tag" style={{ background: "#fde8e8", color: "#b42318" }}> {s.openConflicts} conflict{s.openConflicts > 1 ? "s" : ""}</span>}
-              </td>
-              <td className="mrr-cell">{fmtINR(s.outstanding)}</td>
+              <td className="lab-name clickable" onClick={() => onOpenLab(s.labId)}>{s.lab.name}</td>
+              <td className="mrr-cell">{fmtMoney(s.outstanding, s.lab.region)}</td>
               <td>{s.openCount ? `${s.daysOverdue}d` : "—"}</td>
               <td><span className="status-chip" style={{ background: "transparent", border: `1px solid ${AGING_COLORS[s.bucket]}`, color: AGING_COLORS[s.bucket], cursor: "default" }}>{s.bucket}</span></td>
               <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>
@@ -166,7 +188,7 @@ export default function CollectionsView({ labs, csmDirectory, currentCSM, idByNa
         </div>
         {!addTrial && (
           <div className="tmpl-field">
-            <label>Amount Owed (₹)</label>
+            <label>Amount Owed ({addLabId && labsById[addLabId]?.region === "ROW" ? "$" : "₹"})</label>
             <input type="number" min="0" value={addAmount} onChange={(e) => setAddAmount(e.target.value)}
               style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
           </div>

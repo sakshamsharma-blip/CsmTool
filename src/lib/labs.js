@@ -58,3 +58,10 @@ export async function updateLabPlan(labId, planId) {
   const { error } = await supabase.from("labs").update({ plan_id: planId }).eq("id", labId);
   if (error) throw error;
 }
+
+// Called when a Monthly invoice is uploaded and confirmed — see src/lib/invoices.js. Amount is
+// in the lab's own native currency (INR for Domestic, USD for ROW).
+export async function updateLabMRR(labId, newMrr) {
+  const { error } = await supabase.from("labs").update({ mrr: newMrr }).eq("id", labId);
+  if (error) throw error;
+}

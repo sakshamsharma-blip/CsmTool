@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
-import { fmtINR, segmentFor, SEG_BANDS } from "../lib/format";
+import { fmtINR, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const CSV_COLUMNS = ["id", "name", "type", "parent", "csm", "region", "city", "state", "country", "mrr", "status"];
@@ -41,7 +41,7 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab })
     if (filters.csm) r = r.filter((row) => row.csm === filters.csm || row.children.some((c) => c.csm === filters.csm));
     if (filters.region) r = r.filter((row) => row.region === filters.region);
     if (filters.status) r = r.filter((row) => row.status === filters.status || row.children.some((c) => c.status === filters.status));
-    if (filters.segment) r = r.filter((row) => segmentFor(row.mrr).code === filters.segment);
+    if (filters.segment) r = r.filter((row) => segmentFor(toINR(row.mrr, row.region)).code === filters.segment);
     return r;
   }, [labs, filters]);
 
@@ -49,7 +49,9 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab })
   const totalLabs = allRowsForTiles.length + allRowsForTiles.reduce((s, r) => s + r.children.length, 0);
   const activeCount = allRowsForTiles.filter((r) => r.status === "Active").length +
     allRowsForTiles.reduce((s, r) => s + r.children.filter((c) => c.status === "Active").length, 0);
-  const totalMRR = allRowsForTiles.reduce((s, r) => s + r.mrr, 0);
+  // Total MRR/ARR mix Domestic and ROW labs together, so every lab's own-currency amount is
+  // converted to INR before summing — a raw sum would silently add dollars to rupees.
+  const totalMRR = allRowsForTiles.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
   const tiles = [
     ["Total Labs", totalLabs, ""],
     ["Parent Labs", allRowsForTiles.length, ""],
@@ -116,7 +118,7 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab })
             <tr><td colSpan="11" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>No labs match these filters.</td></tr>
           )}
           {rows.map((r) => {
-            const seg = segmentFor(r.mrr);
+            const seg = segmentFor(toINR(r.mrr, r.region));
             return (
               <Fragment key={r.id}>
                 <tr>
@@ -131,11 +133,11 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab })
                   <td>{r.csm}</td>
                   <td><span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span></td>
                   <td>{r.region}</td><td>{r.state}</td><td>{r.country}</td>
-                  <td className="mrr-cell">{fmtINR(r.mrr)}</td>
+                  <td className="mrr-cell">{fmtMoney(r.mrr, r.region)}</td>
                   <td><span className={`status-pill ${statusPillClass(r.status)}`}>{r.status}</span></td>
                 </tr>
                 {r.children.length > 0 && expanded[r.id] && r.children.map((c) => {
-                  const cseg = segmentFor(c.mrr);
+                  const cseg = segmentFor(toINR(c.mrr, c.region));
                   return (
                     <tr className="child-row" key={c.id}>
                       <td></td><td>{c.id}</td>
@@ -144,7 +146,7 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab })
                       <td>{c.csm}</td>
                       <td><span className="seg-badge" style={{ background: cseg.color }}>{cseg.code}</span></td>
                       <td>{c.region}</td><td>{c.state}</td><td>{c.country}</td>
-                      <td className="mrr-cell">{fmtINR(c.mrr)}</td>
+                      <td className="mrr-cell">{fmtMoney(c.mrr, c.region)}</td>
                       <td><span className={`status-pill ${statusPillClass(c.status)}`}>{c.status}</span></td>
                     </tr>
                   );

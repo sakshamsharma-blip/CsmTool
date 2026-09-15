@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
-import { fmtINR, segmentFor } from "../lib/format";
+import { fmtINR, fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
 import { fetchAllLabsAdoption, computeSavedLabScores } from "../lib/adoption";
-import { fetchAllCollectionsItems, labCollectionsSummary, AGING_COLORS } from "../lib/collections";
+import { fetchAllCollectionsItems, labCollectionsSummary, isItemOpen, itemBalance, AGING_COLORS } from "../lib/collections";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask, getOpenTasksFor } from "../lib/tasks";
 import { hasLeadAccess } from "../lib/roles";
 import ScopeToggle from "../components/ScopeToggle";
@@ -60,7 +60,7 @@ export default function DashboardView({ labs, modules, plans, csmDirectory, curr
   function scoreOf(lab) { return computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id]); }
 
   const totalLabs = rows.length + rows.reduce((s, r) => s + r.children.length, 0);
-  const totalMRR = rows.reduce((s, r) => s + r.mrr, 0);
+  const totalMRR = rows.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
   const activeCount = rows.filter((r) => r.status === "Active").length + rows.reduce((s, r) => s + r.children.filter((c) => c.status === "Active").length, 0);
   const atRiskCount = rows.filter((r) => r.status === "At Risk").length + rows.reduce((s, r) => s + r.children.filter((c) => c.status === "At Risk").length, 0);
   const avgAdoption = rows.length ? Math.round(rows.reduce((s, r) => s + scoreOf(r).overallPct, 0) / rows.length) : 0;
@@ -70,11 +70,15 @@ export default function DashboardView({ labs, modules, plans, csmDirectory, curr
   const needsPush = rows.filter((r) => { const p = scoreOf(r).overallPct; return p >= 40 && p < 75; }).length;
   const atRiskAdopt = rows.filter((r) => scoreOf(r).overallPct < 40).length;
 
+  const labsById = {};
+  labs.forEach((l) => { labsById[l.id] = l; });
+
   const rowIds = new Set();
   rows.forEach((r) => { rowIds.add(r.id); r.children.forEach((c) => rowIds.add(c.id)); });
   const scopedItems = collectionsItems.filter((i) => rowIds.has(i.labId));
-  const outstandingTotal = scopedItems.filter((i) => i.status === "Pending" || i.status === "Conflict").reduce((s, i) => s + (i.amount || 0), 0);
-  const collectedTotal = scopedItems.reduce((s, i) => s + (i.collectedManual || 0), 0);
+  // Items can belong to labs in different currencies — convert each to INR before summing.
+  const outstandingTotal = scopedItems.filter(isItemOpen).reduce((s, i) => s + toINR(itemBalance(i), labsById[i.labId]?.region), 0);
+  const collectedTotal = scopedItems.reduce((s, i) => s + toINR(i.collectedManual || 0, labsById[i.labId]?.region), 0);
 
   // Collections Aging — one bucket per lab (its oldest open item), matching the prototype's
   // 4-bucket chart rather than a raw item count.
@@ -94,15 +98,13 @@ export default function DashboardView({ labs, modules, plans, csmDirectory, curr
     catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
-  const labsById = {};
-  labs.forEach((l) => { labsById[l.id] = l; });
   const labOptions = [];
   allRows.forEach((r) => { labOptions.push(r); r.children.forEach((c) => labOptions.push(c)); });
 
   const byCsm = (isHead && scope === "team" && !csmFilter) ? csmNames.map((name) => {
     const csmRows = allRows.filter((r) => r.csm === name || r.children.some((c) => c.csm === name));
     const labCount = csmRows.length + csmRows.reduce((s, r) => s + r.children.length, 0);
-    const mrr = csmRows.reduce((s, r) => s + r.mrr, 0);
+    const mrr = csmRows.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
     const avgAdopt = csmRows.length ? Math.round(csmRows.reduce((s, r) => s + scoreOf(r).overallPct, 0) / csmRows.length) : 0;
     const openTasks = getOpenTasksFor(tasks, name).length;
     return { name, labCount, mrr, avgAdopt, openTasks };
@@ -173,7 +175,7 @@ export default function DashboardView({ labs, modules, plans, csmDirectory, curr
       {!rows.length ? (
         <div className="table-card" style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>No labs in this view.</div>
       ) : rows.map((lab) => {
-        const seg = segmentFor(lab.mrr);
+        const seg = segmentFor(toINR(lab.mrr, lab.region));
         const scores = scoreOf(lab);
         const ringColor = scores.overallPct >= 75 ? "var(--ok)" : scores.overallPct >= 40 ? "var(--warn)" : "var(--bad)";
         return (
@@ -182,7 +184,7 @@ export default function DashboardView({ labs, modules, plans, csmDirectory, curr
               <div className="lab-name" style={{ fontWeight: 700, fontSize: 13 }}>{lab.name}</div>
               <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{lab.id} · {lab.csm} · <span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span></div>
             </div>
-            <div style={{ textAlign: "right", fontSize: 12 }}><div style={{ fontWeight: 700 }}>{fmtINR(lab.mrr)}</div><div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>MRR</div></div>
+            <div style={{ textAlign: "right", fontSize: 12 }}><div style={{ fontWeight: 700 }}>{fmtMoney(lab.mrr, lab.region)}</div><div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>MRR</div></div>
             <span className={`status-pill status-${lab.status.replace(" ", "")}`}>{lab.status}</span>
             <div style={{ textAlign: "right", fontSize: 12, width: 48 }}><div style={{ fontWeight: 700, color: ringColor }}>{Math.round(scores.overallPct)}%</div><div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>Adoption</div></div>
           </div>

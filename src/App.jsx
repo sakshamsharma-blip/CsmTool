@@ -9,6 +9,7 @@ import { fetchPlans, setPlanModule, setPlanExcludedParam } from "./lib/plans";
 import { fetchLabs, insertLab, updateLabCsm, updateLabPlan } from "./lib/labs";
 import { logActivity } from "./lib/activity";
 import { hasLeadAccess } from "./lib/roles";
+import { refreshUsdInrRate, onFxRateChange } from "./lib/fx";
 import { DEMO_MODULES, DEMO_PLANS, DEMO_CSM_DIRECTORY, DEMO_LABS } from "./lib/demoSeed";
 import { useToast } from "./hooks/useToast";
 
@@ -50,6 +51,18 @@ export default function App() {
   const [detailLabId, setDetailLabId] = useState(null);
   const [detailInitialTab, setDetailInitialTab] = useState("details");
   const detailLab = labs.find((l) => l.id === detailLabId) || null;
+
+  // Kick off the live USD→INR rate once per load. Every money display reads the rate directly
+  // from fx.js's module-level cache (not React state) so it doesn't need threading through
+  // every view as a prop — this just forces one re-render of the whole tree once the live rate
+  // actually arrives, so numbers already on screen pick it up instead of staying on the
+  // cached/default rate until something else happens to re-render.
+  const [, forceFxRerender] = useState(0);
+  useEffect(() => {
+    const unsub = onFxRateChange(() => forceFxRerender((t) => t + 1));
+    refreshUsdInrRate();
+    return unsub;
+  }, []);
 
   function openLabDetail(id, tab = "details") {
     setDetailLabId(id);
@@ -152,6 +165,14 @@ export default function App() {
       catch (err) { console.error(err); showToast(`⚠ Plan change not saved to the database — ${err.message}`); return; }
     }
     showToast(ids.length > 1 ? `Plan changed for ${ids.length} labs.` : "Plan changed.");
+  }
+
+  // Called after LabDetailView's Upload Invoice flow saves a Monthly invoice (the write to
+  // Supabase already happened inside saveInvoice() in lib/invoices.js) — this just keeps the
+  // app's own `labs` state in sync so the lab header and every table showing this lab's MRR
+  // update immediately instead of waiting for a full reload.
+  function handleInvoiceMrrUpdate(labId, newMrr) {
+    setLabs((ls) => ls.map((l) => (l.id === labId ? { ...l, mrr: newMrr } : l)));
   }
 
   async function handleToggleModule(planId, moduleKey) {
@@ -365,6 +386,7 @@ export default function App() {
               onOpenLab={openLabDetail}
               onReassignCsm={handleReassignCsm}
               onChangePlan={handleChangePlan}
+              onInvoiceMrrUpdate={handleInvoiceMrrUpdate}
               onLogCheckin={openLogCheckin}
               showToast={showToast}
             />
