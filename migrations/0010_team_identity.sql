@@ -10,10 +10,12 @@
 -- migrations/0007_admin_role.sql, nothing to do for him here). Fix any line where that guess is
 -- wrong before running.
 --
--- Also worth a glance: the roster names below (from migrations/0001_init.sql) don't quite match
--- the email local parts for two people —  'Aseem Khan' vs aseem.ansari@..., and 'Mazhar Shaikh'
--- vs mazhar.hussain@... . Doesn't affect login (linking is by email, not name), but if those
--- display names are stale, rename them any time from Manage Users in the app.
+-- Two roster names (from migrations/0001_init.sql) didn't match the real surname per email —
+-- fixed here to first-name-only display, matching the existing Aditi/Hrushikesh/Sanskriti
+-- convention (their real surname per email — Ansari, Hussain — is reflected in the email itself,
+-- just not carried into the short display name). Safe to re-run: a no-op once already renamed.
+update profiles set name = 'Aseem' where name = 'Aseem Khan';
+update profiles set name = 'Mazhar' where name = 'Mazhar Shaikh';
 
 insert into profile_emails (email, profile_id) select 'rahul.barge@creliohealth.com', id from profiles where name = 'Rahul Barge' on conflict (email) do nothing;
 insert into profile_emails (email, profile_id) select 'rahul.barge@livehealth.in', id from profiles where name = 'Rahul Barge' on conflict (email) do nothing;
@@ -21,11 +23,11 @@ insert into profile_emails (email, profile_id) select 'rahul.barge@livehealth.in
 insert into profile_emails (email, profile_id) select 'aditi.salunkhe@creliohealth.com', id from profiles where name = 'Aditi' on conflict (email) do nothing;
 insert into profile_emails (email, profile_id) select 'aditi.salunkhe@livehealth.in', id from profiles where name = 'Aditi' on conflict (email) do nothing;
 
-insert into profile_emails (email, profile_id) select 'aseem.ansari@creliohealth.com', id from profiles where name = 'Aseem Khan' on conflict (email) do nothing;
-insert into profile_emails (email, profile_id) select 'aseem.ansari@livehealth.in', id from profiles where name = 'Aseem Khan' on conflict (email) do nothing;
+insert into profile_emails (email, profile_id) select 'aseem.ansari@creliohealth.com', id from profiles where name = 'Aseem' on conflict (email) do nothing;
+insert into profile_emails (email, profile_id) select 'aseem.ansari@livehealth.in', id from profiles where name = 'Aseem' on conflict (email) do nothing;
 
-insert into profile_emails (email, profile_id) select 'mazhar.hussain@creliohealth.com', id from profiles where name = 'Mazhar Shaikh' on conflict (email) do nothing;
-insert into profile_emails (email, profile_id) select 'mazhar.hussain@livehealth.in', id from profiles where name = 'Mazhar Shaikh' on conflict (email) do nothing;
+insert into profile_emails (email, profile_id) select 'mazhar.hussain@creliohealth.com', id from profiles where name = 'Mazhar' on conflict (email) do nothing;
+insert into profile_emails (email, profile_id) select 'mazhar.hussain@livehealth.in', id from profiles where name = 'Mazhar' on conflict (email) do nothing;
 
 insert into profile_emails (email, profile_id) select 'hrushikesh.shinde@creliohealth.com', id from profiles where name = 'Hrushikesh' on conflict (email) do nothing;
 insert into profile_emails (email, profile_id) select 'hrushikesh.shinde@livehealth.in', id from profiles where name = 'Hrushikesh' on conflict (email) do nothing;

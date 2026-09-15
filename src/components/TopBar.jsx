@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
 import { hasLeadAccess, roleLabel } from "../lib/roles";
+import ChangePasswordModal from "./ChangePasswordModal";
 
 export default function TopBar({ currentCSM, csmDirectory, myName, view, setView, showToast }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -24,14 +26,9 @@ export default function TopBar({ currentCSM, csmDirectory, myName, view, setView
   // Admin/Lead-only affordance in the app (e.g. Team View) — so preview mode stays honest.
   const canManageUsers = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
 
-  async function handleChangePassword() {
+  function handleChangePassword() {
     setMenuOpen(false);
-    if (!supabase) return;
-    const { data: { session } } = await supabase.auth.getSession();
-    const email = session?.user?.email;
-    if (!email) return;
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
-    showToast && showToast(error ? "Couldn't send reset email — try again." : `Password reset link sent to ${email}.`);
+    setChangePasswordOpen(true);
   }
 
   function handleLogout() {
@@ -70,6 +67,7 @@ export default function TopBar({ currentCSM, csmDirectory, myName, view, setView
           </div>
         )}
       </div>
+      <ChangePasswordModal open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} showToast={showToast} />
     </div>
   );
 }

@@ -34,7 +34,12 @@ export default function LoginScreen({ onLoggedIn }) {
     }
     setError("");
     setResetBusy(true);
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
+    // Explicit redirectTo so the reset link comes back to wherever this is actually running
+    // (localhost while testing, the real deployed URL once live) instead of whatever Supabase's
+    // project-level Site URL happens to be set to. That target URL also has to be added under
+    // Authentication → URL Configuration → Redirect URLs in the Supabase dashboard, or Supabase
+    // will reject it and the link won't work.
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
     setResetBusy(false);
     if (resetError) {
       setError(resetError.message || "Couldn't send a reset link. Contact your CS Lead.");

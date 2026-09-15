@@ -29,10 +29,15 @@ import CollectionsView from "./views/CollectionsView";
 import TasksView from "./views/TasksView";
 import VisitsView from "./views/VisitsView";
 import LogCheckinView from "./views/LogCheckinView";
+import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 
 export default function App() {
   const [authChecked, setAuthChecked] = useState(!SUPABASE_CONFIGURED);
   const [session, setSession] = useState(null);
+  // Set the moment someone lands back in the app from a "reset/forgot password" email link —
+  // see the auth listener below and PasswordRecoveryScreen for why this has to gate the whole
+  // app rather than just quietly signing them in on their old/temp password.
+  const [recoveryMode, setRecoveryMode] = useState(false);
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
 
@@ -95,6 +100,15 @@ export default function App() {
       if (session) loadAllData(session);
       else setLoading(false);
     });
+
+    // Fires PASSWORD_RECOVERY the moment someone lands here from a reset-password email link
+    // (Supabase's redirect establishes a real session for them as part of how that link works) —
+    // catch it here so recoveryMode can gate the whole app on PasswordRecoveryScreen instead of
+    // silently dropping them into the workspace on their old/temp password.
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") setRecoveryMode(true);
+    });
+    return () => sub.subscription.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -316,6 +330,11 @@ export default function App() {
 
   if (SUPABASE_CONFIGURED && !authChecked) {
     return <div style={{ padding: 40, fontFamily: "sans-serif", color: "#475467" }}>Loading…</div>;
+  }
+  // Takes priority over the plain "not signed in" check below — a recovery-link visit does
+  // establish a session, but they still need to set a new password before anything else.
+  if (SUPABASE_CONFIGURED && recoveryMode) {
+    return <PasswordRecoveryScreen onDone={() => setRecoveryMode(false)} />;
   }
   if (SUPABASE_CONFIGURED && !session) {
     return <LoginScreen onLoggedIn={handleLoggedIn} />;
