@@ -10,3 +10,7 @@ node_modules
 dist
 dist-ssr
 *.local
+
+# Scratch/dev artifacts — screenshots and sample files used while building/testing, not app code
+Claude outputs/
+_test_invoices/
