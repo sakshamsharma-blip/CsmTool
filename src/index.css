@@ -30,14 +30,16 @@
   }
   .sidebar.collapsed{width:68px;}
   .sidebar-collapse-btn{
-    position:absolute; top:22px; right:-12px; width:24px; height:24px; border-radius:50%; z-index:5;
-    background:var(--surface); border:1px solid var(--border); box-shadow:0 1px 4px rgba(16,24,40,.14);
-    display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text-dim); font-size:13px;
+    flex:none; width:26px; height:26px; border-radius:50%;
+    background:var(--bg); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text-dim); font-size:14px; font-weight:700;
     padding:0; line-height:1;
   }
-  .sidebar-collapse-btn:hover{background:var(--bg); color:var(--text);}
-  .brand{display:flex; align-items:center; gap:10px; padding:6px 18px 18px; border-bottom:1px solid var(--border); margin-bottom:6px; overflow:hidden;}
-  .sidebar.collapsed .brand{justify-content:center; padding:6px 0 18px;}
+  .sidebar-collapse-btn:hover{background:var(--accent-dim); color:var(--accent); border-color:#c8dafc;}
+  .sidebar-collapse-btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  .brand{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:14px 12px 18px 18px; border-bottom:1px solid var(--border); margin-bottom:6px; overflow:hidden;}
+  .brand-id{display:flex; align-items:center; gap:10px; min-width:0; overflow:hidden;}
+  .sidebar.collapsed .brand{flex-direction:column; justify-content:center; gap:10px; padding:14px 0 18px;}
   .brand .mark{width:30px; height:30px; object-fit:contain; flex:none; display:block;}
   .brand .name{font-weight:700; font-size:14.5px; color:var(--text); white-space:nowrap;}
   .brand .sub{font-size:11px; color:var(--text-faint); white-space:nowrap;}

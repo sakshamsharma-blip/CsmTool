@@ -69,21 +69,23 @@ export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCu
 
   return (
     <div className={`sidebar${collapsed ? " collapsed" : ""}`}>
-      <button
-        type="button"
-        className="sidebar-collapse-btn"
-        onClick={toggleCollapsed}
-        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-      >
-        {collapsed ? "›" : "‹"}
-      </button>
       <div className="brand">
-        <img className="mark" src="/brand/crelio-mark.png" alt="CrelioHealth" />
-        <div>
-          <div className="name">CrelioHealth</div>
-          <div className="sub">CS Console</div>
+        <div className="brand-id">
+          <img className="mark" src="/brand/crelio-mark.png" alt="CrelioHealth" />
+          <div>
+            <div className="name">CrelioHealth</div>
+            <div className="sub">CS Console</div>
+          </div>
         </div>
+        <button
+          type="button"
+          className="sidebar-collapse-btn"
+          onClick={toggleCollapsed}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? "›" : "‹"}
+        </button>
       </div>
       <div className="nav">
         <div className="nav-group-label">Live Now — Module 1</div>
