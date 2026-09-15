@@ -6,7 +6,7 @@ Internal tool for CrelioHealth's Customer Success team — replaces the old Exce
 
 - **Frontend:** React + [Vite](https://vitejs.dev). Split into components (`src/components`, `src/views`) rather than one giant file — see Project structure below.
 - **Backend:** [Supabase](https://supabase.com) — hosted Postgres database, authentication, and an auto-generated REST API. No separate backend server to run; the frontend talks to Supabase directly via `@supabase/supabase-js`.
-- **Database schema + seed data:** `migrations/0001_init.sql`, then `migrations/0002_visits.sql`, then `migrations/0003_catalog_description.sql`, then `migrations/0004_collections_zoho.sql`, then `migrations/0005_checkins.sql` — run once each, in order, against a fresh Supabase project (SQL Editor → paste → Run).
+- **Database schema + seed data:** `migrations/0001_init.sql`, then `migrations/0002_visits.sql`, then `migrations/0003_catalog_description.sql`, then `migrations/0004_collections_zoho.sql`, then `migrations/0005_checkins.sql`, then `migrations/0006_identity_linking.sql` — run once each, in order, against a fresh Supabase project (SQL Editor → paste → Run).
 
 ## Project structure
 
@@ -28,6 +28,10 @@ migrations/0003_catalog_description.sql ← adds modules.description (Adoption T
 migrations/0004_collections_zoho.sql ← adds collections_items.collected_at (Collections "Last Payment") — run once, after 0003
 migrations/0005_checkins.sql ← adds visits columns used by Log Check-in (meeting details, discussion
                              topics, sentiment, flagged modules, action items) — run once, after 0004
+migrations/0006_identity_linking.sql ← lets one person sign in with more than one email (e.g. their
+                             @creliohealth.com alongside @livehealth.in) and land on the same
+                             account/data — run once, after 0005. See GO_LIVE.md to link a second
+                             email for someone.
 migrations/000N_*.sql      ← future schema changes go here, one file per change, in order (see below)
 GO_LIVE.md                 ← the current guide for going from demo mode to a real, deployed tool:
                              Supabase project setup, a real working check, and deployment steps
@@ -53,7 +57,7 @@ Without a `.env` file, the app still runs — it falls back to demo mode (seeded
 ## First-time setup (Supabase project)
 
 1. Create a Supabase project at supabase.com.
-2. SQL Editor → paste `migrations/0001_init.sql` → Run. Then paste `migrations/0002_visits.sql` → Run (adds the `visits` table used by Visits & Meetings). Then paste `migrations/0003_catalog_description.sql` → Run (adds an optional description field used by the Adoption Template's Module Builder). Then paste `migrations/0004_collections_zoho.sql` → Run (adds a `collected_at` timestamp used by Collections' "Last Payment" column). Then paste `migrations/0005_checkins.sql` → Run (adds the meeting-detail columns used by Log Check-in).
+2. SQL Editor → paste `migrations/0001_init.sql` → Run. Then paste `migrations/0002_visits.sql` → Run (adds the `visits` table used by Visits & Meetings). Then paste `migrations/0003_catalog_description.sql` → Run (adds an optional description field used by the Adoption Template's Module Builder). Then paste `migrations/0004_collections_zoho.sql` → Run (adds a `collected_at` timestamp used by Collections' "Last Payment" column). Then paste `migrations/0005_checkins.sql` → Run (adds the meeting-detail columns used by Log Check-in). Then paste `migrations/0006_identity_linking.sql` → Run (lets someone sign in with more than one email and land on the same account).
 3. Settings → API: copy the Project URL and `anon public` key into your `.env` file (see `.env.example`).
 4. Authentication → Providers: enable Email.
 5. Authentication → Users: invite each team member.

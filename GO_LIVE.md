@@ -43,18 +43,50 @@ Two things are worth knowing before you flip the switch:
       Payment" column).
    5. `migrations/0005_checkins.sql` — adds the meeting-detail columns Log Check-in needs (duration,
       location, person contacted, discussion topics, sentiment, flagged modules, action items).
+   6. `migrations/0006_identity_linking.sql` — lets one person sign in with more than one email and land
+      on the same account (see section 1a below) — the schema/trigger for this needs to exist before you
+      start inviting anyone with a second email.
 3. **Settings → API**: copy the **Project URL** and the **`anon` public** key — you'll need both in step 3.
 4. **Authentication → Providers**: enable **Email**. Password is the right choice here (not magic link) —
    the login page now has a working "Forgot your password?" link that needs password auth to make sense.
-5. **Authentication → Users → Invite user**: invite each CSM/CS Lead by their real email.
+5. **Authentication → Users → Invite user**: invite each CSM/CS Lead by their real email. If someone has a
+   second email that should reach the same account (see 1a), invite that one too, but only **after** the
+   step-1a insert for it exists — otherwise it'll come in unlinked and need the manual fix-up below.
 6. **Link each invite to their `profiles` row** — the schema seeds `profiles` (the CSM roster) without
    `auth_user_id`, so the roster can exist before anyone's signed up. Once someone accepts their invite,
    in the SQL Editor:
    ```sql
    update profiles set auth_user_id = '<their-user-id-from-the-Users-tab>' where name = 'Rahul Barge';
    ```
-   Repeat per person. Until this is set for someone, they can sign in but the app won't be able to match
-   their login to a CSM roster row.
+   Repeat per person's **first/primary** email only. Until this is set for someone, they can sign in but
+   the app won't be able to match their login to a CSM roster row. (A second email is linked differently —
+   see 1a, not this step.)
+
+### 1a. Someone with two login emails (e.g. @livehealth.in and @creliohealth.com)
+
+`migrations/0006_identity_linking.sql` handles this: whichever of their emails someone signs in with,
+they land on the exact same profile — same labs, same tasks, same activity, nothing duplicated. It does
+**not** sync a password between the two emails (each is still its own Supabase Auth credential with its
+own password, set when they accept that email's invite) — that's fine, since both logins reach the same
+data regardless of what password each one uses.
+
+To link a second email for someone already in the roster, run once in the SQL Editor (before or after
+inviting that email — order doesn't matter, the migration file's backfill step covers either):
+
+```sql
+insert into profile_emails (email, profile_id)
+select 'their.other.email@seconddomain.com', id from profiles where name = 'Their Name'
+on conflict (email) do nothing;
+
+-- if that email already has a Supabase Auth account (already accepted an invite), also run:
+insert into profile_auth_links (auth_user_id, profile_id, email)
+select u.id, pe.profile_id, lower(u.email)
+from auth.users u join profile_emails pe on lower(u.email) = pe.email
+on conflict (auth_user_id) do nothing;
+```
+
+Then (or first) invite that second email the normal way (Authentication → Users → Invite user) if it
+hasn't signed up yet.
 
 ## 2. Point the app at it and do a real working check
 
