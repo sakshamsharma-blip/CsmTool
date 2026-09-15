@@ -32,11 +32,22 @@ const PLANNED_NAV = [
   { icon: "🛠️", label: "Settings" },
 ];
 
+function readCollapsed() {
+  try { return localStorage.getItem("csm_sidebar_collapsed") === "1"; } catch { return false; }
+}
+function writeCollapsed(v) {
+  try { localStorage.setItem("csm_sidebar_collapsed", v ? "1" : "0"); } catch { /* ignore */ }
+}
+
 export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCurrentCSM, onOpenAddDrawer }) {
   const initials = (name) => (name || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
   const role = currentCSM ? (csmDirectory.find((c) => c.name === currentCSM)?.role === "Lead" ? "CSM Lead" : "Customer Success Manager") : "";
 
-  const childViewKeys = LIVE_NAV.filter((i) => i.children).flatMap((i) => i.children.map((c) => c.key));
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  function toggleCollapsed() {
+    setCollapsed((c) => { writeCollapsed(!c); return !c; });
+  }
+
   const [expanded, setExpanded] = useState(() => {
     const init = {};
     LIVE_NAV.forEach((i) => { if (i.children && i.children.some((c) => c.key === view)) init[i.key] = true; });
@@ -45,6 +56,7 @@ export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCu
 
   function handleClick(item) {
     if (item.children) {
+      if (collapsed) { setView(item.children[0].key); return; } // no room to show a submenu while collapsed — go straight to its main screen
       setExpanded((e) => ({ ...e, [item.key]: !e[item.key] }));
       return;
     }
@@ -56,12 +68,21 @@ export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCu
   }
 
   return (
-    <div className="sidebar">
+    <div className={`sidebar${collapsed ? " collapsed" : ""}`}>
+      <button
+        type="button"
+        className="sidebar-collapse-btn"
+        onClick={toggleCollapsed}
+        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+      >
+        {collapsed ? "›" : "‹"}
+      </button>
       <div className="brand">
-        <div className="mark">CS</div>
+        <img className="mark" src="/brand/crelio-mark.png" alt="CrelioHealth" />
         <div>
-          <div className="name">CS Tool</div>
-          <div className="sub">Customer Success</div>
+          <div className="name">CrelioHealth</div>
+          <div className="sub">CS Console</div>
         </div>
       </div>
       <div className="nav">
@@ -71,12 +92,13 @@ export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCu
             <div
               className={`nav-item${(view === item.key || (item.children && item.children.some((c) => c.key === view))) ? " active" : ""}`}
               onClick={() => handleClick(item)}
+              title={collapsed ? item.label : undefined}
             >
               <span className="ico">{item.icon}</span>
               <span className="lbl">{item.label}</span>
-              {item.children && <span style={{ flex: "none", fontSize: 10, color: "var(--text-faint)" }}>{expanded[item.key] ? "▾" : "▸"}</span>}
+              {item.children && <span className="nav-caret">{expanded[item.key] ? "▾" : "▸"}</span>}
             </div>
-            {item.children && expanded[item.key] && (
+            {item.children && expanded[item.key] && !collapsed && (
               <div className="nav-sub">
                 {item.children.map((c) => (
                   <div key={c.key} className={`nav-item${view === c.key ? " active" : ""}`} onClick={() => handleChildClick(c)}>
@@ -90,7 +112,7 @@ export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCu
 
         <div className="nav-group-label">Planned</div>
         {PLANNED_NAV.map((item) => (
-          <div key={item.label} className="nav-item disabled" title="Not built in this tool yet">
+          <div key={item.label} className="nav-item disabled" title={collapsed ? `${item.label} — not built in this tool yet` : "Not built in this tool yet"}>
             <span className="ico">{item.icon}</span>
             <span className="lbl">{item.label}</span>
             <span className="planned-tag">Planned</span>
@@ -123,6 +145,7 @@ export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCu
         </div>
         <span
           onClick={() => supabase && supabase.auth.signOut().then(() => location.reload())}
+          title="Sign out"
           style={{ cursor: "pointer", color: "var(--text-faint)", fontSize: 11, textDecoration: "underline", flex: "none" }}
         >
           Sign out

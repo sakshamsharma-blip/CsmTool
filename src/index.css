@@ -22,20 +22,28 @@
 
   /* ---------- sidebar ---------- */
   .sidebar{
-    width:230px; flex:none; background:var(--surface); color:var(--text-dim);
+    width:258px; flex:none; background:var(--surface); color:var(--text-dim);
     border-right:1px solid var(--border);
     display:flex; flex-direction:column; padding:16px 0;
     height:100%; min-height:0; overflow:hidden; /* fixed to the viewport height — never scrolls with the page; only its own .nav list scrolls internally if needed */
+    position:relative; transition:width .18s ease;
   }
-  .brand{display:flex; align-items:center; gap:10px; padding:6px 18px 18px; border-bottom:1px solid var(--border); margin-bottom:6px;}
-  .brand .mark{
-    width:30px; height:30px; border-radius:8px; background:linear-gradient(135deg,var(--brand),var(--brand-dark));
-    display:flex; align-items:center; justify-content:center; font-weight:700; color:#fff; font-size:14px; flex:none;
+  .sidebar.collapsed{width:68px;}
+  .sidebar-collapse-btn{
+    position:absolute; top:22px; right:-12px; width:24px; height:24px; border-radius:50%; z-index:5;
+    background:var(--surface); border:1px solid var(--border); box-shadow:0 1px 4px rgba(16,24,40,.14);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text-dim); font-size:13px;
+    padding:0; line-height:1;
   }
-  .brand .name{font-weight:700; font-size:14.5px; color:var(--text);}
-  .brand .sub{font-size:11px; color:var(--text-faint);}
+  .sidebar-collapse-btn:hover{background:var(--bg); color:var(--text);}
+  .brand{display:flex; align-items:center; gap:10px; padding:6px 18px 18px; border-bottom:1px solid var(--border); margin-bottom:6px; overflow:hidden;}
+  .sidebar.collapsed .brand{justify-content:center; padding:6px 0 18px;}
+  .brand .mark{width:30px; height:30px; object-fit:contain; flex:none; display:block;}
+  .brand .name{font-weight:700; font-size:14.5px; color:var(--text); white-space:nowrap;}
+  .brand .sub{font-size:11px; color:var(--text-faint); white-space:nowrap;}
   .nav{flex:1; overflow-y:auto; padding:4px 10px;}
-  .nav-group-label{font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-faint); padding:14px 10px 6px;}
+  .sidebar.collapsed .nav{padding:4px 8px;}
+  .nav-group-label{font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-faint); padding:14px 10px 6px; white-space:nowrap; overflow:hidden;}
   .nav-item{
     display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:7px;
     font-size:13px; color:var(--text-dim); cursor:pointer;
@@ -46,17 +54,31 @@
   .nav-item.active{background:var(--accent-dim); color:var(--accent); font-weight:600; box-shadow:inset 3px 0 0 var(--accent);}
   .nav-item.disabled{color:var(--text-faint); cursor:not-allowed;}
   .nav-item.disabled:hover{background:transparent;}
+  .nav-caret{flex:none; font-size:10px; color:var(--text-faint);}
   .nav-sub{padding-left:26px;}
   .nav-sub .nav-item{font-size:12.6px; padding:6px 10px;}
   .planned-tag{
-    margin-left:auto; font-size:9.5px; font-weight:600; letter-spacing:.03em;
-    color:var(--text-faint); background:var(--bg); border:1px solid var(--border); border-radius:20px; padding:1.5px 7px; flex:none;
+    margin-left:auto; font-size:9px; font-weight:600; letter-spacing:.02em; white-space:nowrap;
+    color:var(--text-faint); background:var(--bg); border:1px solid var(--border); border-radius:20px; padding:1.5px 6px; flex:none;
   }
   .live-tag{
     margin-left:auto; font-size:9.5px; font-weight:600; letter-spacing:.03em;
     color:var(--brand-dark); background:var(--brand-dim); border:1px solid #bfe8cf; border-radius:20px; padding:1.5px 7px; flex:none;
   }
+  /* collapsed: icon-only rail — hide every label/text element, center each row on its icon */
+  .sidebar.collapsed .brand .name, .sidebar.collapsed .brand .sub,
+  .sidebar.collapsed .nav-group-label,
+  .sidebar.collapsed .nav-item .lbl,
+  .sidebar.collapsed .nav-caret,
+  .sidebar.collapsed .planned-tag, .sidebar.collapsed .live-tag,
+  .sidebar.collapsed .nav-sub,
+  .sidebar.collapsed .sidebar-foot .who{
+    display:none;
+  }
+  .sidebar.collapsed .nav-item{justify-content:center; padding:9px 0;}
+  .sidebar.collapsed .nav-item .ico{width:auto; font-size:15px;}
   .sidebar-foot{padding:12px 18px; border-top:1px solid var(--border); display:flex; gap:9px; align-items:center;}
+  .sidebar.collapsed .sidebar-foot{flex-direction:column; padding:12px 6px; gap:6px;}
   .avatar{width:28px; height:28px; border-radius:50%; background:var(--brand); color:#fff; font-size:11.5px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none;}
   .sidebar-foot .who{flex:1; min-width:0;}
   .sidebar-foot .who b, .sidebar-foot .who .who-name{display:block; font-size:12.5px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
