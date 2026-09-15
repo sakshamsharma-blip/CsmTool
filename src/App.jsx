@@ -26,6 +26,7 @@ import CsmSetupView from "./views/CsmSetupView";
 import PortfolioView from "./views/PortfolioView";
 import DashboardView from "./views/DashboardView";
 import CollectionsView from "./views/CollectionsView";
+import TasksView from "./views/TasksView";
 import VisitsView from "./views/VisitsView";
 import LogCheckinView from "./views/LogCheckinView";
 
@@ -382,6 +383,9 @@ export default function App() {
           )}
           {view === "collections" && (
             <CollectionsView labs={labs} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+          )}
+          {view === "tasks" && (
+            <TasksView labs={labs} modules={modules} plans={plans} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "visits" && (
             <VisitsView labs={labs} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />

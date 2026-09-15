@@ -118,6 +118,23 @@ export default function LogCheckinView({ lab, modules, plans, currentCSM, idByNa
         actionItems: actionItems.filter((it) => it.text.trim()).map((it) => ({ text: it.text.trim(), dueDate: it.dueDate || null })),
       });
 
+      // A next-follow-up date used to only ever surface on the Visits & Meetings page itself — it
+      // never became a real task, so it never showed up on Dashboard/Tasks unless a module also
+      // happened to get flagged. Now every follow-up date always creates its own task too, so it's
+      // reliably visible everywhere tasks are, whether or not anything was flagged.
+      if (nextFollowup) {
+        await addTask({
+          labId: lab.id,
+          desc: `Follow-up — ${lab.name}${nextFollowupReason ? `: ${nextFollowupReason}` : ""}`,
+          owners: [currentCSM],
+          type: "follow-up",
+          repeat: "none",
+          due: nextFollowup,
+          idByName,
+          assignedByName: currentCSM,
+        });
+      }
+
       // Flagging a module for follow-up during a check-in auto-creates a training follow-up task,
       // so it doesn't just sit silently in the snapshot — someone owns chasing it.
       if (flagged.length) {

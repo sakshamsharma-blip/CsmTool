@@ -17,6 +17,7 @@ const LIVE_NAV = [
     ],
   },
   { key: "collections", icon: "💰", label: "Collections" },
+  { key: "tasks", icon: "✅", label: "Tasks" },
   { key: "visits", icon: "📅", label: "Visits & Meetings" },
   { key: "adoption-template", icon: "📈", label: "Adoption Template" },
   { key: "plans", icon: "💳", label: "Plans" },
