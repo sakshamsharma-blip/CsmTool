@@ -3,13 +3,14 @@ import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllVisits, addVisit } from "../lib/visits";
 import { taskBucket } from "../lib/tasks";
+import { hasLeadAccess } from "../lib/roles";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
 
 const VISIT_TYPES = ["Visit", "Call", "Email", "WhatsApp", "Note"];
 
 export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, onOpenLab, showToast }) {
-  const isHead = csmDirectory.find((c) => c.name === currentCSM)?.role === "Lead";
+  const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
   const [scope, setScope] = useState("mine");
   const [csmFilter, setCsmFilter] = useState("");
   const csmNames = csmDirectory.map((c) => c.name);

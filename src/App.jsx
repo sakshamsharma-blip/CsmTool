@@ -40,6 +40,10 @@ export default function App() {
   const [labs, setLabs] = useState(SUPABASE_CONFIGURED ? [] : DEMO_LABS);
 
   const [currentCSM, setCurrentCSM] = useState(SUPABASE_CONFIGURED ? "" : DEMO_CSM_DIRECTORY[0].name);
+  // Who's actually signed in — stays fixed even while currentCSM is switched away from it
+  // for an Admin's "preview as" (Sidebar). Not used at all in demo mode, where the old
+  // switcher already lets anyone pick freely.
+  const [myName, setMyName] = useState("");
   const [view, setView] = useState("list");
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
   const [detailLabId, setDetailLabId] = useState(null);
@@ -85,7 +89,7 @@ export default function App() {
       if (sess?.user) {
         try {
           const mine = await myProfileName(sess.user.id);
-          if (mine) defaultCsm = mine;
+          if (mine) { defaultCsm = mine; setMyName(mine); }
         } catch { /* non-fatal */ }
       }
       setCurrentCSM(defaultCsm);
@@ -291,7 +295,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={setView} csmDirectory={csmDirectory} currentCSM={currentCSM} setCurrentCSM={setCurrentCSM} onOpenAddDrawer={() => setAddDrawerOpen(true)} />
+      <Sidebar view={view} setView={setView} csmDirectory={csmDirectory} currentCSM={currentCSM} setCurrentCSM={setCurrentCSM} myName={myName} onOpenAddDrawer={() => setAddDrawerOpen(true)} />
       <div className="main">
         <TopBar currentCSM={currentCSM} />
         <div className="content">

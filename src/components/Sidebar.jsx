@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
+import { roleLabel } from "../lib/roles";
 
 // "Live Now — Module 1": everything actually built and wired to real data. Customer Master
 // is a group (Total Labs + Add New Lab), matching the prototype's expandable nav — everything
@@ -39,9 +40,13 @@ function writeCollapsed(v) {
   try { localStorage.setItem("csm_sidebar_collapsed", v ? "1" : "0"); } catch { /* ignore */ }
 }
 
-export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCurrentCSM, onOpenAddDrawer }) {
+export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCurrentCSM, myName, onOpenAddDrawer }) {
   const initials = (name) => (name || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
-  const role = currentCSM ? (csmDirectory.find((c) => c.name === currentCSM)?.role === "Lead" ? "CSM Lead" : "Customer Success Manager") : "";
+  const role = currentCSM ? roleLabel(csmDirectory.find((c) => c.name === currentCSM)?.role) : "";
+  // Admin (myName's own real role, not currentCSM's — currentCSM may be swapped away from
+  // it below) gets the same "viewing as" switcher demo mode always had, so one person can
+  // test the CSM Lead view and the plain-CSM view without needing separate logins.
+  const isAdminPreviewing = SUPABASE_CONFIGURED && csmDirectory.find((c) => c.name === myName)?.role === "Admin";
 
   const [collapsed, setCollapsed] = useState(readCollapsed);
   function toggleCollapsed() {
@@ -124,24 +129,24 @@ export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCu
       <div className="sidebar-foot">
         <div className="avatar">{initials(currentCSM)}</div>
         <div className="who">
-          {SUPABASE_CONFIGURED ? (
-            <>
-              <span className="who-name" title={currentCSM}>{currentCSM}</span>
-              <span>{role}</span>
-            </>
-          ) : (
+          {!SUPABASE_CONFIGURED || isAdminPreviewing ? (
             <>
               <select
                 className="csm-switcher"
                 value={currentCSM}
                 onChange={(e) => setCurrentCSM(e.target.value)}
-                title="Demo mode — viewing as"
+                title={SUPABASE_CONFIGURED ? "Admin — previewing as" : "Demo mode — viewing as"}
               >
                 {csmDirectory.map((c) => (
                   <option key={c.name} value={c.name}>{c.name}</option>
                 ))}
               </select>
-              <span>{role} (demo)</span>
+              <span>{role}{SUPABASE_CONFIGURED ? (currentCSM !== myName ? " (previewing)" : " · you") : " (demo)"}</span>
+            </>
+          ) : (
+            <>
+              <span className="who-name" title={currentCSM}>{currentCSM}</span>
+              <span>{role}</span>
             </>
           )}
         </div>

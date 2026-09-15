@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { roleLabel } from "../lib/roles";
 import CsmFormModal from "../components/CsmFormModal";
 
 export default function CsmSetupView({ csmDirectory, idByName, onSaveCsm }) {
@@ -23,7 +24,7 @@ export default function CsmSetupView({ csmDirectory, idByName, onSaveCsm }) {
           {csmDirectory.map((c) => (
             <tr key={c.name}>
               <td>{c.name}</td>
-              <td><span className={`pill ${c.role === "Lead" ? "pill-parent" : "pill-child"}`}>{c.role === "Lead" ? "CSM Lead" : "CSM"}</span></td>
+              <td><span className={`pill ${c.role === "Admin" ? "pill-admin" : c.role === "Lead" ? "pill-parent" : "pill-child"}`}>{roleLabel(c.role)}</span></td>
               <td style={{ textAlign: "right" }}>
                 <span style={{ color: "var(--accent)", fontSize: "12.5px", cursor: "pointer" }} onClick={() => setModalState({ ...c, id: idByName[c.name] })}>Edit</span>
               </td>

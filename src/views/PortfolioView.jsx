@@ -9,6 +9,7 @@ import {
 } from "../lib/pitch";
 import { markModuleInScope as apiMarkModuleInScope } from "../lib/adoption";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask } from "../lib/tasks";
+import { hasLeadAccess } from "../lib/roles";
 import ScopeToggle from "../components/ScopeToggle";
 import BarChart from "../components/BarChart";
 import TasksPanel from "../components/TasksPanel";
@@ -17,7 +18,7 @@ import Modal from "../components/Modal";
 const SEG_LABELS = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 
 export default function PortfolioView({ labs, modules, plans, csmDirectory, currentCSM, idByName, onOpenLab, showToast }) {
-  const isHead = csmDirectory.find((c) => c.name === currentCSM)?.role === "Lead";
+  const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
   const [scope, setScope] = useState("mine");
   const [csmFilter, setCsmFilter] = useState("");
   const csmNames = csmDirectory.map((c) => c.name);

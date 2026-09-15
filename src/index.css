@@ -163,6 +163,7 @@
   .pill{display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:20px;}
   .pill-parent{background:#eef2ff; color:#4338ca;}
   .pill-child{background:#f1f5f9; color:#475467;}
+  .pill-admin{background:var(--brand-dim); color:var(--brand-dark);}
   .seg-badge{
     display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%;
     color:#fff; font-weight:700; font-size:11px;

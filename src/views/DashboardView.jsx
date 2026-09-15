@@ -5,12 +5,13 @@ import { computeLabRollup } from "../lib/labRollup";
 import { fetchAllLabsAdoption, computeSavedLabScores } from "../lib/adoption";
 import { fetchAllCollectionsItems, labCollectionsSummary, AGING_COLORS } from "../lib/collections";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask, getOpenTasksFor } from "../lib/tasks";
+import { hasLeadAccess } from "../lib/roles";
 import ScopeToggle from "../components/ScopeToggle";
 import BarChart from "../components/BarChart";
 import TasksPanel from "../components/TasksPanel";
 
 export default function DashboardView({ labs, modules, plans, csmDirectory, currentCSM, idByName, onOpenLab, showToast }) {
-  const isHead = csmDirectory.find((c) => c.name === currentCSM)?.role === "Lead";
+  const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
   const [scope, setScope] = useState("mine");
   const [csmFilter, setCsmFilter] = useState("");
   const csmNames = csmDirectory.map((c) => c.name);

@@ -3,11 +3,12 @@ import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR } from "../lib/format";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllCollectionsItems, addCollectionsItem, logCollectionsReminder, labCollectionsSummary, AGING_COLORS } from "../lib/collections";
+import { hasLeadAccess } from "../lib/roles";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
 
 export default function CollectionsView({ labs, csmDirectory, currentCSM, idByName, onOpenLab, showToast }) {
-  const isHead = csmDirectory.find((c) => c.name === currentCSM)?.role === "Lead";
+  const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
   const [scope, setScope] = useState("mine");
   const [csmFilter, setCsmFilter] = useState("");
   const csmNames = csmDirectory.map((c) => c.name);

@@ -36,6 +36,7 @@ export default function CsmFormModal({ open, editing, onClose, onSave }) {
         <select value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="CSM">CSM</option>
           <option value="Lead">CSM Lead</option>
+          <option value="Admin">Admin</option>
         </select>
       </div>
       {error && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>{error}</div>}
