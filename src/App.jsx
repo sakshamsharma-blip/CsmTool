@@ -308,7 +308,7 @@ export default function App() {
     <div className="app">
       <Sidebar view={view} setView={setView} csmDirectory={csmDirectory} currentCSM={currentCSM} setCurrentCSM={setCurrentCSM} myName={myName} onOpenAddDrawer={() => setAddDrawerOpen(true)} />
       <div className="main">
-        <TopBar currentCSM={currentCSM} csmDirectory={csmDirectory} view={view} setView={setView} />
+        <TopBar currentCSM={currentCSM} csmDirectory={csmDirectory} myName={myName} view={view} setView={setView} showToast={showToast} />
         <div className="content">
           {!SUPABASE_CONFIGURED && (
             <div className="banner">
