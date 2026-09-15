@@ -9,8 +9,8 @@ export default function CsmSetupView({ csmDirectory, idByName, onSaveCsm }) {
     <div>
       <div className="toolbar">
         <div>
-          <h1 className="page-title">CSM Setup</h1>
-          <p className="page-sub">Your team roster — who's a CSM Lead vs. a CSM.</p>
+          <h1 className="page-title">Manage Users</h1>
+          <p className="page-sub">Your team roster — who's a CSM Lead vs. a CSM. Visible to Admin and CSM Lead only.</p>
         </div>
         <button className="btn btn-primary" onClick={() => setModalState({})}>+ Add Team Member</button>
       </div>

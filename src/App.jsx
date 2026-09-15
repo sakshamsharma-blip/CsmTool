@@ -8,6 +8,7 @@ import {
 import { fetchPlans, setPlanModule, setPlanExcludedParam } from "./lib/plans";
 import { fetchLabs, insertLab, updateLabCsm, updateLabPlan } from "./lib/labs";
 import { logActivity } from "./lib/activity";
+import { hasLeadAccess } from "./lib/roles";
 import { DEMO_MODULES, DEMO_PLANS, DEMO_CSM_DIRECTORY, DEMO_LABS } from "./lib/demoSeed";
 import { useToast } from "./hooks/useToast";
 
@@ -58,6 +59,13 @@ export default function App() {
   function openLogCheckin() {
     setView("log-checkin");
   }
+  // If an Admin previewing "as" a CSM (or any other state change) drops lead access
+  // while Manage Users is open, back out of it rather than showing a blank pane.
+  useEffect(() => {
+    if (view === "csm-setup" && !hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role)) {
+      setView("list");
+    }
+  }, [view, currentCSM, csmDirectory]);
   const [toastMsg, showToast] = useToast();
 
   useEffect(() => {
@@ -266,6 +274,9 @@ export default function App() {
   }
 
   const csmNames = csmDirectory.map((c) => c.name);
+  // Manage Users (top bar) is Admin/Lead-only — gate the view itself, not just the button,
+  // so it can't be reached (e.g. an Admin preview switched away, or stale state) by anyone else.
+  const canManageUsers = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
 
   if (SUPABASE_CONFIGURED && !authChecked) {
     return <div style={{ padding: 40, fontFamily: "sans-serif", color: "#475467" }}>Loading…</div>;
@@ -297,7 +308,7 @@ export default function App() {
     <div className="app">
       <Sidebar view={view} setView={setView} csmDirectory={csmDirectory} currentCSM={currentCSM} setCurrentCSM={setCurrentCSM} myName={myName} onOpenAddDrawer={() => setAddDrawerOpen(true)} />
       <div className="main">
-        <TopBar currentCSM={currentCSM} />
+        <TopBar currentCSM={currentCSM} csmDirectory={csmDirectory} view={view} setView={setView} />
         <div className="content">
           {!SUPABASE_CONFIGURED && (
             <div className="banner">
@@ -325,7 +336,7 @@ export default function App() {
               onToggleParam={handleToggleParam}
             />
           )}
-          {view === "csm-setup" && (
+          {view === "csm-setup" && canManageUsers && (
             <CsmSetupView csmDirectory={csmDirectory} idByName={idByName} onSaveCsm={handleSaveCsm} />
           )}
           {view === "dashboard" && (

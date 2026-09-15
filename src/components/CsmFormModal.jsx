@@ -3,7 +3,10 @@ import Modal from "./Modal";
 
 export default function CsmFormModal({ open, editing, onClose, onSave }) {
   const [name, setName] = useState(editing?.name || "");
-  const [role, setRole] = useState(editing?.role || "CSM");
+  // Admin isn't a selectable role here — there's exactly one Admin account, created directly
+  // in the database, and this form can't create or hand out another one.
+  const isEditingAdmin = editing?.role === "Admin";
+  const [role, setRole] = useState(isEditingAdmin ? "Admin" : editing?.role || "CSM");
   const [error, setError] = useState("");
 
   if (!open) return null;
@@ -33,11 +36,19 @@ export default function CsmFormModal({ open, editing, onClose, onSave }) {
       </div>
       <div className="tmpl-field">
         <label>Role</label>
-        <select value={role} onChange={(e) => setRole(e.target.value)}>
-          <option value="CSM">CSM</option>
-          <option value="Lead">CSM Lead</option>
-          <option value="Admin">Admin</option>
-        </select>
+        {isEditingAdmin ? (
+          <>
+            <input value="Admin" disabled style={{ color: "var(--text-dim)", background: "var(--bg)" }} />
+            <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 5 }}>
+              The Admin role isn't changeable here.
+            </div>
+          </>
+        ) : (
+          <select value={role} onChange={(e) => setRole(e.target.value)}>
+            <option value="CSM">CSM</option>
+            <option value="Lead">CSM Lead</option>
+          </select>
+        )}
       </div>
       {error && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>{error}</div>}
     </Modal>
