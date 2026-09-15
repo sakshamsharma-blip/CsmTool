@@ -45,7 +45,7 @@ export default function TopBar({ currentCSM, csmDirectory, myName, view, setView
       <div className="topbar-spacer"></div>
       <div className="account-menu" ref={menuRef}>
         <button type="button" className={`account-trigger${menuOpen ? " open" : ""}`} onClick={() => setMenuOpen((o) => !o)}>
-          <div className="avatar" style={{ width: 30, height: 30, fontSize: "11.5px" }}>{initials(accountName)}</div>
+          <div className="avatar" style={{ width: 36, height: 36, fontSize: "13px" }}>{initials(accountName)}</div>
           <div className="account-id">
             <div className="account-name">{accountName}</div>
             <div className="account-role">{accountRole}</div>
