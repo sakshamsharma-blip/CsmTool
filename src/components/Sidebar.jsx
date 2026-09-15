@@ -139,7 +139,12 @@ export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCu
                 onChange={(e) => setCurrentCSM(e.target.value)}
                 title={SUPABASE_CONFIGURED ? "Admin — previewing as" : "Demo mode — viewing as"}
               >
-                {csmDirectory.map((c) => (
+                {/* Real mode: only offer to preview as someone who actually has a real login
+                    linked (profiles.linked — see lib/profiles.js) — previewing as a roster
+                    entry nobody's ever signed into yet isn't a real preview. Always keep your
+                    own name in the list even before that's true for you. Demo mode has no such
+                    concept (nothing there is a real login), so it keeps listing everyone. */}
+                {(SUPABASE_CONFIGURED ? csmDirectory.filter((c) => c.linked || c.name === myName) : csmDirectory).map((c) => (
                   <option key={c.name} value={c.name}>{c.name}</option>
                 ))}
               </select>

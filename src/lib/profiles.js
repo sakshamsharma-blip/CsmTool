@@ -1,14 +1,21 @@
 import { supabase } from "../supabaseClient";
 
-// Fetches the CSM roster. Returns { directory: [{id,name,role}], idByName: {name: id} } —
+// Fetches the CSM roster. Returns { directory: [{id,name,role,linked}], idByName: {name: id} } —
 // components mostly want directory; write functions (labs.js, plans.js) need idByName to
 // translate a CSM's name (what the UI shows) into the profiles.id the database expects.
+// `linked` is true once that roster row actually has a real Supabase Auth login attached
+// (profiles.auth_user_id gets backfilled the moment ANY of that person's emails first signs
+// in — see migrations/0006_identity_linking.sql) — a roster entry can exist (and show up
+// everywhere else in the app) well before the person behind it has ever logged in.
 export async function fetchProfiles() {
-  const { data, error } = await supabase.from("profiles").select("id,name,role").order("name");
+  const { data, error } = await supabase.from("profiles").select("id,name,role,auth_user_id").order("name");
   if (error) throw error;
   const idByName = {};
-  data.forEach((p) => { idByName[p.name] = p.id; });
-  return { directory: data, idByName };
+  const directory = data.map((p) => {
+    idByName[p.name] = p.id;
+    return { id: p.id, name: p.name, role: p.role, linked: !!p.auth_user_id };
+  });
+  return { directory, idByName };
 }
 
 export async function upsertProfile({ id, name, role }) {
