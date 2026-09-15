@@ -76,6 +76,11 @@ export function buildActivePitchRows({ labs, modules, plans, adoptionByLab, pitc
     const key = `${moduleKey}|${paramName}`;
     return !!(a && a.paramState[key] && a.paramState[key].included);
   }
+  function paramStateOf(lab, moduleKey, paramName) {
+    const a = adoptionByLab[lab.id];
+    const key = `${moduleKey}|${paramName}`;
+    return (a && a.paramState[key]) || { included: false, status: "Not Started", expValue: null, expStage: null };
+  }
 
   const rows = [];
   labs.forEach((lab) => {
@@ -102,6 +107,7 @@ export function buildActivePitchRows({ labs, modules, plans, adoptionByLab, pitc
             labId: lab.id, labName: lab.name, csm: lab.csm,
             level: "param", moduleKey: mod.key, paramName: p.name,
             label: `Pitch ${p.name} (${mod.name})`, status,
+            existingParamState: paramStateOf(lab, mod.key, p.name),
           });
         }
       });

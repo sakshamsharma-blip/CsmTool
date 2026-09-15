@@ -2,18 +2,22 @@ import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup } from "../lib/labRollup";
 import { fetchAllLabsAdoption } from "../lib/adoption";
-import { fetchAllPitchStatus, buildActivePitchRows } from "../lib/pitch";
+import {
+  fetchAllPitchStatus, buildActivePitchRows, markFeatureAdded,
+  setModulePitchStatus, setParamPitchStatus, PITCH_STATUSES,
+} from "../lib/pitch";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask } from "../lib/tasks";
 import { hasLeadAccess } from "../lib/roles";
 import ScopeToggle from "../components/ScopeToggle";
 import TasksPanel from "../components/TasksPanel";
+import Modal from "../components/Modal";
 
 // Everything a CSM (or a Lead, across the team) needs to work through — every task regardless of
 // due date (Overdue/Today/Upcoming/Someday/Done, same data "Tasks for Today" already uses under
-// the hood, just not tucked away on Dashboard/Portfolio), plus a read-only view of every open
-// Expansion pitch item (To Do/Pitching/In Progress) so nothing sitting in the pitch worklist gets
-// forgotten just because it isn't a "task" yet. Pitch status itself is still only ever changed on
-// My Portfolio — clicking a row here just opens that lab.
+// the hood, just not tucked away on Dashboard/Portfolio), plus every open Expansion pitch item
+// (To Do/Pitching/In Progress) so nothing sitting in the pitch worklist gets forgotten just
+// because it isn't a "task" yet. Status can be changed right from this table (same underlying
+// pitch_status row My Portfolio's dropdown edits) — no need to go find the lab there first.
 export default function TasksView({ labs, modules, plans, csmDirectory, currentCSM, idByName, onOpenLab, showToast }) {
   const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
   const [scope, setScope] = useState("mine");
@@ -25,6 +29,11 @@ export default function TasksView({ labs, modules, plans, csmDirectory, currentC
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
+
+  const [addedTarget, setAddedTarget] = useState(null); // {labId, moduleKey, paramName, level, label, existingParamState}
+  const [addedTrial, setAddedTrial] = useState(false);
+  const [addedAmount, setAddedAmount] = useState("");
+  const [addedError, setAddedError] = useState(false);
 
   function invert(m) { const out = {}; Object.entries(m).forEach(([name, id]) => { out[id] = name; }); return out; }
 
@@ -74,6 +83,34 @@ export default function TasksView({ labs, modules, plans, csmDirectory, currentC
     catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
+  async function handlePitchStatusChange(status, target) {
+    if (status === "Added") {
+      setAddedTarget(target); setAddedTrial(false); setAddedAmount(""); setAddedError(false);
+      return;
+    }
+    try {
+      const csmId = idByName[labsById[target.labId]?.csm];
+      if (target.level === "module") await setModulePitchStatus(target.labId, target.moduleKey, status, csmId);
+      else await setParamPitchStatus(target.labId, target.moduleKey, target.paramName, status, csmId);
+      await loadAll();
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+  async function confirmMarkAdded() {
+    const t = addedTarget;
+    let amount = 0;
+    if (!addedTrial) {
+      amount = parseFloat(addedAmount);
+      if (!amount || amount <= 0) { setAddedError(true); return; }
+    }
+    try {
+      const csmId = idByName[labsById[t.labId]?.csm];
+      await markFeatureAdded(t, amount, addedTrial, csmId);
+      setAddedTarget(null);
+      await loadAll();
+      showToast(`${t.label} marked Added.`);
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+
   return (
     <div>
       <h1 className="page-title">Tasks</h1>
@@ -89,8 +126,7 @@ export default function TasksView({ labs, modules, plans, csmDirectory, currentC
       <div style={{ marginTop: 26 }}>
         <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 10 }}>Pitch Reminders (Expansion) <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>({pitchRows.length})</span></div>
         <div className="banner" style={{ marginBottom: 12 }}>
-          <span className="badge">READ-ONLY</span>
-          <span>Every Expansion feature still sitting at To Do / Pitching / In Progress across {teamAll ? "the team" : `${scopeCsm}'s`} labs. Change a status from that lab's row on My Portfolio — this list just makes sure nothing here gets forgotten.</span>
+          <span>Every Expansion feature still sitting at To Do / Pitching / In Progress across {teamAll ? "the team" : `${scopeCsm}'s`} labs. Change a status right here — it's the same pitch record My Portfolio's lab view edits, so either place stays in sync. Picking <b>Added</b> asks for the added cost (or trial/free), then moves the feature onto that lab's Adoption tab and creates a Collections entry automatically.</span>
         </div>
         {!pitchRows.length ? (
           <div className="table-card" style={{ padding: "18px 20px", color: "var(--text-faint)", fontSize: 12.5 }}>No open pitch items for {scopeLabel} right now.</div>
@@ -102,12 +138,47 @@ export default function TasksView({ labs, modules, plans, csmDirectory, currentC
                 <td className="lab-name clickable" onClick={() => onOpenLab(r.labId)}>{r.labName}</td>
                 <td>{r.label}</td>
                 <td>{r.csm}</td>
-                <td><span className="status-chip" style={{ background: "transparent", border: "1px solid var(--accent)", color: "var(--accent)", cursor: "default" }}>{r.status}</span></td>
+                <td>
+                  <select
+                    className="status-select"
+                    value={r.status}
+                    onChange={(e) => handlePitchStatusChange(e.target.value, {
+                      labId: r.labId, moduleKey: r.moduleKey, paramName: r.paramName,
+                      level: r.level, label: r.label, existingParamState: r.existingParamState,
+                    })}
+                  >
+                    {PITCH_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </td>
               </tr>
             ))}</tbody>
           </table></div></div>
         )}
       </div>
+
+      <Modal
+        open={!!addedTarget}
+        title={addedTarget ? `Mark "${addedTarget.label}" as Added` : ""}
+        onClose={() => setAddedTarget(null)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setAddedTarget(null) },
+          { label: "Confirm Added", className: "btn-primary", onClick: confirmMarkAdded },
+        ]}
+      >
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, cursor: "pointer" }}>
+            <input type="checkbox" checked={addedTrial} onChange={(e) => setAddedTrial(e.target.checked)} /> This is a trial / free addition (no charge yet)
+          </label>
+        </div>
+        {!addedTrial && (
+          <div className="tmpl-field">
+            <label>Added Monthly Cost (₹)</label>
+            <input type="number" min="0" placeholder="e.g. 5000" value={addedAmount} onChange={(e) => setAddedAmount(e.target.value)}
+              style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
+          </div>
+        )}
+        {addedError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>Enter an amount, or mark this as trial/free.</div>}
+      </Modal>
     </div>
   );
 }
