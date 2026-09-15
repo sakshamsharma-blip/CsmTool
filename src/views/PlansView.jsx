@@ -20,7 +20,9 @@ function Toggle({ on, onClick, disabled, size, title }) {
 }
 
 export default function PlansView({ plans, modules, labs, onToggleModule, onToggleParam }) {
-  const [expanded, setExpanded] = useState({});
+  // Accordion — only one module's parameters open at a time, so the page doesn't turn into
+  // a long, dense stack of sub-grids the moment someone's browsing a few modules in a row.
+  const [expandedKey, setExpandedKey] = useState(null);
   const [query, setQuery] = useState("");
 
   function labsOnPlan(planId) {
@@ -54,6 +56,7 @@ export default function PlansView({ plans, modules, labs, onToggleModule, onTogg
         <span className="mtx-legend">Click a toggle to include/exclude · click a module row to see its parameters</span>
       </div>
 
+      <div className="table-card">
       <div className="table-scroll">
         <table className="plan-matrix">
           <thead>
@@ -69,13 +72,13 @@ export default function PlansView({ plans, modules, labs, onToggleModule, onTogg
           </thead>
           <tbody>
             {filteredModules.map((mod) => {
-              const isOpen = !!expanded[mod.key];
+              const isOpen = expandedKey === mod.key;
               return (
                 <Fragment key={mod.key}>
-                  <tr className="mtx-row">
+                  <tr className={`mtx-row${isOpen ? " expanded" : ""}`}>
                     <td
                       className={`mtx-modcell${isOpen ? " open" : ""}`}
-                      onClick={() => setExpanded((e) => ({ ...e, [mod.key]: !e[mod.key] }))}
+                      onClick={() => setExpandedKey((k) => (k === mod.key ? null : mod.key))}
                     >
                       <span className={`mtx-caret${isOpen ? " open" : ""}`}>▸</span>
                       <span className="mtx-mod-ico">{mod.icon}</span>
@@ -150,6 +153,7 @@ export default function PlansView({ plans, modules, labs, onToggleModule, onTogg
             )}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   );

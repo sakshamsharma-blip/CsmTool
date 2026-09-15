@@ -102,6 +102,7 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab })
         <span className="clear" onClick={() => setFilters({ csm: "", region: "", status: "", segment: "" })}>Clear all</span>
       </div>
 
+      <div className="table-card">
       <div className="table-scroll">
       <table>
         <thead>
@@ -153,6 +154,7 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab })
           })}
         </tbody>
       </table>
+      </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 18 }}>
