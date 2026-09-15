@@ -346,7 +346,7 @@
   .out-of-scope-tag{font-size:10px; font-weight:700; padding:2px 8px; border-radius:20px; background:#eef0f3; color:var(--text-faint); flex:none;}
 
   /* ---------- adoption template — three-pane builder ---------- */
-  .tmpl-layout{display:grid; grid-template-columns:300px 1fr 270px; gap:16px; align-items:start;}
+  .tmpl-layout{display:grid; grid-template-columns:minmax(0,300px) minmax(0,1fr) minmax(0,270px); gap:16px; align-items:start; min-width:0;}
   .tmpl-list-card{background:var(--surface); border:1px solid var(--border); border-radius:11px; overflow:hidden;}
   .tmpl-list-head{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border);}
   .tmpl-list-head h3{margin:0; font-size:13px;}
@@ -383,7 +383,7 @@
   .rule-chip{display:flex; align-items:center; gap:5px; font-size:11.5px; border:1px solid var(--border); border-radius:20px; padding:4px 10px 4px 8px; cursor:pointer; user-select:none;}
   .rule-chip input{cursor:pointer;}
   .rule-chip.all{font-weight:600;}
-  .rules-match{margin-top:14px; padding-top:12px; border-top:1px solid var(--border); font-size:12px; color:var(--text-dim); display:flex; justify-content:space-between; align-items:center;}
+  .rules-match{margin-top:14px; padding-top:12px; border-top:1px solid var(--border); font-size:12px; color:var(--text-dim); display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:4px;}
   .rules-match b{color:var(--text); font-variant-numeric:tabular-nums;}
   .rules-note{font-size:11px; color:var(--text-faint); margin-top:10px; line-height:1.5;}
 
@@ -448,7 +448,7 @@
   .act-pagination button:disabled{opacity:.4; cursor:not-allowed;}
 
   /* ---------- log check-in — full page layout ---------- */
-  .checkin-layout{display:grid; grid-template-columns:1fr 300px; gap:18px; align-items:start;}
+  .checkin-layout{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,300px); gap:18px; align-items:start; min-width:0;}
   .checkin-card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px 20px; margin-bottom:14px;}
   .checkin-card .fsection{margin-bottom:0;}
   .checkin-side{position:sticky; top:0;}
