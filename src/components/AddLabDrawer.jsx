@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fmtMoney, toINR, segmentFor, nativeCurrency } from "../lib/format";
 
 const SEG_LABELS = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 
-export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, plans }) {
+export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, plans, presetParent }) {
   const [hierarchy, setHierarchy] = useState("parent");
   const [form, setForm] = useState(initialForm(csmNames, plans));
+  const [saveError, setSaveError] = useState("");
 
   // Re-seed defaults whenever the roster/plans change (e.g. right after adding a CSM) so the
   // dropdowns aren't stuck on a stale default.
@@ -13,6 +14,35 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
     setForm((f) => ({ ...f, csm: f.csm || csmNames[0] || "", plan: f.plan || plans[0]?.id || "" }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [csmNames.length, plans.length]);
+
+  // Every time the drawer opens, start from a clean slate — either blank ("+ Add New Lab" from
+  // the Sidebar/Total Labs) or, when opened via "+ Add Child Lab" on a parent's own Child Labs
+  // tab, pre-set to Child Lab with that parent selected and its CSM/region/plan/billing details
+  // carried over as sensible defaults (all still editable before saving).
+  useEffect(() => {
+    if (!open) return;
+    setSaveError("");
+    if (presetParent) {
+      setHierarchy("child");
+      setForm({
+        ...initialForm(csmNames, plans),
+        parentId: presetParent.id,
+        csm: presetParent.csm || csmNames[0] || "",
+        plan: presetParent.plan || plans[0]?.id || "",
+        region: presetParent.region || "Domestic",
+        city: presetParent.city || "",
+        state: presetParent.state || "",
+        country: presetParent.country || "",
+        creditDays: presetParent.creditDays || "30",
+        billingType: presetParent.billingType || "Fixed",
+        paymentCycle: presetParent.paymentCycle || "Monthly",
+      });
+    } else {
+      setHierarchy("parent");
+      setForm(initialForm(csmNames, plans));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, presetParent]);
 
   if (!open) return null;
 
@@ -28,16 +58,46 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
 
+  // "Save & Add Another" after a preset-parent add (adding several child labs in a row under
+  // the same parent) should stay on that parent rather than snapping back to a blank Parent Lab
+  // form — only a plain "+ Add New Lab" open resets all the way to blank.
   function reset() {
-    setForm(initialForm(csmNames, plans));
-    setHierarchy("parent");
+    if (presetParent) {
+      setHierarchy("child");
+      setForm({
+        ...initialForm(csmNames, plans),
+        parentId: presetParent.id,
+        csm: presetParent.csm || csmNames[0] || "",
+        plan: presetParent.plan || plans[0]?.id || "",
+        region: presetParent.region || "Domestic",
+        city: presetParent.city || "",
+        state: presetParent.state || "",
+        country: presetParent.country || "",
+        creditDays: presetParent.creditDays || "30",
+        billingType: presetParent.billingType || "Fixed",
+        paymentCycle: presetParent.paymentCycle || "Monthly",
+      });
+    } else {
+      setForm(initialForm(csmNames, plans));
+      setHierarchy("parent");
+    }
   }
 
   function handleSave(addAnother) {
     if (!form.id.trim() || !form.name.trim()) {
-      alert("Lab ID and Lab Name are required.");
+      setSaveError("Lab ID and Lab Name are required.");
       return;
     }
+    const trimmedId = form.id.trim();
+    if (labs.some((l) => l.id.trim().toLowerCase() === trimmedId.toLowerCase())) {
+      setSaveError(`Lab ID "${trimmedId}" is already in use — every lab (parent or child) needs a unique Lab ID.`);
+      return;
+    }
+    if (hierarchy === "child" && !form.parentId) {
+      setSaveError(parents.length ? "Select which parent lab this lab goes under." : "No parent labs exist yet — create the parent lab first, then add this as a Child Lab under it.");
+      return;
+    }
+    setSaveError("");
     const lab = {
       id: form.id.trim(), name: form.name.trim(), type: hierarchy === "child" ? "Child" : "Parent",
       parent: hierarchy === "child" ? form.parentId : null,
@@ -58,12 +118,13 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
       <div className="drawer show">
         <div className="drawer-head">
           <div>
-            <h2>Add New Lab</h2>
-            <p>Customer Master &gt; Total Labs &gt; Add New Lab</p>
+            <h2>{presetParent ? `Add Child Lab under ${presetParent.name}` : "Add New Lab"}</h2>
+            <p>{presetParent ? `Customer Master > Total Labs > ${presetParent.name} > Add Child Lab` : "Customer Master > Total Labs > Add New Lab"}</p>
           </div>
           <button className="drawer-close" onClick={onClose}>&times;</button>
         </div>
         <div className="drawer-body">
+          {saveError && <div className="warn-banner" style={{ background: "var(--bad-bg)", color: "var(--bad)", borderColor: "#f3b8b8", marginBottom: 14 }}>{saveError}</div>}
           <div className="form-card">
             <div className="fsection">
               <h4>1. Lab Hierarchy</h4>
@@ -79,6 +140,7 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
                 <div className="field">
                   <label>Parent Lab (if Child Lab)</label>
                   <select value={form.parentId} onChange={(e) => set("parentId", e.target.value)}>
+                    <option value="">{parents.length ? "Select a parent lab…" : "No parent labs yet — create one first"}</option>
                     {parents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                   <div className="hint">Select the parent lab this lab will be created under.</div>

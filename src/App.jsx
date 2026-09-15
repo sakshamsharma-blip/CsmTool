@@ -48,6 +48,11 @@ export default function App() {
   const [myName, setMyName] = useState("");
   const [view, setView] = useState("list");
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
+  // Set when "+ Add Child Lab" is used from a parent lab's own Child Labs tab — preloads the
+  // drawer straight into Child Lab mode with that parent (and its CSM/plan/region/billing
+  // defaults) already filled in. Cleared whenever the drawer closes so a later generic
+  // "+ Add New Lab" open (Sidebar/Total Labs) starts blank again.
+  const [addDrawerPresetParent, setAddDrawerPresetParent] = useState(null);
   const [detailLabId, setDetailLabId] = useState(null);
   const [detailInitialTab, setDetailInitialTab] = useState("details");
   const detailLab = labs.find((l) => l.id === detailLabId) || null;
@@ -171,6 +176,15 @@ export default function App() {
   // Supabase already happened inside saveInvoice() in lib/invoices.js) — this just keeps the
   // app's own `labs` state in sync so the lab header and every table showing this lab's MRR
   // update immediately instead of waiting for a full reload.
+  function openAddChildLab(parentLab) {
+    setAddDrawerPresetParent(parentLab);
+    setAddDrawerOpen(true);
+  }
+  function closeAddDrawer() {
+    setAddDrawerOpen(false);
+    setAddDrawerPresetParent(null);
+  }
+
   function handleInvoiceMrrUpdate(labId, newMrr) {
     setLabs((ls) => ls.map((l) => (l.id === labId ? { ...l, mrr: newMrr } : l)));
   }
@@ -327,7 +341,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={setView} csmDirectory={csmDirectory} currentCSM={currentCSM} setCurrentCSM={setCurrentCSM} myName={myName} onOpenAddDrawer={() => setAddDrawerOpen(true)} />
+      <Sidebar view={view} setView={setView} csmDirectory={csmDirectory} currentCSM={currentCSM} setCurrentCSM={setCurrentCSM} myName={myName} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
       <div className="main">
         <TopBar currentCSM={currentCSM} csmDirectory={csmDirectory} myName={myName} view={view} setView={setView} showToast={showToast} />
         <div className="content">
@@ -338,7 +352,7 @@ export default function App() {
             </div>
           )}
           {view === "list" && (
-            <LabsView labs={labs} csmNames={csmNames} onOpenAddDrawer={() => setAddDrawerOpen(true)} onOpenLab={openLabDetail} />
+            <LabsView labs={labs} csmNames={csmNames} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} onOpenLab={openLabDetail} />
           )}
           {view === "plans" && (
             <PlansView plans={plans} modules={modules} labs={labs} onToggleModule={handleToggleModule} onToggleParam={handleToggleParam} />
@@ -388,6 +402,7 @@ export default function App() {
               onChangePlan={handleChangePlan}
               onInvoiceMrrUpdate={handleInvoiceMrrUpdate}
               onLogCheckin={openLogCheckin}
+              onAddChildLab={openAddChildLab}
               showToast={showToast}
             />
           )}
@@ -407,11 +422,12 @@ export default function App() {
 
       <AddLabDrawer
         open={addDrawerOpen}
-        onClose={() => setAddDrawerOpen(false)}
+        onClose={closeAddDrawer}
         onSave={handleAddLab}
         labs={labs}
         csmNames={csmNames}
         plans={plans}
+        presetParent={addDrawerPresetParent}
       />
       <Toast message={toastMsg} />
     </div>

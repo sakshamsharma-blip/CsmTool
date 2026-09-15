@@ -24,7 +24,7 @@ const EMPTY_ADOPTION = { scope: {}, paramScope: {}, paramState: {} };
 function statusPillClass(s) { return "status-" + s.replace(" ", ""); }
 function initials(name) { return (name || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
 
-export default function LabDetailView({ lab, labs, modules, plans, csmNames, currentCSM, idByName, onBack, onOpenLab, onReassignCsm, onChangePlan, onInvoiceMrrUpdate, onLogCheckin, initialTab, showToast }) {
+export default function LabDetailView({ lab, labs, modules, plans, csmNames, currentCSM, idByName, onBack, onOpenLab, onReassignCsm, onChangePlan, onInvoiceMrrUpdate, onLogCheckin, onAddChildLab, initialTab, showToast }) {
   const [tab, setTab] = useState(initialTab || "details");
   const [expandedModule, setExpandedModule] = useState(null);
 
@@ -585,27 +585,32 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
       </Modal>
 
       {tab === "childlabs" && (
-        children.length === 0 ? (
-          <div className="table-card" style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>No child labs under this parent yet.</div>
-        ) : (
-          <div className="table-card"><div className="table-scroll"><table className="child-mini"><thead><tr>
-            <th>Lab ID</th><th>Lab Name</th><th>CSM</th><th>Segment</th><th>MRR</th><th>Status</th>
-          </tr></thead><tbody>
-            {children.map((c) => {
-              const cseg = segmentFor(toINR(c.mrr, c.region));
-              return (
-                <tr key={c.id}>
-                  <td>{c.id}</td>
-                  <td className="lab-name clickable" onClick={() => guardedNav(() => onOpenLab(c.id))}>{c.name}</td>
-                  <td>{c.csm}</td>
-                  <td><span className="seg-badge" style={{ background: cseg.color }}>{cseg.code}</span></td>
-                  <td className="mrr-cell">{fmtMoney(c.mrr, c.region)}</td>
-                  <td><span className={`status-pill ${statusPillClass(c.status)}`}>{c.status}</span></td>
-                </tr>
-              );
-            })}
-          </tbody></table></div></div>
-        )
+        <>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <button className="btn btn-primary" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={() => onAddChildLab && onAddChildLab(lab)}>+ Add Child Lab</button>
+          </div>
+          {children.length === 0 ? (
+            <div className="table-card" style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>No child labs under this parent yet.</div>
+          ) : (
+            <div className="table-card"><div className="table-scroll"><table className="child-mini"><thead><tr>
+              <th>Lab ID</th><th>Lab Name</th><th>CSM</th><th>Segment</th><th>MRR</th><th>Status</th>
+            </tr></thead><tbody>
+              {children.map((c) => {
+                const cseg = segmentFor(toINR(c.mrr, c.region));
+                return (
+                  <tr key={c.id}>
+                    <td>{c.id}</td>
+                    <td className="lab-name clickable" onClick={() => guardedNav(() => onOpenLab(c.id))}>{c.name}</td>
+                    <td>{c.csm}</td>
+                    <td><span className="seg-badge" style={{ background: cseg.color }}>{cseg.code}</span></td>
+                    <td className="mrr-cell">{fmtMoney(c.mrr, c.region)}</td>
+                    <td><span className={`status-pill ${statusPillClass(c.status)}`}>{c.status}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody></table></div></div>
+          )}
+        </>
       )}
 
       {tab === "adoption" && (
