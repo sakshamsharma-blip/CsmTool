@@ -97,6 +97,10 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
       setSaveError(parents.length ? "Select which parent lab this lab goes under." : "No parent labs exist yet — create the parent lab first, then add this as a Child Lab under it.");
       return;
     }
+    if (form.creditDays.trim() === "") {
+      setSaveError("Credit Days is required — enter 0 if this lab has no credit period.");
+      return;
+    }
     setSaveError("");
     const lab = {
       id: form.id.trim(), name: form.name.trim(), type: hierarchy === "child" ? "Child" : "Parent",
@@ -192,9 +196,12 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
               <h4>3. Billing &amp; Payment Information</h4>
               <div className="frow">
                 <div className="field"><label>Credit Days <span className="req">*</span></label>
-                  <select value={form.creditDays} onChange={(e) => set("creditDays", e.target.value)}>
-                    <option>0</option><option>15</option><option>30</option><option>45</option><option>60</option>
-                  </select>
+                  <input
+                    type="number" min="0" step="1" inputMode="numeric"
+                    value={form.creditDays}
+                    onChange={(e) => set("creditDays", e.target.value.replace(/[^0-9]/g, ""))}
+                    placeholder="e.g. 30"
+                  />
                 </div>
                 <div className="field"><label>Billing Type <span className="req">*</span></label>
                   <select value={form.billingType} onChange={(e) => set("billingType", e.target.value)}>
