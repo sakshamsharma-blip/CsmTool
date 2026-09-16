@@ -102,8 +102,10 @@
   }
   .search{
     flex:1; max-width:380px; display:flex; align-items:center; gap:8px;
-    background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:7px 12px; color:var(--text-faint); font-size:13px;
+    background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:7px 12px; color:var(--text); font-size:13px;
+    font-family:inherit; outline:none;
   }
+  .search::placeholder{ color:var(--text-faint); }
   .topbar-spacer{flex:1;}
   .bell{position:relative; color:var(--text-dim); font-size:16px;}
   .bell .dot{position:absolute; top:-4px; right:-6px; background:var(--bad); color:#fff; font-size:9px; font-weight:700; border-radius:20px; padding:1px 4px;}

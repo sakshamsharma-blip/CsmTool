@@ -62,6 +62,13 @@ export default function App() {
   const [detailLabId, setDetailLabId] = useState(null);
   const [detailInitialTab, setDetailInitialTab] = useState("details");
   const detailLab = labs.find((l) => l.id === detailLabId) || null;
+  // The top bar's search box is a shortcut into Total Labs' own search, not a separate
+  // engine — typing here just jumps to the list view and seeds its filter with the same text.
+  const [globalSearchQuery, setGlobalSearchQuery] = useState("");
+  function handleGlobalSearch(q) {
+    setGlobalSearchQuery(q);
+    if (q.trim()) setView("list");
+  }
 
   // Kick off the live USD→INR rate once per load. Every money display reads the rate directly
   // from fx.js's module-level cache (not React state) so it doesn't need threading through
@@ -374,7 +381,7 @@ export default function App() {
     <div className="app">
       <Sidebar view={view} setView={setView} csmDirectory={csmDirectory} currentCSM={currentCSM} setCurrentCSM={setCurrentCSM} myName={myName} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
       <div className="main">
-        <TopBar currentCSM={currentCSM} csmDirectory={csmDirectory} myName={myName} view={view} setView={setView} showToast={showToast} />
+        <TopBar currentCSM={currentCSM} csmDirectory={csmDirectory} myName={myName} view={view} setView={setView} showToast={showToast} searchQuery={globalSearchQuery} onSearchChange={handleGlobalSearch} />
         <div className="content">
           {!SUPABASE_CONFIGURED && (
             <div className="banner">
@@ -383,7 +390,7 @@ export default function App() {
             </div>
           )}
           {view === "list" && (
-            <LabsView labs={labs} csmNames={csmNames} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} onOpenLab={openLabDetail} />
+            <LabsView labs={labs} csmNames={csmNames} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} onOpenLab={openLabDetail} initialQuery={globalSearchQuery} />
           )}
           {view === "adoption-template" && (
             <AdoptionTemplateView

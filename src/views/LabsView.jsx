@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { fmtINR, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
 import { isHealthyStatus } from "../lib/pulse";
 
@@ -33,15 +33,23 @@ function computeRows(labs) {
   });
 }
 
-export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab }) {
+export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab, initialQuery }) {
   const [expanded, setExpanded] = useState({});
   const [filters, setFilters] = useState({ csm: "", region: "", status: "", segment: "" });
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery || "");
+
+  // The top bar's search box seeds this same query — keep them in sync when it changes there,
+  // without fighting the user if they then edit this page's own search box directly.
+  useEffect(() => {
+    if (initialQuery !== undefined) setQuery(initialQuery);
+  }, [initialQuery]);
 
   const rows = useMemo(() => {
     let r = computeRows(labs);
     const q = query.trim().toLowerCase();
-    if (q) r = r.filter((row) => row.name.toLowerCase().includes(q) || row.children.some((c) => c.name.toLowerCase().includes(q)));
+    // Matches the top bar's promise — Lab ID, Lab Name, CSM, City — not just the name.
+    const matchesLab = (l) => [l.id, l.name, l.csm, l.city].some((v) => String(v || "").toLowerCase().includes(q));
+    if (q) r = r.filter((row) => matchesLab(row) || row.children.some(matchesLab));
     if (filters.csm) r = r.filter((row) => row.csm === filters.csm || row.children.some((c) => c.csm === filters.csm));
     if (filters.region) r = r.filter((row) => row.region === filters.region);
     if (filters.status) r = r.filter((row) => row.status === filters.status || row.children.some((c) => c.status === filters.status));

@@ -3,7 +3,7 @@ import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
 import { hasLeadAccess, roleLabel } from "../lib/roles";
 import ChangePasswordModal from "./ChangePasswordModal";
 
-export default function TopBar({ currentCSM, csmDirectory, myName, view, setView, showToast }) {
+export default function TopBar({ currentCSM, csmDirectory, myName, view, setView, showToast, searchQuery, onSearchChange }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const menuRef = useRef(null);
@@ -38,7 +38,13 @@ export default function TopBar({ currentCSM, csmDirectory, myName, view, setView
 
   return (
     <div className="topbar">
-      <div className="search">🔍&nbsp; Search by Lab ID, Lab Name, CSM, City...</div>
+      <input
+        className="search"
+        placeholder="🔍  Search by Lab ID, Lab Name, CSM, City..."
+        value={searchQuery}
+        onChange={(e) => onSearchChange(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") setView("list"); }}
+      />
       <div className="topbar-spacer"></div>
       <div className="account-menu" ref={menuRef}>
         <button type="button" className={`account-trigger${menuOpen ? " open" : ""}`} onClick={() => setMenuOpen((o) => !o)}>
