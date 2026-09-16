@@ -8,20 +8,22 @@ import { supabase } from "../supabaseClient";
 // in — see migrations/0006_identity_linking.sql) — a roster entry can exist (and show up
 // everywhere else in the app) well before the person behind it has ever logged in.
 export async function fetchProfiles() {
-  const { data, error } = await supabase.from("profiles").select("id,name,role,auth_user_id").order("name");
+  const { data, error } = await supabase.from("profiles").select("id,name,role,auth_user_id,active").order("name");
   if (error) throw error;
   const idByName = {};
   const directory = data.map((p) => {
     idByName[p.name] = p.id;
-    return { id: p.id, name: p.name, role: p.role, linked: !!p.auth_user_id };
+    return { id: p.id, name: p.name, role: p.role, linked: !!p.auth_user_id, active: p.active !== false };
   });
   return { directory, idByName };
 }
 
-export async function upsertProfile({ id, name, role }) {
+export async function upsertProfile({ id, name, role, active }) {
+  const payload = { name, role };
+  if (active !== undefined) payload.active = active;
   const { data, error } = id
-    ? await supabase.from("profiles").update({ name, role }).eq("id", id).select().single()
-    : await supabase.from("profiles").insert({ name, role }).select().single();
+    ? await supabase.from("profiles").update(payload).eq("id", id).select().single()
+    : await supabase.from("profiles").insert(payload).select().single();
   if (error) throw error;
   return data;
 }

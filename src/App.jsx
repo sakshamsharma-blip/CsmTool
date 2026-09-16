@@ -26,6 +26,7 @@ import PortfolioView from "./views/PortfolioView";
 import DashboardView from "./views/DashboardView";
 import CollectionsView from "./views/CollectionsView";
 import TasksView from "./views/TasksView";
+import ReportsView from "./views/ReportsView";
 import VisitsView from "./views/VisitsView";
 import LogCheckinView from "./views/LogCheckinView";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
@@ -203,6 +204,13 @@ export default function App() {
     setLabs((ls) => ls.map((l) => (l.id === labId ? { ...l, mrr: newMrr } : l)));
   }
 
+  // Generic local-state patch after a write that touches fields on `labs` directly (status,
+  // stage tags, health/rating, testimonial) — mirrors handleInvoiceMrrUpdate's pattern so
+  // Lab Detail stays in sync without a full labs refetch.
+  function handlePatchLab(labId, patch) {
+    setLabs((ls) => ls.map((l) => (l.id === labId ? { ...l, ...patch } : l)));
+  }
+
   async function handleToggleModule(planId, moduleKey) {
     // Compute the direction from the current `plans` state up front, synchronously — a
     // setState updater's callback isn't guaranteed to run before the code right after the
@@ -310,20 +318,23 @@ export default function App() {
     setModules((ms) => ms.map((m) => (m.key === moduleKey ? { ...m, params: m.params.filter((p) => p.name !== name) } : m)));
   }
 
-  async function handleSaveCsm({ id, name, role }) {
+  async function handleSaveCsm({ id, name, role, active }) {
     if (SUPABASE_CONFIGURED) {
-      const saved = await upsertProfile({ id, name, role });
+      const saved = await upsertProfile({ id, name, role, active });
       setIdByName((m) => ({ ...m, [name]: saved.id }));
     }
     setCsmDirectory((dir) => {
       const existing = id ? dir.find((c) => idByName[c.name] === id) : null;
-      if (existing) return dir.map((c) => (c === existing ? { name, role } : c));
-      return [...dir, { name, role }];
+      if (existing) return dir.map((c) => (c === existing ? { ...c, name, role, active } : c));
+      return [...dir, { name, role, active: active !== false, linked: false }];
     });
     showToast(`${name} saved.`);
   }
 
   const csmNames = csmDirectory.map((c) => c.name);
+  // Assignment contexts (new lab, reassign) only offer people still on the team — team-view
+  // filters elsewhere keep using csmNames so a departed CSM's past labs stay filterable.
+  const activeCsmNames = csmDirectory.filter((c) => c.active !== false).map((c) => c.name);
   // Manage Users (top bar) is Admin/Lead-only — gate the view itself, not just the button,
   // so it can't be reached (e.g. an Admin preview switched away, or stale state) by anyone else.
   const canManageUsers = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
@@ -406,13 +417,16 @@ export default function App() {
           {view === "visits" && (
             <VisitsView labs={labs} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
+          {view === "reports" && (
+            <ReportsView labs={labs} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+          )}
           {view === "lab-detail" && detailLab && (
             <LabDetailView
               lab={detailLab}
               labs={labs}
               modules={modules}
               plans={plans}
-              csmNames={csmNames}
+              csmNames={activeCsmNames}
               currentCSM={currentCSM}
               idByName={idByName}
               initialTab={detailInitialTab}
@@ -421,6 +435,7 @@ export default function App() {
               onReassignCsm={handleReassignCsm}
               onChangePlan={handleChangePlan}
               onInvoiceMrrUpdate={handleInvoiceMrrUpdate}
+              onPatchLab={handlePatchLab}
               onLogCheckin={openLogCheckin}
               onAddChildLab={openAddChildLab}
               showToast={showToast}
@@ -445,7 +460,7 @@ export default function App() {
         onClose={closeAddDrawer}
         onSave={handleAddLab}
         labs={labs}
-        csmNames={csmNames}
+        csmNames={activeCsmNames}
         plans={plans}
         presetParent={addDrawerPresetParent}
       />

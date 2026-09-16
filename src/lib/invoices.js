@@ -82,7 +82,7 @@ export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate
 
   if (invoiceType === "Monthly") {
     const previousMrr = lab.mrr;
-    await updateLabMRR(lab.id, subTotal);
+    await updateLabMRR(lab.id, subTotal, lab.region);
     await logActivity(lab.id, {
       kind: "Invoice Uploaded",
       title: `Monthly invoice ${invoiceNumber} — MRR updated`,

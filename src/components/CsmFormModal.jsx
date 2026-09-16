@@ -7,6 +7,7 @@ export default function CsmFormModal({ open, editing, onClose, onSave }) {
   // in the database, and this form can't create or hand out another one.
   const isEditingAdmin = editing?.role === "Admin";
   const [role, setRole] = useState(isEditingAdmin ? "Admin" : editing?.role || "CSM");
+  const [active, setActive] = useState(editing?.active !== false);
   const [error, setError] = useState("");
 
   if (!open) return null;
@@ -14,7 +15,7 @@ export default function CsmFormModal({ open, editing, onClose, onSave }) {
   async function handleSave() {
     if (!name.trim()) { setError("Name is required."); return; }
     try {
-      await onSave({ id: editing?.id, name: name.trim(), role });
+      await onSave({ id: editing?.id, name: name.trim(), role, active });
     } catch (err) {
       setError(err.message || "Couldn't save — check console.");
     }
@@ -50,6 +51,16 @@ export default function CsmFormModal({ open, editing, onClose, onSave }) {
           </select>
         )}
       </div>
+      {editing && !isEditingAdmin && (
+        <div className="tmpl-field" style={{ marginTop: 12 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, cursor: "pointer" }}>
+            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active
+          </label>
+          <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 5 }}>
+            Turn off if this person has left the team — they'll stop showing up as an option when assigning or reassigning a lab, but their history and past assignments stay intact.
+          </div>
+        </div>
+      )}
       {error && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>{error}</div>}
     </Modal>
   );

@@ -16,16 +16,23 @@ import {
   invoiceBalance, isInvoiceOpen, invoiceStatusLabel,
 } from "../lib/invoices";
 import { extractInvoiceFromFile } from "../lib/invoiceParse";
+import { updateLabStatus, updateLabStageTags, updateLabTestimonial, fetchMrrHistory } from "../lib/labs";
+import { HEALTH_STATUSES, isHealthyStatus, logLabPulse } from "../lib/pulse";
+import { CHURN_TYPES, logChurn } from "../lib/churn";
 import Modal from "../components/Modal";
 import InfoTip from "../components/InfoTip";
+import Sparkline from "../components/Sparkline";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const EMPTY_ADOPTION = { scope: {}, paramScope: {}, paramState: {} };
+const LAB_STATUSES = ["Active", "Inactive", "At Risk"]; // Churned/Contraction go through the Churn modal instead
+const STAGE_TAGS = ["Adoption", "Expansion", "Support", "Pending Dues", "Open Points", "Pilot", "Future Churn", "Churn", "Rapo"];
 
-function statusPillClass(s) { return "status-" + s.replace(" ", ""); }
+function statusPillClass(s) { return "status-" + (s || "").replace(" ", ""); }
+function healthPillClass(s) { return isHealthyStatus(s) ? "status-Active" : s === "Churn" ? "status-Inactive" : "status-AtRisk"; }
 function initials(name) { return (name || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
 
-export default function LabDetailView({ lab, labs, modules, plans, csmNames, currentCSM, idByName, onBack, onOpenLab, onReassignCsm, onChangePlan, onInvoiceMrrUpdate, onLogCheckin, onAddChildLab, initialTab, showToast }) {
+export default function LabDetailView({ lab, labs, modules, plans, csmNames, currentCSM, idByName, onBack, onOpenLab, onReassignCsm, onChangePlan, onInvoiceMrrUpdate, onPatchLab, onLogCheckin, onAddChildLab, initialTab, showToast }) {
   const [tab, setTab] = useState(initialTab || "details");
   const [expandedModule, setExpandedModule] = useState(null);
 
@@ -73,6 +80,31 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
   const [cascadePlan, setCascadePlan] = useState(false);
   const [planReason, setPlanReason] = useState("");
 
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [newStatus, setNewStatus] = useState(lab.status);
+  const [churnOpen, setChurnOpen] = useState(false);
+  const [churnType, setChurnType] = useState("Churned");
+  const [churnMonth, setChurnMonth] = useState(new Date().toISOString().slice(0, 10));
+  const [churnMrrLost, setChurnMrrLost] = useState("");
+  const [churnReason, setChurnReason] = useState("");
+  const [savingStatus, setSavingStatus] = useState(false);
+
+  const [pulseOpen, setPulseOpen] = useState(false);
+  const [pulseHealth, setPulseHealth] = useState(lab.healthStatus || "No Risk");
+  const [pulseRating, setPulseRating] = useState(lab.lastRating != null ? String(lab.lastRating) : "");
+  const [pulseNote, setPulseNote] = useState("");
+  const [savingPulse, setSavingPulse] = useState(false);
+
+  const [stageTags, setStageTags] = useState(lab.stageTags || []);
+  const [savingStageTags, setSavingStageTags] = useState(false);
+
+  const [testimonialOpen, setTestimonialOpen] = useState(false);
+  const [testimonialCollected, setTestimonialCollected] = useState(lab.testimonialCollected || false);
+  const [testimonialUrl, setTestimonialUrl] = useState(lab.testimonialVideoUrl || "");
+  const [savingTestimonial, setSavingTestimonial] = useState(false);
+
+  const [mrrHistory, setMrrHistory] = useState([]);
+
   useEffect(() => {
     setTab(initialTab || "details");
     setExpandedModule(null);
@@ -86,6 +118,18 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
     setCascadeReassign(false);
     setCascadePlan(false);
     setPlanReason("");
+    setNewStatus(lab.status);
+    setStatusOpen(false);
+    setChurnOpen(false);
+    setChurnReason("");
+    setPulseOpen(false);
+    setPulseHealth(lab.healthStatus || "No Risk");
+    setPulseRating(lab.lastRating != null ? String(lab.lastRating) : "");
+    setPulseNote("");
+    setStageTags(lab.stageTags || []);
+    setTestimonialOpen(false);
+    setTestimonialCollected(lab.testimonialCollected || false);
+    setTestimonialUrl(lab.testimonialVideoUrl || "");
     if (!SUPABASE_CONFIGURED) {
       setSaved(EMPTY_ADOPTION);
       setLoadingAdoption(false);
@@ -117,6 +161,13 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
       .finally(() => { if (!cancelled) setLoadingActivity(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lab.id]);
+
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) { setMrrHistory([]); return; }
+    let cancelled = false;
+    fetchMrrHistory(lab.id).then((rows) => { if (!cancelled) setMrrHistory(rows); }).catch((err) => console.error(err));
+    return () => { cancelled = true; };
   }, [lab.id]);
 
   async function loadCollections() {
@@ -438,6 +489,107 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
     setPlanReason("");
   }
 
+  // Status change — Active/Inactive/At Risk apply immediately; Churned/Contraction hand off to
+  // the Churn modal instead, since those need a churn_log detail record alongside the flip.
+  async function handleChangeStatusClick() {
+    if (newStatus === "Churned" || newStatus === "Contraction") {
+      setStatusOpen(false);
+      setChurnType(newStatus === "Churned" ? "Churned" : "Contraction");
+      setChurnMonth(new Date().toISOString().slice(0, 10));
+      setChurnMrrLost(String(effectiveMRR(lab) || ""));
+      setChurnReason("");
+      setChurnOpen(true);
+      return;
+    }
+    setSavingStatus(true);
+    try {
+      await updateLabStatus(lab.id, newStatus);
+      onPatchLab && onPatchLab(lab.id, { status: newStatus });
+      const csmId = idByName?.[lab.csm];
+      const meta = `${lab.status} → ${newStatus}`;
+      logActivity(lab.id, { kind: "Status Changed", title: "Status changed", meta, csmId }).catch((err) => console.error(err));
+      setStatusOpen(false);
+      showToast(`Status set to ${newStatus}.`);
+    } catch (err) {
+      showToast(`⚠ ${err.message}`);
+    } finally {
+      setSavingStatus(false);
+    }
+  }
+
+  async function handleChurnConfirm() {
+    const outstandingNow = (() => {
+      const itemSummary = labCollectionsSummary(collItems);
+      const openInvoices = invoices.filter(isInvoiceOpen);
+      const invOutstanding = openInvoices.reduce((s, iv) => s + invoiceBalance(iv), 0);
+      return itemSummary.outstanding + invOutstanding;
+    })();
+    setSavingStatus(true);
+    try {
+      const csmId = idByName?.[lab.csm];
+      await logChurn(lab.id, {
+        churnType, churnMonth, mrrLost: parseFloat(churnMrrLost) || 0, dueAmount: outstandingNow, reason: churnReason,
+      }, csmId);
+      if (churnType === "Churned") onPatchLab && onPatchLab(lab.id, { status: "Churned" });
+      setChurnOpen(false);
+      showToast(churnType === "Churned" ? "Lab marked Churned." : "Contraction logged.");
+    } catch (err) {
+      showToast(`⚠ ${err.message}`);
+    } finally {
+      setSavingStatus(false);
+    }
+  }
+
+  async function handlePulseConfirm() {
+    setSavingPulse(true);
+    try {
+      const csmId = idByName?.[lab.csm];
+      const rating = pulseRating.trim() ? parseFloat(pulseRating) : null;
+      await logLabPulse(lab.id, { healthStatus: pulseHealth, rating, note: pulseNote }, csmId);
+      onPatchLab && onPatchLab(lab.id, { healthStatus: pulseHealth, lastRating: rating });
+      setPulseOpen(false);
+      showToast(`Health set to ${pulseHealth}.`);
+    } catch (err) {
+      showToast(`⚠ ${err.message}`);
+    } finally {
+      setSavingPulse(false);
+    }
+  }
+
+  async function handleToggleStageTag(tag) {
+    const next = stageTags.includes(tag) ? stageTags.filter((t) => t !== tag) : [...stageTags, tag];
+    setStageTags(next);
+    setSavingStageTags(true);
+    try {
+      await updateLabStageTags(lab.id, next);
+      onPatchLab && onPatchLab(lab.id, { stageTags: next });
+    } catch (err) {
+      setStageTags(stageTags); // revert on failure
+      showToast(`⚠ ${err.message}`);
+    } finally {
+      setSavingStageTags(false);
+    }
+  }
+
+  async function handleTestimonialSave() {
+    setSavingTestimonial(true);
+    try {
+      const csmId = idByName?.[lab.csm];
+      await updateLabTestimonial(lab.id, { collected: testimonialCollected, videoUrl: testimonialUrl, csmId });
+      onPatchLab && onPatchLab(lab.id, {
+        testimonialCollected, testimonialVideoUrl: testimonialUrl,
+        testimonialCollectedBy: testimonialCollected ? csmId : null,
+        testimonialCollectedAt: testimonialCollected ? new Date().toISOString() : null,
+      });
+      setTestimonialOpen(false);
+      showToast(testimonialCollected ? "Testimonial logged." : "Testimonial cleared.");
+    } catch (err) {
+      showToast(`⚠ ${err.message}`);
+    } finally {
+      setSavingTestimonial(false);
+    }
+  }
+
   const seg = segmentFor(toINR(effectiveMRR(lab), lab.region));
   const children = lab.type === "Parent" ? labs.filter((l) => l.type === "Child" && l.parent === lab.id) : [];
   const tabs = [
@@ -477,6 +629,12 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
           <div className="detail-title">
             <h1>{lab.name}</h1>
             <span className={`status-pill ${statusPillClass(lab.status)}`}>{lab.status}</span>
+            {lab.healthStatus && (
+              <span className={`status-pill ${healthPillClass(lab.healthStatus)}`} title="Health status">{lab.healthStatus}</span>
+            )}
+            {lab.lastRating != null && (
+              <span className="status-pill" style={{ background: "var(--accent-dim)", color: "#1948a8" }} title="Last rating">★ {lab.lastRating}/10</span>
+            )}
           </div>
         </div>
         <div className="detail-meta">
@@ -526,9 +684,54 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
             </div>
           ))}
 
+          <div style={{ padding: "14px 0", borderTop: "1px solid var(--border)", marginTop: 4 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", marginBottom: 8, display: "flex", alignItems: "center" }}>
+              MRR Trend
+              <InfoTip>Tracking starts from when this was added — there's no historical MRR to backfill from before this feature existed, so a lab added today shows one point until more snapshots build up.</InfoTip>
+            </div>
+            <Sparkline
+              points={mrrHistory.map((h) => ({ value: h.mrr, label: new Date(h.loggedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" }) }))}
+              valueFmt={(v) => fmtMoney(v, lab.region)}
+            />
+          </div>
+
+          <div className="param-row" style={{ padding: "11px 0", alignItems: "flex-start" }}>
+            <span className="pname" style={{ color: "var(--text-dim)", flex: "0 0 180px", paddingTop: 4 }}>Stage</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, opacity: savingStageTags ? 0.6 : 1 }}>
+              {STAGE_TAGS.map((tag) => (
+                <span
+                  key={tag}
+                  onClick={() => handleToggleStageTag(tag)}
+                  className="status-select"
+                  style={{
+                    cursor: "pointer", userSelect: "none", fontSize: 11.5, padding: "4px 10px", borderRadius: 20,
+                    border: `1px solid ${stageTags.includes(tag) ? "var(--accent)" : "var(--border)"}`,
+                    background: stageTags.includes(tag) ? "var(--accent-dim)" : "transparent",
+                    color: stageTags.includes(tag) ? "#1948a8" : "var(--text-dim)",
+                    fontWeight: stageTags.includes(tag) ? 700 : 500,
+                  }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="param-row" style={{ padding: "11px 0" }}>
+            <span className="pname" style={{ color: "var(--text-dim)", flex: "0 0 180px" }}>Testimonial Video</span>
+            <span style={{ fontWeight: 600 }}>
+              {lab.testimonialCollected
+                ? (lab.testimonialVideoUrl ? <a href={lab.testimonialVideoUrl} target="_blank" rel="noreferrer">Collected — view link</a> : "Collected")
+                : "Not yet collected"}
+            </span>
+          </div>
+
           <div style={{ display: "flex", gap: 10, marginTop: 18, paddingTop: 18, borderTop: "1px solid var(--border)", flexWrap: "wrap" }}>
             <button className="btn btn-ghost" onClick={() => { setNewCsm(lab.csm); setReassignOpen(true); }}>Reassign CSM</button>
             <button className="btn btn-ghost" onClick={() => { setNewPlan(lab.plan); setPlanReason(""); setChangePlanOpen(true); }}>Change Plan</button>
+            <button className="btn btn-ghost" onClick={() => { setNewStatus(lab.status); setStatusOpen(true); }}>Change Status</button>
+            <button className="btn btn-ghost" onClick={() => { setPulseHealth(lab.healthStatus || "No Risk"); setPulseRating(lab.lastRating != null ? String(lab.lastRating) : ""); setPulseNote(""); setPulseOpen(true); }}>Log Health Check</button>
+            <button className="btn btn-ghost" onClick={() => { setTestimonialCollected(lab.testimonialCollected || false); setTestimonialUrl(lab.testimonialVideoUrl || ""); setTestimonialOpen(true); }}>Edit Testimonial</button>
           </div>
         </div>
       )}
@@ -582,6 +785,116 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
             <input type="checkbox" checked={cascadePlan} onChange={(e) => setCascadePlan(e.target.checked)} />
             Also move {children.length} child lab{children.length > 1 ? "s" : ""} to this plan
           </label>
+        )}
+      </Modal>
+
+      <Modal
+        open={statusOpen}
+        title="Change Status"
+        onClose={() => setStatusOpen(false)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setStatusOpen(false) },
+          { label: newStatus === "Churned" || newStatus === "Contraction" ? "Continue" : "Save", className: "btn-primary", onClick: handleChangeStatusClick, disabled: savingStatus || newStatus === lab.status },
+        ]}
+      >
+        <div className="tmpl-field">
+          <label>New Status</label>
+          <select value={newStatus} onChange={(e) => setNewStatus(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
+            {LAB_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            <option value="Churned">Churned (full loss)</option>
+            <option value="Contraction">Contraction (partial downgrade)</option>
+          </select>
+          {(newStatus === "Churned" || newStatus === "Contraction") && (
+            <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 6 }}>
+              This opens the Churn log next — it needs a month, MRR impact, and reason.
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={churnOpen}
+        title={churnType === "Churned" ? "Log Churn" : "Log Contraction"}
+        onClose={() => setChurnOpen(false)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setChurnOpen(false) },
+          { label: churnType === "Churned" ? "Mark Churned" : "Log Contraction", className: "btn-primary", onClick: handleChurnConfirm, disabled: savingStatus },
+        ]}
+      >
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>Type</label>
+          <select value={churnType} onChange={(e) => setChurnType(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
+            {CHURN_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>Month</label>
+          <input type="date" value={churnMonth} onChange={(e) => setChurnMonth(e.target.value)}
+            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
+        </div>
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>MRR Impact ({lab.region === "ROW" ? "$" : "₹"})</label>
+          <input type="number" min="0" value={churnMrrLost} onChange={(e) => setChurnMrrLost(e.target.value)}
+            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
+        </div>
+        <div className="tmpl-field">
+          <label>Reason</label>
+          <textarea value={churnReason} onChange={(e) => setChurnReason(e.target.value)} rows={2}
+            placeholder="e.g. Switched to a competing LIMS"
+            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", resize: "vertical" }} />
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 10 }}>
+          The lab's current Collections balance is captured automatically as the outstanding-dues figure on this record.
+        </div>
+      </Modal>
+
+      <Modal
+        open={pulseOpen}
+        title="Log Health Check"
+        onClose={() => setPulseOpen(false)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setPulseOpen(false) },
+          { label: "Save", className: "btn-primary", onClick: handlePulseConfirm, disabled: savingPulse },
+        ]}
+      >
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>Health Status</label>
+          <select value={pulseHealth} onChange={(e) => setPulseHealth(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
+            {HEALTH_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>Satisfaction Rating (optional, 0–10)</label>
+          <input type="number" min="0" max="10" value={pulseRating} onChange={(e) => setPulseRating(e.target.value)}
+            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
+        </div>
+        <div className="tmpl-field">
+          <label>Note (optional)</label>
+          <textarea value={pulseNote} onChange={(e) => setPulseNote(e.target.value)} rows={2}
+            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", resize: "vertical" }} />
+        </div>
+      </Modal>
+
+      <Modal
+        open={testimonialOpen}
+        title="Edit Testimonial"
+        onClose={() => setTestimonialOpen(false)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setTestimonialOpen(false) },
+          { label: "Save", className: "btn-primary", onClick: handleTestimonialSave, disabled: savingTestimonial },
+        ]}
+      >
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, cursor: "pointer" }}>
+            <input type="checkbox" checked={testimonialCollected} onChange={(e) => setTestimonialCollected(e.target.checked)} /> Testimonial video collected
+          </label>
+        </div>
+        {testimonialCollected && (
+          <div className="tmpl-field">
+            <label>Video Link</label>
+            <input value={testimonialUrl} onChange={(e) => setTestimonialUrl(e.target.value)} placeholder="https://…"
+              style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
+          </div>
         )}
       </Modal>
 

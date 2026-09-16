@@ -16,15 +16,16 @@ export default function CsmSetupView({ csmDirectory, idByName, onSaveCsm }) {
       </div>
 
       <table className="activity-table">
-        <thead><tr><th>Name</th><th>Role</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Role</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {csmDirectory.length === 0 && (
-            <tr><td colSpan="3" style={{ textAlign: "center", color: "var(--text-faint)", padding: 20 }}>No team members yet.</td></tr>
+            <tr><td colSpan="4" style={{ textAlign: "center", color: "var(--text-faint)", padding: 20 }}>No team members yet.</td></tr>
           )}
           {csmDirectory.map((c) => (
-            <tr key={c.name}>
+            <tr key={c.name} style={c.active === false ? { opacity: 0.55 } : undefined}>
               <td>{c.name}</td>
               <td><span className={`pill ${c.role === "Admin" ? "pill-admin" : c.role === "Lead" ? "pill-parent" : "pill-child"}`}>{roleLabel(c.role)}</span></td>
+              <td>{c.active === false ? <span className="status-pill status-Inactive">Inactive</span> : <span className="status-pill status-Active">Active</span>}</td>
               <td style={{ textAlign: "right" }}>
                 <span style={{ color: "var(--accent)", fontSize: "12.5px", cursor: "pointer" }} onClick={() => setModalState({ ...c, id: idByName[c.name] })}>Edit</span>
               </td>
