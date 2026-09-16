@@ -17,6 +17,7 @@ import {
 } from "../lib/invoices";
 import { extractInvoiceFromFile } from "../lib/invoiceParse";
 import Modal from "../components/Modal";
+import InfoTip from "../components/InfoTip";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const EMPTY_ADOPTION = { scope: {}, paramScope: {}, paramState: {} };
@@ -788,9 +789,9 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
           <div className="table-card" style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Demo mode — Collections isn't tracked without a database connected.</div>
         ) : (
           <div className="table-card" style={{ padding: "6px 20px 20px" }}>
-            <div className="banner">
-              <span className="badge">HOW THIS WORKS</span>
-              <span>Upload an invoice below — its date, amount and type are read automatically and you confirm before saving. A Monthly invoice updates this lab's MRR; a Pro-Rata invoice is a one-off top-up that doesn't. Due date is the invoice date + this lab's Credit Days ({lab.creditDays || "30"}), not the invoice's own due date field.</span>
+            <div style={{ display: "flex", alignItems: "center", fontSize: 11.5, color: "var(--text-faint)", padding: "10px 0 4px" }}>
+              How invoices work
+              <InfoTip>Upload an invoice below — its date, amount and type are read automatically and you confirm before saving. A Monthly invoice updates this lab's MRR; a Pro-Rata invoice is a one-off top-up that doesn't. Due date is the invoice date + this lab's Credit Days ({lab.creditDays || "30"}), not the invoice's own due date field.</InfoTip>
             </div>
 
             {(() => {

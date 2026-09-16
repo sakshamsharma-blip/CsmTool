@@ -143,6 +143,21 @@
   .banner b{font-weight:700;}
   .banner .badge{background:#1948a8; color:#fff; font-size:10px; font-weight:700; border-radius:20px; padding:2px 9px; letter-spacing:.03em;}
 
+  /* ---------- info tooltip: replaces a permanent explainer banner with an "i" on hover/focus ---------- */
+  .info-tip{position:relative; display:inline-flex; align-items:center; margin-left:7px; vertical-align:middle;}
+  .info-tip-icon{
+    display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%;
+    background:var(--accent-dim); color:#1948a8; border:1px solid #c8dafc; font-size:10.5px; font-weight:700;
+    font-style:italic; font-family:Georgia,'Times New Roman',serif; cursor:help; flex:none; line-height:1;
+  }
+  .info-tip-content{
+    display:none; position:absolute; z-index:40; top:130%; left:0; width:300px; max-width:min(300px, 80vw);
+    background:#1d2939; color:#fff; font-weight:400; font-size:12px; line-height:1.5; border-radius:8px;
+    padding:10px 12px; box-shadow:0 8px 24px rgba(16,24,40,.25);
+  }
+  .info-tip-content b{font-weight:700;}
+  .info-tip:hover .info-tip-content, .info-tip:focus-within .info-tip-content{display:block;}
+
   h1.page-title{font-size:21px; margin:0 0 3px;}
   .page-sub{color:var(--text-dim); font-size:13px; margin:0 0 18px;}
 

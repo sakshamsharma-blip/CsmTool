@@ -11,6 +11,7 @@ import { hasLeadAccess } from "../lib/roles";
 import ScopeToggle from "../components/ScopeToggle";
 import TasksPanel from "../components/TasksPanel";
 import Modal from "../components/Modal";
+import InfoTip from "../components/InfoTip";
 
 // Everything a CSM (or a Lead, across the team) needs to work through — every task regardless of
 // due date (Overdue/Today/Upcoming/Someday/Done, same data "Tasks for Today" already uses under
@@ -124,9 +125,9 @@ export default function TasksView({ labs, modules, plans, csmDirectory, currentC
       />
 
       <div style={{ marginTop: 26 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 10 }}>Pitch Reminders (Expansion) <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>({pitchRows.length})</span></div>
-        <div className="banner" style={{ marginBottom: 12 }}>
-          <span>Every Expansion feature still sitting at To Do / Pitching / In Progress across {teamAll ? "the team" : `${scopeCsm}'s`} labs. Change a status right here — it's the same pitch record My Portfolio's lab view edits, so either place stays in sync. Picking <b>Added</b> asks for the added cost (or trial/free), then moves the feature onto that lab's Adoption tab and creates a Collections entry automatically.</span>
+        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center" }}>
+          Pitch Reminders (Expansion) <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>({pitchRows.length})</span>
+          <InfoTip>Every Expansion feature still sitting at To Do / Pitching / In Progress across {teamAll ? "the team" : `${scopeCsm}'s`} labs. Change a status right here — it's the same pitch record My Portfolio's lab view edits, so either place stays in sync. Picking <b>Added</b> asks for the added cost (or trial/free), then moves the feature onto that lab's Adoption tab and creates a Collections entry automatically.</InfoTip>
         </div>
         {!pitchRows.length ? (
           <div className="table-card" style={{ padding: "18px 20px", color: "var(--text-faint)", fontSize: 12.5 }}>No open pitch items for {scopeLabel} right now.</div>

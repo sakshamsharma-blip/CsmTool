@@ -7,6 +7,7 @@ import { fetchAllInvoices, invoiceBalance, isInvoiceOpen } from "../lib/invoices
 import { hasLeadAccess } from "../lib/roles";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
+import InfoTip from "../components/InfoTip";
 
 export default function CollectionsView({ labs, csmDirectory, currentCSM, idByName, onOpenLab, showToast }) {
   const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
@@ -120,13 +121,11 @@ export default function CollectionsView({ labs, csmDirectory, currentCSM, idByNa
 
   return (
     <div>
-      <h1 className="page-title">Collections</h1>
+      <h1 className="page-title">
+        Collections
+        <InfoTip>Upload a lab's invoice on its own Collections tab — the invoice date, amount and type (Monthly vs. one-off Pro-Rata) are read automatically and you confirm before saving. A Monthly invoice updates that lab's MRR; either type tracks what's still owed here. Due date is the invoice date plus that lab's Credit Days, not the invoice's own due date field.</InfoTip>
+      </h1>
       <p className="page-sub">Outstanding dues for labs assigned to <b>{scopeLabel}</b>.</p>
-
-      <div className="banner">
-        <span className="badge">HOW THIS WORKS</span>
-        <span>Upload a lab's invoice on its own Collections tab — the invoice date, amount and type (Monthly vs. one-off Pro-Rata) are read automatically and you confirm before saving. A Monthly invoice updates that lab's MRR; either type tracks what's still owed here. Due date is the invoice date plus that lab's Credit Days, not the invoice's own due date field.</span>
-      </div>
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
 

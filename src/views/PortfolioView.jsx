@@ -14,6 +14,7 @@ import ScopeToggle from "../components/ScopeToggle";
 import BarChart from "../components/BarChart";
 import TasksPanel from "../components/TasksPanel";
 import Modal from "../components/Modal";
+import InfoTip from "../components/InfoTip";
 
 const SEG_LABELS = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 
@@ -202,7 +203,10 @@ export default function PortfolioView({ labs, modules, plans, csmDirectory, curr
           onOpenLab={onOpenLab} isHead={isHead} currentCSM={currentCSM} csmNames={csmNames} labOptions={labOptions} labsById={labsById} />
       </div>
 
-      <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>Labs</h3>
+      <h3 style={{ fontSize: 14, margin: "0 0 8px", display: "flex", alignItems: "center" }}>
+        Labs
+        <InfoTip>Modules already in scope break down by <b>Expansion</b>-category feature only — set a pitch status from its dropdown (To Do → Pitching → In Progress → Added → Not Required). Picking <b>Added</b> asks for the added cost (or trial/free), then moves the feature onto the Adoption tab and creates a Collections entry automatically. A module not yet in scope is pitched as a whole — picking Added there adds it to scope. To pull a module <i>out</i> of scope, use this lab's Adoption tab.</InfoTip>
+      </h3>
       {!rows.length ? (
         <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>No labs assigned to {scopeLabel} yet.</div>
       ) : rows.map((lab) => {
@@ -320,9 +324,6 @@ export default function PortfolioView({ labs, modules, plans, csmDirectory, curr
                       </div>
                     );
                   })}
-                </div>
-                <div className="adopt-note" style={{ padding: "10px 18px" }}>
-                  Modules already in scope break down by <b>Expansion</b>-category feature only — set a pitch status from its dropdown (To Do → Pitching → In Progress → Added → Not Required). Picking <b>Added</b> asks for the added cost (or trial/free), then moves the feature onto the Adoption tab and creates a Collections entry automatically. A module not yet in scope is pitched as a whole — picking Added there adds it to scope. To pull a module <i>out</i> of scope, use this lab's Adoption tab.
                 </div>
               </>
             )}
