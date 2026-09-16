@@ -20,7 +20,6 @@ import LoginScreen from "./components/LoginScreen";
 import AddLabDrawer from "./components/AddLabDrawer";
 import LabDetailView from "./views/LabDetailView";
 import LabsView from "./views/LabsView";
-import PlansView from "./views/PlansView";
 import AdoptionTemplateView from "./views/AdoptionTemplateView";
 import CsmSetupView from "./views/CsmSetupView";
 import PortfolioView from "./views/PortfolioView";
@@ -243,11 +242,12 @@ export default function App() {
   }
 
   // ---- Adoption Template (catalog): the Module Builder screen's CRUD for modules and
-  // their parameters. Which Plans a module/param belongs to is handled separately by the
-  // existing handleToggleModule/handleToggleParam (same functions the Plans screen uses) —
-  // the Module Builder's own "Apply Rules" panel just calls those for whichever module is
-  // selected, so assigning a brand-new module/param to a Plan is available immediately,
-  // right where it was created, with no separate trip to the Plans screen required. ----
+  // their parameters. Which Plans a module/param belongs to by default is set right here too —
+  // the Module Builder's own "Apply Rules" panel calls handleToggleModule/handleToggleParam for
+  // whichever module is selected, so assigning a brand-new module/param to a Plan is available
+  // immediately, right where it was created. There's no standalone Plans management screen —
+  // Plans only surface as a starting template when creating a lab (AddLabDrawer) and as a label
+  // for reporting; every lab's actual scope is fully editable on its own Adoption tab. ----
   async function handleAddModule({ key, name, icon, weight, description }) {
     const newModule = { key, name, icon, weight, description, params: [] };
     setModules((ms) => [...ms, newModule]);
@@ -373,9 +373,6 @@ export default function App() {
           )}
           {view === "list" && (
             <LabsView labs={labs} csmNames={csmNames} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} onOpenLab={openLabDetail} />
-          )}
-          {view === "plans" && (
-            <PlansView plans={plans} modules={modules} labs={labs} onToggleModule={handleToggleModule} onToggleParam={handleToggleParam} />
           )}
           {view === "adoption-template" && (
             <AdoptionTemplateView

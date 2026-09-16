@@ -771,7 +771,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
 
             <div className="adopt-note">
               Module Progress % = Completed Mandatory Weightage ÷ Total Mandatory Weightage × 100. Scope defaults from this lab's <b>{plan.name}</b> plan
-              (left nav: <b>Plans</b>) — untick "In scope" on a module this lab doesn't need, or tick one on that isn't in their plan as a custom add-on.
+              — untick "In scope" on a module this lab doesn't need, or tick one that isn't in their plan as a custom add-on.
               Each feature has its own "In scope" tick too. A feature's <b>Adoption</b>/<b>Expansion</b> tag is set once in the <b>Adoption Template</b> —
               Adoption features are always tracked on status, Expansion features are gated behind "Mark purchased" until bought. Edits stay local to this
               screen until you hit <b>Save Changes</b>.

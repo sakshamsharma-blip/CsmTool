@@ -2,10 +2,10 @@ import { supabase } from "../supabaseClient";
 
 // The Adoption Template catalog — every module and parameter that exists in the product,
 // the shared master every Plan draws its default scope from. Authored on the Adoption
-// Template screen (Module Builder); which of these a Plan gets by default is set there
-// (Apply Rules) or later on the Plans screen — and a lab's actual adoption can still be
-// further customized per-lab on top of that via scope_overrides / param_scope_overrides,
-// independent of this catalog.
+// Template screen (Module Builder); which of these a Plan gets by default is set right
+// there too (Apply Rules) — there's no separate Plans management screen — and a lab's
+// actual adoption can still be further customized per-lab on top of that via
+// scope_overrides / param_scope_overrides, independent of this catalog.
 export async function fetchCatalog() {
   const [{ data: mods, error: e1 }, { data: params, error: e2 }] = await Promise.all([
     supabase.from("modules").select("key,name,icon,weight,description").order("weight", { ascending: false }),
