@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
-import { fetchAllVisits, addVisit } from "../lib/visits";
+import { fetchAllVisits, addVisit, updateVisit } from "../lib/visits";
 import { taskBucket, addTask } from "../lib/tasks";
 import { hasLeadAccess } from "../lib/roles";
 import ScopeToggle from "../components/ScopeToggle";
@@ -28,6 +28,16 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
   const [logFollowupReason, setLogFollowupReason] = useState("");
   const [logSentiment, setLogSentiment] = useState("");
   const [logError, setLogError] = useState(false);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [editType, setEditType] = useState("Visit");
+  const [editDate, setEditDate] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editFollowup, setEditFollowup] = useState("");
+  const [editFollowupReason, setEditFollowupReason] = useState("");
+  const [editSentiment, setEditSentiment] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   async function loadAll() {
     if (!SUPABASE_CONFIGURED) { setLoading(false); return; }
@@ -60,8 +70,10 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
   const upcoming = scoped.filter((v) => v.nextFollowupDate).sort((a, b) => a.nextFollowupDate.localeCompare(b.nextFollowupDate));
   const recent = scoped.slice().sort((a, b) => new Date(b.visitDate) - new Date(a.visitDate));
 
-  const labOptions = [];
-  allRows.forEach((r) => { labOptions.push(r); r.children.forEach((c) => labOptions.push(c)); });
+  // Log Visit should only offer parent/sole centers — a visit is logged against the
+  // relationship as a whole, not an individual child branch (that's what confused the
+  // rollup/billing logic before; keeping visits at parent-level avoids the same trap).
+  const labOptions = allRows;
 
   async function handleLogVisit() {
     if (!logLabId) { setLogError(true); return; }
@@ -93,6 +105,32 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
       await loadAll();
       showToast("Visit logged.");
     } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+
+  function openEdit(v) {
+    setEditId(v.id);
+    setEditType(v.type);
+    setEditDate(v.visitDate);
+    setEditNotes(v.notes || "");
+    setEditFollowup(v.nextFollowupDate || "");
+    setEditFollowupReason(v.nextFollowupReason || "");
+    setEditSentiment(v.sentiment || "");
+    setEditOpen(true);
+  }
+
+  async function handleSaveEdit() {
+    setEditSaving(true);
+    try {
+      await updateVisit(editId, {
+        type: editType, visitDate: editDate, notes: editNotes,
+        nextFollowupDate: editFollowup || null, nextFollowupReason: editFollowupReason,
+        sentiment: editSentiment || null,
+      });
+      setEditOpen(false);
+      await loadAll();
+      showToast("Visit updated.");
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+    finally { setEditSaving(false); }
   }
 
   const fieldStyle = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
@@ -134,7 +172,7 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
         <div className="table-card" style={{ padding: "18px 20px", textAlign: "center", color: "var(--text-faint)", fontSize: 12.5 }}>No visits logged yet.</div>
       ) : (
         <div className="table-card"><div className="table-scroll"><table className="child-mini">
-          <thead><tr><th>Lab</th><th>Type</th><th>Date</th><th>Notes</th><th>Sentiment</th></tr></thead>
+          <thead><tr><th>Lab</th><th>Type</th><th>Date</th><th>Notes</th><th>Sentiment</th><th></th></tr></thead>
           <tbody>{recent.map((v) => {
             const lab = labsById[v.labId];
             const sentColor = v.sentiment === "Positive" ? "var(--ok)" : v.sentiment === "At Risk" ? "var(--bad)" : "var(--text-dim)";
@@ -145,6 +183,7 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
                 <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{new Date(v.visitDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</td>
                 <td style={{ fontSize: 12 }}>{v.notes || "—"}</td>
                 <td>{v.sentiment ? <span style={{ fontSize: 11, fontWeight: 700, color: sentColor }}>{v.sentiment}</span> : "—"}</td>
+                <td><span className="icon-btn" title="Edit" onClick={() => openEdit(v)} style={{ cursor: "pointer" }}>✎</span></td>
               </tr>
             );
           })}</tbody>
@@ -203,6 +242,52 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
           </div>
         </div>
         {logError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>Pick a lab first.</div>}
+      </Modal>
+
+      <Modal
+        open={editOpen}
+        title="Edit Visit / Meeting"
+        onClose={() => setEditOpen(false)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setEditOpen(false) },
+          { label: editSaving ? "Saving…" : "Save Changes", className: "btn-primary", onClick: handleSaveEdit, disabled: editSaving },
+        ]}
+      >
+        <div className="tmpl-field-row" style={{ marginBottom: 12, display: "flex", gap: 10 }}>
+          <div className="tmpl-field" style={{ flex: 1 }}>
+            <label>Type</label>
+            <select style={fieldStyle} value={editType} onChange={(e) => setEditType(e.target.value)}>
+              {VISIT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div className="tmpl-field" style={{ flex: 1 }}>
+            <label>Date</label>
+            <input type="date" style={fieldStyle} value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+          </div>
+        </div>
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>Notes</label>
+          <textarea rows="2" style={fieldStyle} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="What was discussed" />
+        </div>
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>Sentiment (optional)</label>
+          <select style={fieldStyle} value={editSentiment} onChange={(e) => setEditSentiment(e.target.value)}>
+            <option value="">Not set</option>
+            <option value="Positive">Positive</option>
+            <option value="Neutral">Neutral</option>
+            <option value="At Risk">At Risk</option>
+          </select>
+        </div>
+        <div className="tmpl-field-row" style={{ marginBottom: 4, display: "flex", gap: 10 }}>
+          <div className="tmpl-field" style={{ flex: 1 }}>
+            <label>Next Follow-up (optional)</label>
+            <input type="date" style={fieldStyle} value={editFollowup} onChange={(e) => setEditFollowup(e.target.value)} />
+          </div>
+          <div className="tmpl-field" style={{ flex: 1 }}>
+            <label>Follow-up Reason</label>
+            <input style={fieldStyle} value={editFollowupReason} onChange={(e) => setEditFollowupReason(e.target.value)} placeholder="e.g. QBR" />
+          </div>
+        </div>
       </Modal>
     </div>
   );

@@ -16,7 +16,7 @@ import {
   invoiceBalance, isInvoiceOpen, invoiceStatusLabel,
 } from "../lib/invoices";
 import { extractInvoiceFromFile } from "../lib/invoiceParse";
-import { updateLabStatus, updateLabStageTags, updateLabTestimonial, fetchMrrHistory } from "../lib/labs";
+import { updateLabStatus, updateLabStageTags, updateLabTestimonial, updateLabDetails, updateLabBillingMode, fetchMrrHistory } from "../lib/labs";
 import { HEALTH_STATUSES, isHealthyStatus, logLabPulse } from "../lib/pulse";
 import { CHURN_TYPES, logChurn } from "../lib/churn";
 import Modal from "../components/Modal";
@@ -97,6 +97,18 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
 
   const [stageTags, setStageTags] = useState(lab.stageTags || []);
   const [savingStageTags, setSavingStageTags] = useState(false);
+
+  const [editDetailsOpen, setEditDetailsOpen] = useState(false);
+  const [editCity, setEditCity] = useState(lab.city || "");
+  const [editState, setEditState] = useState(lab.state || "");
+  const [editCountry, setEditCountry] = useState(lab.country || "");
+  const [editRegion, setEditRegion] = useState(lab.region || "Domestic");
+  const [editBillingType, setEditBillingType] = useState(lab.billingType || "Fixed");
+  const [editPaymentCycle, setEditPaymentCycle] = useState(lab.paymentCycle || "Monthly");
+  const [editCreditDays, setEditCreditDays] = useState(lab.creditDays || "30");
+  const [editRemarks, setEditRemarks] = useState(lab.remarks || "");
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [savingBillingMode, setSavingBillingMode] = useState(false);
 
   const [testimonialOpen, setTestimonialOpen] = useState(false);
   const [testimonialCollected, setTestimonialCollected] = useState(lab.testimonialCollected || false);
@@ -327,10 +339,13 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
     [modules, saved, draftScope, draftParamScope, draftParams, plan]
   );
 
+  // Mirrors computeLabRollup in lib/labRollup.js — same Billing Mode rule, just scoped to one
+  // lab instead of the whole list (this view already has `labs` in scope for the children
+  // lookup, and rebuilding the rollup of every lab just to read one row isn't worth it here).
   function effectiveMRR(l) {
     if (l.type === "Parent") {
       const children = labs.filter((c) => c.type === "Child" && c.parent === l.id);
-      if (children.length) return children.reduce((s, c) => s + (c.mrr || 0), 0);
+      if (children.length) return l.billingMode === "Consolidated" ? (l.mrr || 0) : children.reduce((s, c) => s + (c.mrr || 0), 0);
     }
     return l.mrr || 0;
   }
@@ -590,6 +605,65 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
     }
   }
 
+  function openEditDetails() {
+    setEditCity(lab.city || "");
+    setEditState(lab.state || "");
+    setEditCountry(lab.country || "");
+    setEditRegion(lab.region || "Domestic");
+    setEditBillingType(lab.billingType || "Fixed");
+    setEditPaymentCycle(lab.paymentCycle || "Monthly");
+    setEditCreditDays(lab.creditDays || "30");
+    setEditRemarks(lab.remarks || "");
+    setEditDetailsOpen(true);
+  }
+
+  async function handleSaveDetails() {
+    setSavingDetails(true);
+    try {
+      const patch = {
+        city: editCity, state: editState, country: editCountry, region: editRegion,
+        billingType: editBillingType, paymentCycle: editPaymentCycle, creditDays: editCreditDays, remarks: editRemarks,
+      };
+      await updateLabDetails(lab.id, patch);
+      onPatchLab && onPatchLab(lab.id, patch);
+      const csmId = idByName?.[lab.csm];
+      logActivity(lab.id, { kind: "Details Updated", title: "Lab details updated", csmId }).catch((err) => console.error(err));
+      setEditDetailsOpen(false);
+      showToast("Lab details updated.");
+    } catch (err) {
+      showToast(`⚠ ${err.message}`);
+    } finally {
+      setSavingDetails(false);
+    }
+  }
+
+  // Changing Billing Mode can visibly jump the group's reported MRR (it flips which number is
+  // authoritative — the parent's own, or the sum of children) — worth a confirm rather than a
+  // silent flip on a stray click, since it's exactly the kind of change that "mixes up finances"
+  // if done by accident.
+  async function handleChangeBillingMode(mode) {
+    const next = mode || null;
+    if (next === lab.billingMode) return;
+    const children = labs.filter((c) => c.type === "Child" && c.parent === lab.id);
+    if (children.length) {
+      const preview = next === "Consolidated" ? fmtMoney(lab.mrr || 0, lab.region) : fmtMoney(children.reduce((s, c) => s + (c.mrr || 0), 0), lab.region);
+      const ok = window.confirm(`Switch ${lab.name} to ${next || "Per-Branch (default)"}? Its group MRR will become ${preview}.`);
+      if (!ok) return;
+    }
+    setSavingBillingMode(true);
+    try {
+      await updateLabBillingMode(lab.id, next);
+      onPatchLab && onPatchLab(lab.id, { billingMode: next });
+      const csmId = idByName?.[lab.csm];
+      logActivity(lab.id, { kind: "Billing Mode Changed", title: "Billing mode changed", meta: `→ ${next || "Per-Branch (default)"}`, csmId }).catch((err) => console.error(err));
+      showToast(`Billing mode set to ${next || "Per-Branch"}.`);
+    } catch (err) {
+      showToast(`⚠ ${err.message}`);
+    } finally {
+      setSavingBillingMode(false);
+    }
+  }
+
   const seg = segmentFor(toINR(effectiveMRR(lab), lab.region));
   const children = lab.type === "Parent" ? labs.filter((l) => l.type === "Child" && l.parent === lab.id) : [];
   const tabs = [
@@ -732,6 +806,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
             <button className="btn btn-ghost" onClick={() => { setNewStatus(lab.status); setStatusOpen(true); }}>Change Status</button>
             <button className="btn btn-ghost" onClick={() => { setPulseHealth(lab.healthStatus || "No Risk"); setPulseRating(lab.lastRating != null ? String(lab.lastRating) : ""); setPulseNote(""); setPulseOpen(true); }}>Log Health Check</button>
             <button className="btn btn-ghost" onClick={() => { setTestimonialCollected(lab.testimonialCollected || false); setTestimonialUrl(lab.testimonialVideoUrl || ""); setTestimonialOpen(true); }}>Edit Testimonial</button>
+            <button className="btn btn-ghost" onClick={openEditDetails}>Edit Lab Details</button>
           </div>
         </div>
       )}
@@ -898,8 +973,95 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
         )}
       </Modal>
 
+      <Modal
+        open={editDetailsOpen}
+        title="Edit Lab Details"
+        onClose={() => setEditDetailsOpen(false)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setEditDetailsOpen(false) },
+          { label: savingDetails ? "Saving…" : "Save Changes", className: "btn-primary", onClick: handleSaveDetails, disabled: savingDetails },
+        ]}
+      >
+        <div className="tmpl-field-row" style={{ marginBottom: 12, display: "flex", gap: 10 }}>
+          <div className="tmpl-field" style={{ flex: 1 }}>
+            <label>City</label>
+            <input value={editCity} onChange={(e) => setEditCity(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
+          </div>
+          <div className="tmpl-field" style={{ flex: 1 }}>
+            <label>State</label>
+            <input value={editState} onChange={(e) => setEditState(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
+          </div>
+        </div>
+        <div className="tmpl-field-row" style={{ marginBottom: 12, display: "flex", gap: 10 }}>
+          <div className="tmpl-field" style={{ flex: 1 }}>
+            <label>Country</label>
+            <input value={editCountry} onChange={(e) => setEditCountry(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
+          </div>
+          <div className="tmpl-field" style={{ flex: 1 }}>
+            <label>Region Category</label>
+            <select value={editRegion} onChange={(e) => setEditRegion(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
+              <option>Domestic</option><option>ROW</option>
+            </select>
+            {editRegion !== lab.region && (
+              <div style={{ fontSize: 11, color: "var(--warn)", marginTop: 4 }}>
+                Domestic bills in ₹, ROW in $ — changing this doesn't convert the existing MRR figure, so double-check it afterward.
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="tmpl-field-row" style={{ marginBottom: 12, display: "flex", gap: 10 }}>
+          <div className="tmpl-field" style={{ flex: 1 }}>
+            <label>Billing Type</label>
+            <select value={editBillingType} onChange={(e) => setEditBillingType(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
+              <option>Fixed</option><option>Variable</option>
+            </select>
+          </div>
+          <div className="tmpl-field" style={{ flex: 1 }}>
+            <label>Payment Cycle</label>
+            <select value={editPaymentCycle} onChange={(e) => setEditPaymentCycle(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
+              <option>Monthly</option><option>Quarterly</option><option>Half Yearly</option><option>Annual</option>
+            </select>
+          </div>
+        </div>
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>Credit Days</label>
+          <input
+            type="number" min="0" step="1" inputMode="numeric"
+            value={editCreditDays}
+            onChange={(e) => setEditCreditDays(e.target.value.replace(/[^0-9]/g, ""))}
+            placeholder="e.g. 30"
+            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}
+          />
+        </div>
+        <div className="tmpl-field">
+          <label>Remarks</label>
+          <textarea rows="2" value={editRemarks} onChange={(e) => setEditRemarks(e.target.value)}
+            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", resize: "vertical" }} />
+        </div>
+      </Modal>
+
       {tab === "childlabs" && (
         <>
+          <div className="table-card" style={{ padding: "14px 18px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center" }}>
+              Billing Mode
+              <InfoTip>Consolidated — one invoice covers the whole group, and {lab.name}'s own MRR is the group's real MRR. Per-Branch — each center is billed separately, and {lab.name}'s MRR is ignored in favor of summing every child's MRR.</InfoTip>
+            </div>
+            <select
+              value={lab.billingMode || ""}
+              onChange={(e) => handleChangeBillingMode(e.target.value)}
+              disabled={savingBillingMode}
+              style={{ border: "1px solid var(--border)", borderRadius: 7, padding: "6px 10px", fontSize: 12.5, fontFamily: "inherit" }}
+            >
+              <option value="">Not set{children.length ? " (defaults to Per-Branch)" : ""}</option>
+              <option value="Consolidated">Consolidated</option>
+              <option value="Per-Branch">Per-Branch</option>
+            </select>
+            <div style={{ fontSize: 11.5, color: "var(--text-dim)" }}>
+              Group MRR right now: <b style={{ color: "var(--text)" }}>{fmtMoney(effectiveMRR(lab), lab.region)}</b>
+            </div>
+          </div>
+
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
             <button className="btn btn-primary" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={() => onAddChildLab && onAddChildLab(lab)}>+ Add Child Lab</button>
           </div>
@@ -1010,7 +1172,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
                     <span className="mtoggle">{isOpen ? "▾" : "▸"}</span>
                     <span>{mod.icon}</span>
                     <span className="mname">{mod.name}</span>
-                    <span className="mtag">{mod.weight}% of score</span>
+                    <span className="mtag">{scores.weightTotal ? Math.round((mod.weight / scores.weightTotal) * 100) : 0}% of score</span>
                     <div className="bar-track"><div className="bar-fill" style={{ width: `${pct}%`, background: barColor }}></div></div>
                     <span className="mpct">{pct}%</span>
                     {scopeToggle}
@@ -1230,6 +1392,30 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
               )}
               {uploadStage === "confirm" && uploadForm && (
                 <>
+                  {uploadForm.invoiceType === "Monthly" && (() => {
+                    // A Monthly invoice updates THIS lab's own mrr field — but whether that field
+                    // is actually what shows up in the group's reported MRR depends on Billing
+                    // Mode. Catching a mismatch here is the "doesn't mix the logics" check: it's
+                    // easy to upload an invoice against the wrong lab in a Parent/Child group and
+                    // have the number silently go nowhere.
+                    if (lab.type === "Child") {
+                      const parentLab = labs.find((l) => l.id === lab.parent);
+                      if (parentLab?.billingMode === "Consolidated") {
+                        return (
+                          <div className="warn-banner" style={{ background: "#fff7e6", borderColor: "#f3dfa8", color: "#8a5a00", marginBottom: 12 }}>
+                            {parentLab.name} is billed <b>Consolidated</b> — only its own MRR counts toward the group's total. Saving this invoice will update {lab.name}'s MRR, but it won't affect the group's reported number. If this invoice covers the whole group, log it against {parentLab.name} instead.
+                          </div>
+                        );
+                      }
+                    } else if (lab.type === "Parent" && children.length && lab.billingMode !== "Consolidated") {
+                      return (
+                        <div className="warn-banner" style={{ background: "#fff7e6", borderColor: "#f3dfa8", color: "#8a5a00", marginBottom: 12 }}>
+                          {lab.name} is billed <b>Per-Branch</b> — its own MRR is ignored in favor of summing its child labs' MRR. Saving this invoice will update {lab.name}'s own MRR, but it won't affect the group's reported number. If this invoice is for one specific center, log it against that child lab instead — or switch Billing Mode to Consolidated on the Child Labs tab if it now covers the whole group.
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   {!uploadForm.extractedOk && (
                     <div className="warn-banner" style={{ background: "#fff7e6", borderColor: "#f3dfa8", color: "#8a5a00", marginBottom: 12 }}>
                       Couldn't auto-read every field from {uploadFile?.name} — please fill in / correct the details below.

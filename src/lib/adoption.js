@@ -215,6 +215,11 @@ export function computeLabScores(modules, effectiveScope, effectiveParamScope, e
   return {
     mandatoryPct: weightTotal ? mandSum / weightTotal : 0,
     overallPct: weightTotal ? overallSum / weightTotal : 0,
+    // Sum of weights across only the in-scope modules for this lab — the denominator the
+    // overall/mandatory % above are already normalized against. Exposed so callers can show
+    // each module's weight relative to *this lab's* scope instead of the raw catalog weight,
+    // which only sums to 100 for a lab that has every module in scope.
+    weightTotal,
     moduleResults,
   };
 }

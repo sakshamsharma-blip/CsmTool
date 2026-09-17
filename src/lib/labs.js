@@ -23,6 +23,9 @@ export async function fetchLabs(idByName) {
     creditDays: l.credit_days != null ? String(l.credit_days) : "30",
     billingType: l.billing_type || "Fixed",
     paymentCycle: l.payment_cycle || "Monthly",
+    // Only meaningful on a Parent lab once it has children — see computeLabRollup in
+    // lib/labRollup.js for what this actually controls.
+    billingMode: l.billing_mode || null,
     remarks: l.remarks || "",
     healthStatus: l.health_status || null,
     lastRating: l.last_rating != null ? Number(l.last_rating) : null,
@@ -51,10 +54,20 @@ export async function insertLab(lab, idByName) {
     credit_days: lab.creditDays ? parseInt(lab.creditDays, 10) : null,
     billing_type: lab.billingType || null,
     payment_cycle: lab.paymentCycle || null,
+    billing_mode: lab.billingMode || null,
     remarks: lab.remarks || null,
   });
   if (error) throw error;
   recordMrrSnapshot(lab.id, lab.mrr, lab.region, "lab_created").catch((err) => console.error(err));
+}
+
+// Set (or change) a Parent lab's Billing Mode — "Consolidated" (one invoice covers the whole
+// group; the parent's own mrr is the group's real MRR) or "Per-Branch" (each child billed
+// separately; the parent's own mrr is ignored in favor of summing children). See
+// computeLabRollup in lib/labRollup.js for where this is actually applied.
+export async function updateLabBillingMode(labId, billingMode) {
+  const { error } = await supabase.from("labs").update({ billing_mode: billingMode || null }).eq("id", labId);
+  if (error) throw error;
 }
 
 // One row per MRR change, going forward — see migrations/0011 for why this can't be backfilled.
@@ -98,6 +111,23 @@ export async function updateLabMRR(labId, newMrr, region) {
 // the status flip.
 export async function updateLabStatus(labId, status) {
   const { error } = await supabase.from("labs").update({ status }).eq("id", labId);
+  if (error) throw error;
+}
+
+// Editable Lab Details fields — anything that isn't an identity field (Lab ID/Name) or already
+// covered by its own dedicated action (CSM, Plan, Status). Available to whoever can already see
+// this lab (the owning CSM, or any Lead/Admin) — same visibility the RLS policy already enforces.
+export async function updateLabDetails(labId, { city, state, country, region, billingType, paymentCycle, creditDays, remarks }) {
+  const { error } = await supabase.from("labs").update({
+    city: city || null,
+    state,
+    country,
+    region,
+    billing_type: billingType || null,
+    payment_cycle: paymentCycle || null,
+    credit_days: creditDays !== "" && creditDays != null ? parseInt(creditDays, 10) : null,
+    remarks: remarks || null,
+  }).eq("id", labId);
   if (error) throw error;
 }
 

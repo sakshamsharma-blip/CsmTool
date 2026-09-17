@@ -6,7 +6,7 @@ import {
   addModuleParam, updateModuleParam, deleteModuleParam,
 } from "./lib/catalog";
 import { fetchPlans, setPlanModule, setPlanExcludedParam } from "./lib/plans";
-import { fetchLabs, insertLab, updateLabCsm, updateLabPlan } from "./lib/labs";
+import { fetchLabs, insertLab, updateLabCsm, updateLabPlan, updateLabBillingMode } from "./lib/labs";
 import { logActivity } from "./lib/activity";
 import { hasLeadAccess } from "./lib/roles";
 import { refreshUsdInrRate, onFxRateChange } from "./lib/fx";
@@ -157,10 +157,17 @@ export default function App() {
 
   // ---- writes: optimistic local update + best-effort Supabase persist ----
   async function handleAddLab(lab) {
-    setLabs((ls) => [...ls, lab]);
+    // Not a real column on the child row — AddLabDrawer sets this the moment a previously
+    // childless parent gets its first child, since that's when Billing Mode first matters.
+    const { setParentBillingMode, ...labFields } = lab;
+    setLabs((ls) => {
+      const next = [...ls, labFields];
+      return setParentBillingMode ? next.map((l) => (l.id === lab.parent ? { ...l, billingMode: setParentBillingMode } : l)) : next;
+    });
     if (SUPABASE_CONFIGURED) {
       try {
-        await insertLab(lab, idByName);
+        await insertLab(labFields, idByName);
+        if (setParentBillingMode) await updateLabBillingMode(lab.parent, setParentBillingMode);
         const csmId = idByName[lab.csm];
         logActivity(lab.id, {
           kind: "Lab Created",

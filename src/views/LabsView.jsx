@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { fmtINR, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
 import { isHealthyStatus } from "../lib/pulse";
+import { computeLabRollup } from "../lib/labRollup";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const CSV_COLUMNS = ["id", "name", "type", "parent", "csm", "region", "city", "state", "country", "mrr", "status"];
@@ -24,15 +25,6 @@ function exportLabsCsv(labs) {
   URL.revokeObjectURL(url);
 }
 
-function computeRows(labs) {
-  const parents = labs.filter((l) => l.type === "Parent");
-  return parents.map((par) => {
-    const children = labs.filter((l) => l.type === "Child" && l.parent === par.id);
-    const mrr = children.length ? children.reduce((s, c) => s + c.mrr, 0) : par.mrr || 0;
-    return { ...par, mrr, children };
-  });
-}
-
 export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab, initialQuery }) {
   const [expanded, setExpanded] = useState({});
   const [filters, setFilters] = useState({ csm: "", region: "", status: "", segment: "" });
@@ -45,7 +37,7 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab, i
   }, [initialQuery]);
 
   const rows = useMemo(() => {
-    let r = computeRows(labs);
+    let r = computeLabRollup(labs);
     const q = query.trim().toLowerCase();
     // Matches the top bar's promise — Lab ID, Lab Name, CSM, City — not just the name.
     const matchesLab = (l) => [l.id, l.name, l.csm, l.city].some((v) => String(v || "").toLowerCase().includes(q));
@@ -57,7 +49,7 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab, i
     return r;
   }, [labs, filters, query]);
 
-  const allRowsForTiles = useMemo(() => computeRows(labs), [labs]);
+  const allRowsForTiles = useMemo(() => computeLabRollup(labs), [labs]);
   const totalLabs = allRowsForTiles.length + allRowsForTiles.reduce((s, r) => s + r.children.length, 0);
   const activeCount = allRowsForTiles.filter((r) => r.status === "Active").length +
     allRowsForTiles.reduce((s, r) => s + r.children.filter((c) => c.status === "Active").length, 0);
@@ -148,7 +140,14 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab, i
                   )}</td>
                   <td>{r.id}</td>
                   <td className="lab-name clickable" onClick={() => onOpenLab(r.id)}>{r.name}</td>
-                  <td><span className="pill pill-parent">Parent</span></td>
+                  <td>
+                    <span className="pill pill-parent">Parent</span>
+                    {r.children.length > 0 && (
+                      <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "var(--text-dim)" }} title="Billing Mode — set from the lab's Child Labs tab">
+                        {r.billingMode === "Consolidated" ? "Consolidated" : "Per-Branch"}
+                      </span>
+                    )}
+                  </td>
                   <td>{r.csm}</td>
                   <td><span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span></td>
                   <td>{r.region}</td><td>{r.state}</td><td>{r.country}</td>

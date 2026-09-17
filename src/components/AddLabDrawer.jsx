@@ -55,8 +55,17 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
   const totalManaged = labs.reduce((s, r) => s + toINR(r.mrr || 0, r.region), 0) + toINR(mrr, form.region);
   const weight = totalManaged ? (toINR(mrr, form.region) / totalManaged) * 100 : 0;
   const parents = labs.filter((l) => l.type === "Parent");
+  const selectedParent = hierarchy === "child" ? parents.find((p) => p.id === form.parentId) : null;
+  const parentExistingChildren = selectedParent ? labs.filter((l) => l.type === "Child" && l.parent === selectedParent.id) : [];
+  // Ask for Billing Mode exactly once per group — the moment a previously childless parent gets
+  // its first child, since that's the point where "sum of children" vs. "one consolidated
+  // invoice" first becomes a real, meaningful choice. Once the parent already has a billing_mode
+  // (set here, or on an earlier child), later children just join the existing mode silently.
+  const needsBillingModeChoice = hierarchy === "child" && !!selectedParent && parentExistingChildren.length === 0 && !selectedParent.billingMode;
 
-  function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
+  function set(field, value) {
+    setForm((f) => (field === "parentId" ? { ...f, parentId: value, newParentBillingMode: "" } : { ...f, [field]: value }));
+  }
 
   // "Save & Add Another" after a preset-parent add (adding several child labs in a row under
   // the same parent) should stay on that parent rather than snapping back to a blank Parent Lab
@@ -101,6 +110,10 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
       setSaveError("Credit Days is required — enter 0 if this lab has no credit period.");
       return;
     }
+    if (needsBillingModeChoice && !form.newParentBillingMode) {
+      setSaveError("Choose how this group is billed — Consolidated (one invoice for the whole group) or Per-Branch (each center billed separately) — before adding its first child lab.");
+      return;
+    }
     setSaveError("");
     const lab = {
       id: form.id.trim(), name: form.name.trim(), type: hierarchy === "child" ? "Child" : "Parent",
@@ -110,6 +123,9 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
       mrr, status: "Active",
       creditDays: form.creditDays, billingType: form.billingType, paymentCycle: form.paymentCycle,
       remarks: form.remarks.trim(),
+      // Not a field on the child row itself — a signal for the caller to also set the PARENT's
+      // billing_mode, since this is the moment (first child added) that choice first matters.
+      setParentBillingMode: needsBillingModeChoice ? form.newParentBillingMode : null,
     };
     onSave(lab);
     reset();
@@ -148,6 +164,21 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
                     {parents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                   <div className="hint">Select the parent lab this lab will be created under.</div>
+                </div>
+              )}
+              {needsBillingModeChoice && (
+                <div className="field">
+                  <label>Billing Mode for this group <span className="req">*</span></label>
+                  <select value={form.newParentBillingMode} onChange={(e) => set("newParentBillingMode", e.target.value)}>
+                    <option value="">Select…</option>
+                    <option value="Consolidated">Consolidated — one invoice covers the whole group</option>
+                    <option value="Per-Branch">Per-Branch — each center is billed separately</option>
+                  </select>
+                  <div className="hint">
+                    {selectedParent.name} doesn't have any other child labs yet — this decides how its total MRR is calculated going forward.
+                    Consolidated: {selectedParent.name}'s own MRR is the group's real MRR, and child MRR is tracked for reference only.
+                    Per-Branch: {selectedParent.name}'s MRR is ignored in favor of summing every child's MRR. Can be changed later from {selectedParent.name}'s Child Labs tab.
+                  </div>
                 </div>
               )}
             </div>
@@ -275,6 +306,6 @@ function initialForm(csmNames, plans) {
   return {
     id: "", name: "", parentId: "", csm: csmNames[0] || "", region: "Domestic", plan: plans[0]?.id || "",
     city: "", state: "", country: "", creditDays: "30", billingType: "Fixed", paymentCycle: "Monthly",
-    mrr: "", remarks: "",
+    mrr: "", remarks: "", newParentBillingMode: "",
   };
 }

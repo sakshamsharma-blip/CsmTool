@@ -66,3 +66,18 @@ export async function addVisit({
       : null,
   }).catch((err) => console.error(err));
 }
+
+// Edits an already-logged visit/check-in in place. Only the base fields shown on the
+// Visits & Meetings screen are updatable here — the fuller check-in-only fields (person,
+// discussion topics, etc.) aren't touched since this editor doesn't expose them.
+export async function updateVisit(id, { type, visitDate, notes, nextFollowupDate, nextFollowupReason, sentiment }) {
+  const { error } = await supabase.from("visits").update({
+    visit_type: type,
+    visit_date: visitDate,
+    notes: notes || null,
+    next_followup_date: nextFollowupDate || null,
+    next_followup_reason: nextFollowupReason || null,
+    sentiment: sentiment || null,
+  }).eq("id", id);
+  if (error) throw error;
+}
