@@ -132,7 +132,7 @@ export default function ReportsView({ labs, csmDirectory, currentCSM, idByName, 
         loadingChurn ? (
           <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading churn log…</div>
         ) : churnError ? (
-          <div className="warn-banner" style={{ background: "var(--bad-bg)", color: "var(--bad)", borderColor: "#f3b8b8" }}>Couldn't load churn log — {churnError}</div>
+          <div className="error-banner">Couldn't load churn log — {churnError}</div>
         ) : (
           <>
             <div className="summary-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 14 }}>

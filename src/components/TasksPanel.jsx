@@ -47,8 +47,8 @@ export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, o
                             <td><input className="task-check" type="checkbox" checked={doneToday} onChange={() => onToggleDone(t)} title="Mark done" /></td>
                             <td style={doneToday ? { textDecoration: "line-through" } : undefined}>
                               {t.desc}
-                              {t.auto && <span className="cat-tag" style={{ background: "#fff4e0", color: "#9a5b00" }}> System</span>}
-                              {t.assignedBy && <span className="cat-tag" style={{ background: "#eef2ff", color: "#4338ca" }}> From {t.assignedBy}</span>}
+                              {t.auto && <span className="cat-tag cat-Warn"> System</span>}
+                              {t.assignedBy && <span className="cat-tag cat-Indigo"> From {t.assignedBy}</span>}
                             </td>
                             <td>{t.labId ? <span className="lab-name clickable" onClick={() => onOpenLab(t.labId)}>{labsById?.[t.labId]?.name || t.labId}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
                             <td>{taskTypeLabel(t)}</td>

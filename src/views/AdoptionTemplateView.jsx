@@ -199,7 +199,7 @@ export default function AdoptionTemplateView({
                     {draft.params.length} parameter{draft.params.length === 1 ? "" : "s"} · {paramWeightTotal}% allocated within this module
                   </div>
                 </div>
-                <button className="btn btn-ghost" style={{ color: "var(--bad)", borderColor: "#f3c9c2" }} onClick={handleDeleteModuleClick}>
+                <button className="btn btn-ghost" style={{ color: "var(--bad)", borderColor: "var(--bad-border)" }} onClick={handleDeleteModuleClick}>
                   Delete Module
                 </button>
               </div>

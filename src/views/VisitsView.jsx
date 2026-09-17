@@ -53,7 +53,7 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
     return <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>Demo mode — Visits &amp; Meetings needs a database connected.</div>;
   }
   if (loading) return <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading visits…</div>;
-  if (error) return <div className="warn-banner" style={{ background: "var(--bad-bg)", color: "var(--bad)", borderColor: "#f3b8b8" }}>Couldn't load visits — {error}</div>;
+  if (error) return <div className="error-banner">Couldn't load visits — {error}</div>;
 
   const teamAll = isHead && scope === "team" && !csmFilter;
   const scopeCsm = isHead && scope === "team" ? (csmFilter || null) : currentCSM;
@@ -78,7 +78,7 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
   async function handleLogVisit() {
     if (!logLabId) { setLogError(true); return; }
     try {
-      await addVisit({
+      const newVisitId = await addVisit({
         labId: logLabId, csmId: idByName[labsById[logLabId]?.csm], type: logType, visitDate: logDate,
         notes: logNotes, nextFollowupDate: logFollowup || null, nextFollowupReason: logFollowupReason,
         sentiment: logSentiment || null,
@@ -86,7 +86,8 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
 
       // Same rule the full Log Check-in flow follows — a next-follow-up date always creates a
       // real task too, so it shows up under Tasks/Dashboard on the day it's due, not just in this
-      // page's own "Upcoming" list (which only reads the raw visit record).
+      // page's own "Upcoming" list (which only reads the raw visit record). sourceVisitId links it
+      // back to this visit so a later edit from the Visit Detail view can keep it in sync.
       if (logFollowup) {
         const lab = labsById[logLabId];
         await addTask({
@@ -98,6 +99,7 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
           due: logFollowup,
           idByName,
           assignedByName: currentCSM,
+          sourceVisitId: newVisitId,
         });
       }
 

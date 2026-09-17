@@ -45,7 +45,7 @@ export default function CollectionsView({ labs, csmDirectory, currentCSM, idByNa
     return <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>Demo mode — Collections needs a database connected.</div>;
   }
   if (loading) return <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading collections…</div>;
-  if (error) return <div className="warn-banner" style={{ background: "var(--bad-bg)", color: "var(--bad)", borderColor: "#f3b8b8" }}>Couldn't load collections — {error}</div>;
+  if (error) return <div className="error-banner">Couldn't load collections — {error}</div>;
 
   const teamAll = isHead && scope === "team" && !csmFilter;
   const scopeCsm = isHead && scope === "team" ? (csmFilter || null) : currentCSM;

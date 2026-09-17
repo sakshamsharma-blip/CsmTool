@@ -2,6 +2,9 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { fmtINR, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
 import { isHealthyStatus } from "../lib/pulse";
 import { computeLabRollup } from "../lib/labRollup";
+import { SUPABASE_CONFIGURED } from "../supabaseClient";
+import { fetchAllVisits } from "../lib/visits";
+import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const CSV_COLUMNS = ["id", "name", "type", "parent", "csm", "region", "city", "state", "country", "mrr", "status"];
@@ -29,6 +32,18 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab, i
   const [expanded, setExpanded] = useState({});
   const [filters, setFilters] = useState({ csm: "", region: "", status: "", segment: "" });
   const [query, setQuery] = useState(initialQuery || "");
+  const [visits, setVisits] = useState([]);
+
+  // Lab Health (Sentiment) badge — fetched independently of `labs` (same pattern Dashboard/
+  // Visits use), non-blocking: the table itself renders instantly off the `labs` prop, and these
+  // badges just fill in once visit history loads.
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) return;
+    fetchAllVisits().then(setVisits).catch((err) => console.error(err));
+  }, []);
+  const visitsByLab = {};
+  visits.forEach((v) => { (visitsByLab[v.labId] = visitsByLab[v.labId] || []).push(v); });
+  function sentimentHealthOf(l) { return computeSentimentHealth(visitsByLab[l.id]); }
 
   // The top bar's search box seeds this same query — keep them in sync when it changes there,
   // without fighting the user if they then edit this page's own search box directly.
@@ -122,11 +137,12 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab, i
           <tr>
             <th></th><th>Lab ID</th><th>Lab Name</th><th>Type</th><th>CSM</th><th>Segment</th>
             <th>Region</th><th>State</th><th>Country</th><th>MRR</th><th>Status</th><th>Health</th>
+            <th title="Auto, from logged visit/check-in sentiment — separate from Health">Lab Health</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
-            <tr><td colSpan="12" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>No labs match these filters.</td></tr>
+            <tr><td colSpan="13" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>No labs match these filters.</td></tr>
           )}
           {rows.map((r) => {
             const seg = segmentFor(toINR(r.mrr, r.region));
@@ -154,6 +170,7 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab, i
                   <td className="mrr-cell">{fmtMoney(r.mrr, r.region)}</td>
                   <td><span className={`status-pill ${statusPillClass(r.status)}`}>{r.status}</span></td>
                   <td>{r.healthStatus ? <span className={`status-pill ${healthPillClass(r.healthStatus)}`}>{r.healthStatus}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
+                  <td><span style={{ fontSize: 11, fontWeight: 700, color: HEALTH_BUCKET_COLORS[sentimentHealthOf(r).bucket] }}>{sentimentHealthOf(r).bucket}</span></td>
                 </tr>
                 {r.children.length > 0 && expanded[r.id] && r.children.map((c) => {
                   const cseg = segmentFor(toINR(c.mrr, c.region));
@@ -168,6 +185,7 @@ export default function LabsView({ labs, csmNames, onOpenAddDrawer, onOpenLab, i
                       <td className="mrr-cell">{fmtMoney(c.mrr, c.region)}</td>
                       <td><span className={`status-pill ${statusPillClass(c.status)}`}>{c.status}</span></td>
                       <td>{c.healthStatus ? <span className={`status-pill ${healthPillClass(c.healthStatus)}`}>{c.healthStatus}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
+                      <td><span style={{ fontSize: 11, fontWeight: 700, color: HEALTH_BUCKET_COLORS[sentimentHealthOf(c).bucket] }}>{sentimentHealthOf(c).bucket}</span></td>
                     </tr>
                   );
                 })}

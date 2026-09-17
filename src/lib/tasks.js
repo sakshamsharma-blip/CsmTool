@@ -128,7 +128,11 @@ export async function fetchAllTasks(nameById) {
 
 // Creates one task per owner — a Lead broadcasting to "All CSMs" gets one independent copy per CSM
 // (not one shared row), matching how every other task already works.
-export async function addTask({ labId, desc, owners, type, repeat, repeatDay, repeatIntervalDays, repeatAnchor, due, idByName, assignedByName }) {
+// sourceVisitId (optional) links a follow-up task back to the visit/check-in that created it, so
+// a later edit to that visit's follow-up date can keep this task in sync — see
+// syncFollowupTaskForVisit below. Returns the inserted row(s) so a caller that needs the new id
+// (exactly the sourceVisitId case, always a single owner) can use it right away.
+export async function addTask({ labId, desc, owners, type, repeat, repeatDay, repeatIntervalDays, repeatAnchor, due, idByName, assignedByName, sourceVisitId }) {
   const broadcastId = owners.length > 1 ? crypto.randomUUID() : null;
   const assignedById = assignedByName ? idByName[assignedByName] || null : null;
   const rows = owners.map((owner) => ({
@@ -143,8 +147,9 @@ export async function addTask({ labId, desc, owners, type, repeat, repeatDay, re
     repeat_day: repeatDay != null ? String(repeatDay) : null,
     repeat_interval_days: repeatIntervalDays || null,
     repeat_anchor: repeatAnchor || null,
+    source_visit_id: sourceVisitId || null,
   }));
-  const { error } = await supabase.from("tasks").insert(rows);
+  const { data, error } = await supabase.from("tasks").insert(rows).select("id");
   if (error) throw error;
   if (labId) {
     const lab = { id: labId };
@@ -155,6 +160,7 @@ export async function addTask({ labId, desc, owners, type, repeat, repeatDay, re
       csmId: assignedById || idByName[owners[0]],
     }).catch((err) => console.error(err));
   }
+  return data || [];
 }
 
 export async function toggleTaskDone(task) {
@@ -165,7 +171,42 @@ export async function toggleTaskDone(task) {
   if (error) throw error;
 }
 
+// Generic patch — used by syncFollowupTaskForVisit to update a linked task's due date/description
+// after its source visit is edited, without touching its done/repeat state.
+export async function updateTask(id, { desc, due }) {
+  const patch = {};
+  if (desc !== undefined) patch.description = desc;
+  if (due !== undefined) patch.due = due || null;
+  const { error } = await supabase.from("tasks").update(patch).eq("id", id);
+  if (error) throw error;
+}
+
 export async function deleteTask(id) {
   const { error } = await supabase.from("tasks").delete().eq("id", id);
   if (error) throw error;
+}
+
+// Keeps a visit's follow-up task in sync when the visit itself is edited: updates the linked
+// task's due date/description if one exists, creates one if a follow-up date was just added
+// where there wasn't one before, and removes it if the follow-up date was cleared. Called from
+// the Visit Detail edit-save flow (LabDetailView) — never from visit creation, which already
+// creates its own task inline via addTask with sourceVisitId set.
+export async function syncFollowupTaskForVisit({ visitId, labId, labName, ownerName, idByName, nextFollowupDate, nextFollowupReason }) {
+  const { data: existing, error: e1 } = await supabase.from("tasks").select("id").eq("source_visit_id", visitId).limit(1);
+  if (e1) throw e1;
+  const existingId = existing && existing[0] ? existing[0].id : null;
+  const desc = `Follow-up — ${labName}${nextFollowupReason ? `: ${nextFollowupReason}` : ""}`;
+
+  if (!nextFollowupDate) {
+    if (existingId) await deleteTask(existingId);
+    return;
+  }
+  if (existingId) {
+    await updateTask(existingId, { desc, due: nextFollowupDate });
+  } else {
+    await addTask({
+      labId, desc, owners: [ownerName], type: "follow-up", repeat: "none",
+      due: nextFollowupDate, idByName, assignedByName: ownerName, sourceVisitId: visitId,
+    });
+  }
 }

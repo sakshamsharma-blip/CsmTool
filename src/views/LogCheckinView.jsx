@@ -100,7 +100,7 @@ export default function LogCheckinView({ lab, modules, plans, currentCSM, idByNa
     setSaving(true);
     try {
       const csmId = idByName?.[currentCSM];
-      await addVisit({
+      const newVisitId = await addVisit({
         labId: lab.id,
         csmId,
         type,
@@ -121,7 +121,9 @@ export default function LogCheckinView({ lab, modules, plans, currentCSM, idByNa
       // A next-follow-up date used to only ever surface on the Visits & Meetings page itself — it
       // never became a real task, so it never showed up on Dashboard/Tasks unless a module also
       // happened to get flagged. Now every follow-up date always creates its own task too, so it's
-      // reliably visible everywhere tasks are, whether or not anything was flagged.
+      // reliably visible everywhere tasks are, whether or not anything was flagged. sourceVisitId
+      // links it back to this check-in so a later edit from the Visit Detail view can keep it in
+      // sync — the per-module training tasks below aren't tied to this field, so they don't get it.
       if (nextFollowup) {
         await addTask({
           labId: lab.id,
@@ -132,6 +134,7 @@ export default function LogCheckinView({ lab, modules, plans, currentCSM, idByNa
           due: nextFollowup,
           idByName,
           assignedByName: currentCSM,
+          sourceVisitId: newVisitId,
         });
       }
 

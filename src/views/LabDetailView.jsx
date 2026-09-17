@@ -18,6 +18,9 @@ import {
 import { extractInvoiceFromFile } from "../lib/invoiceParse";
 import { updateLabStatus, updateLabStageTags, updateLabTestimonial, updateLabDetails, updateLabBillingMode, fetchMrrHistory } from "../lib/labs";
 import { HEALTH_STATUSES, isHealthyStatus, logLabPulse } from "../lib/pulse";
+import { fetchAllVisits, fetchVisitById, updateVisit } from "../lib/visits";
+import { syncFollowupTaskForVisit } from "../lib/tasks";
+import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { CHURN_TYPES, logChurn } from "../lib/churn";
 import Modal from "../components/Modal";
 import InfoTip from "../components/InfoTip";
@@ -27,6 +30,19 @@ const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E
 const EMPTY_ADOPTION = { scope: {}, paramScope: {}, paramState: {} };
 const LAB_STATUSES = ["Active", "Inactive", "At Risk"]; // Churned/Contraction go through the Churn modal instead
 const STAGE_TAGS = ["Adoption", "Expansion", "Support", "Pending Dues", "Open Points", "Pilot", "Future Churn", "Churn", "Rapo"];
+
+// Same field vocab Log Check-in / Log Visit use — kept here too since the Visit Detail view
+// (Lab History tab) edits the very same visit/check-in records.
+const VISIT_TYPES = ["Visit", "Call", "Email", "WhatsApp", "Note"];
+const VISIT_DISCUSSION_TOPICS = [
+  "Adoption/Usage", "Billing & Payments", "Support Issue", "Renewal/Expansion",
+  "Training Need", "Relationship/Escalation", "Other",
+];
+const VISIT_SENTIMENTS = [
+  { key: "Positive", color: "var(--ok)" },
+  { key: "Neutral", color: "var(--text-dim)" },
+  { key: "At Risk", color: "var(--bad)" },
+];
 
 function statusPillClass(s) { return "status-" + (s || "").replace(" ", ""); }
 function healthPillClass(s) { return isHealthyStatus(s) ? "status-Active" : s === "Churn" ? "status-Inactive" : "status-AtRisk"; }
@@ -98,7 +114,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
   const [stageTags, setStageTags] = useState(lab.stageTags || []);
   const [savingStageTags, setSavingStageTags] = useState(false);
 
-  const [editDetailsOpen, setEditDetailsOpen] = useState(false);
+  const [detailsEditMode, setDetailsEditMode] = useState(false);
   const [editCity, setEditCity] = useState(lab.city || "");
   const [editState, setEditState] = useState(lab.state || "");
   const [editCountry, setEditCountry] = useState(lab.country || "");
@@ -181,6 +197,137 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
     fetchMrrHistory(lab.id).then((rows) => { if (!cancelled) setMrrHistory(rows); }).catch((err) => console.error(err));
     return () => { cancelled = true; };
   }, [lab.id]);
+
+  // Lab Health (Sentiment) — computed from this lab's own visit/check-in history, same source
+  // Dashboard and Total Labs read (lib/labHealth.js), kept separate from the manual Health
+  // Status pill next to it.
+  const [labVisits, setLabVisits] = useState([]);
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) { setLabVisits([]); return; }
+    let cancelled = false;
+    fetchAllVisits()
+      .then((all) => { if (!cancelled) setLabVisits(all.filter((v) => v.labId === lab.id)); })
+      .catch((err) => console.error(err));
+    return () => { cancelled = true; };
+  }, [lab.id]);
+  const sentHealth = computeSentimentHealth(labVisits);
+
+  // Visit Detail (Lab History tab) — opened by clicking a Visit/Check-in row in the Activity
+  // Timeline (only those rows carry a details.visitId). Fetched on demand rather than reused from
+  // `labVisits` above since that list only has the fields fetchAllVisits selects for the Lab
+  // Health computation, and edits here need the full record either way.
+  const [openVisitId, setOpenVisitId] = useState(null);
+  const [visitDetail, setVisitDetail] = useState(null);
+  const [loadingVisitDetail, setLoadingVisitDetail] = useState(false);
+  const [visitDetailError, setVisitDetailError] = useState(null);
+  const [visitEditMode, setVisitEditMode] = useState(false);
+  const [savingVisitDetail, setSavingVisitDetail] = useState(false);
+  const [vType, setVType] = useState("Visit");
+  const [vDate, setVDate] = useState("");
+  const [vDuration, setVDuration] = useState("");
+  const [vLocation, setVLocation] = useState("");
+  const [vPersonName, setVPersonName] = useState("");
+  const [vPersonDesignation, setVPersonDesignation] = useState("");
+  const [vTopics, setVTopics] = useState([]);
+  const [vNotes, setVNotes] = useState("");
+  const [vSentiment, setVSentiment] = useState("");
+  const [vFlagged, setVFlagged] = useState([]);
+  const [vActionItems, setVActionItems] = useState([]);
+  const [vFollowup, setVFollowup] = useState("");
+  const [vFollowupReason, setVFollowupReason] = useState("");
+
+  useEffect(() => {
+    if (!openVisitId) { setVisitDetail(null); setVisitEditMode(false); return; }
+    let cancelled = false;
+    setLoadingVisitDetail(true);
+    setVisitDetailError(null);
+    fetchVisitById(openVisitId)
+      .then((v) => { if (!cancelled) setVisitDetail(v); })
+      .catch((err) => { if (!cancelled) setVisitDetailError(err.message || "Failed to load visit."); })
+      .finally(() => { if (!cancelled) setLoadingVisitDetail(false); });
+    return () => { cancelled = true; };
+  }, [openVisitId]);
+
+  function openVisitDetail(id) {
+    setOpenVisitId(id);
+    setVisitEditMode(false);
+  }
+  function closeVisitDetail() {
+    setOpenVisitId(null);
+    setVisitDetail(null);
+    setVisitEditMode(false);
+  }
+  function startEditVisit() {
+    const v = visitDetail;
+    if (!v) return;
+    setVType(v.type || "Visit");
+    setVDate(v.visitDate || "");
+    setVDuration(v.durationMinutes != null ? String(v.durationMinutes) : "");
+    setVLocation(v.location || "");
+    setVPersonName(v.personName || "");
+    setVPersonDesignation(v.personDesignation || "");
+    setVTopics(v.discussionTopics || []);
+    setVNotes(v.notes || "");
+    setVSentiment(v.sentiment || "");
+    setVFlagged(v.flaggedModules || []);
+    setVActionItems(v.actionItems || []);
+    setVFollowup(v.nextFollowupDate || "");
+    setVFollowupReason(v.nextFollowupReason || "");
+    setVisitEditMode(true);
+  }
+  function cancelEditVisit() {
+    setVisitEditMode(false);
+  }
+  function toggleVTopic(t) {
+    setVTopics((ts) => (ts.includes(t) ? ts.filter((x) => x !== t) : [...ts, t]));
+  }
+  function toggleVFlag(moduleKey) {
+    setVFlagged((fs) => (fs.includes(moduleKey) ? fs.filter((k) => k !== moduleKey) : [...fs, moduleKey]));
+  }
+  function addVActionItem() {
+    setVActionItems((items) => [...items, { text: "", dueDate: "" }]);
+  }
+  function updateVActionItem(i, patch) {
+    setVActionItems((items) => items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+  }
+  function removeVActionItem(i) {
+    setVActionItems((items) => items.filter((_, idx) => idx !== i));
+  }
+
+  // Saves the edited visit/check-in, then keeps its linked follow-up task in sync (create/update/
+  // remove based on the follow-up date now on the record — see lib/tasks.js), then refreshes the
+  // Activity Timeline and Lab Health so the edit shows up immediately without a full page reload.
+  async function handleSaveVisitDetail() {
+    setSavingVisitDetail(true);
+    try {
+      await updateVisit(openVisitId, {
+        type: vType, visitDate: vDate, notes: vNotes,
+        nextFollowupDate: vFollowup || null, nextFollowupReason: vFollowupReason,
+        sentiment: vSentiment || null,
+        durationMinutes: vDuration ? Number(vDuration) : null,
+        location: vLocation,
+        personName: vPersonName,
+        personDesignation: vPersonDesignation,
+        discussionTopics: vTopics,
+        flaggedModules: vFlagged,
+        actionItems: vActionItems.filter((it) => it.text.trim()).map((it) => ({ text: it.text.trim(), dueDate: it.dueDate || null })),
+      });
+      await syncFollowupTaskForVisit({
+        visitId: openVisitId, labId: lab.id, labName: lab.name, ownerName: lab.csm, idByName,
+        nextFollowupDate: vFollowup || null, nextFollowupReason: vFollowupReason,
+      });
+      const refreshed = await fetchVisitById(openVisitId);
+      setVisitDetail(refreshed);
+      setVisitEditMode(false);
+      fetchLabActivity(lab.id).then(setActivity).catch((err) => console.error(err));
+      fetchAllVisits().then((all) => setLabVisits(all.filter((v) => v.labId === lab.id))).catch((err) => console.error(err));
+      showToast("Visit updated.");
+    } catch (err) {
+      showToast(`⚠ ${err.message}`);
+    } finally {
+      setSavingVisitDetail(false);
+    }
+  }
 
   async function loadCollections() {
     if (!SUPABASE_CONFIGURED) { setCollItems([]); setLoadingColl(false); return; }
@@ -605,7 +752,12 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
     }
   }
 
-  function openEditDetails() {
+  // Lab Details edit is in-page, not a modal — clicking Edit turns the read-only rows below
+  // into inputs in place; Save Changes/Cancel replace the Edit button while in that mode. Scoped
+  // to just the plain fields here — CSM/Plan/Status/Testimonial/Health Check stay on their own
+  // dedicated actions since those cascade to child labs or branch into the Churn workflow, which
+  // a flat "edit everything and save" wouldn't preserve.
+  function startEditDetails() {
     setEditCity(lab.city || "");
     setEditState(lab.state || "");
     setEditCountry(lab.country || "");
@@ -614,7 +766,11 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
     setEditPaymentCycle(lab.paymentCycle || "Monthly");
     setEditCreditDays(lab.creditDays || "30");
     setEditRemarks(lab.remarks || "");
-    setEditDetailsOpen(true);
+    setDetailsEditMode(true);
+  }
+
+  function cancelEditDetails() {
+    setDetailsEditMode(false);
   }
 
   async function handleSaveDetails() {
@@ -628,7 +784,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
       onPatchLab && onPatchLab(lab.id, patch);
       const csmId = idByName?.[lab.csm];
       logActivity(lab.id, { kind: "Details Updated", title: "Lab details updated", csmId }).catch((err) => console.error(err));
-      setEditDetailsOpen(false);
+      setDetailsEditMode(false);
       showToast("Lab details updated.");
     } catch (err) {
       showToast(`⚠ ${err.message}`);
@@ -707,8 +863,15 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
               <span className={`status-pill ${healthPillClass(lab.healthStatus)}`} title="Health status">{lab.healthStatus}</span>
             )}
             {lab.lastRating != null && (
-              <span className="status-pill" style={{ background: "var(--accent-dim)", color: "#1948a8" }} title="Last rating">★ {lab.lastRating}/10</span>
+              <span className="status-pill" style={{ background: "var(--accent-dim)", color: "var(--info-text)" }} title="Last rating">★ {lab.lastRating}/10</span>
             )}
+            <span
+              className="status-pill"
+              style={{ background: "#f4f6f9", color: HEALTH_BUCKET_COLORS[sentHealth.bucket] }}
+              title="Lab Health (Sentiment) — auto, from logged visit/check-in sentiment. Separate from the manual Health Status above."
+            >
+              Lab Health: {sentHealth.bucket}
+            </span>
           </div>
         </div>
         <div className="detail-meta">
@@ -742,21 +905,76 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
       </div>
 
       {tab === "details" && (
-        <div className="table-card" style={{ padding: "6px 20px 20px" }}>
-          {[
-            ["Lab Name", lab.name], ["Lab ID", lab.id], ["Lab Type", lab.type + " Lab"],
-            ["Parent Lab", lab.parent ? (labs.find((l) => l.id === lab.parent) || {}).name || lab.parent : "—"],
-            ["CSM Name", lab.csm], ["Region Category", lab.region], ["City", lab.city || "—"], ["State", lab.state],
-            ["Country", lab.country], ["Client Segment", `${seg.code} — ${SEG_NAME[seg.code]}`],
-            ["Credit Days", lab.creditDays || "30"], ["Billing Type", lab.billingType || "Variable"],
-            ["Payment Cycle", lab.paymentCycle || "Monthly"], ["Current MRR", fmtMoney(effectiveMRR(lab), lab.region)],
-            ["Current ARR", fmtMoney(effectiveMRR(lab) * 12, lab.region)], ["Status", lab.status], ["Remarks", lab.remarks || "—"],
-          ].map(([k, v]) => (
-            <div key={k} className="param-row" style={{ padding: "11px 0" }}>
-              <span className="pname" style={{ color: "var(--text-dim)", flex: "0 0 180px" }}>{k}</span>
-              <span style={{ fontWeight: 600 }}>{v}</span>
-            </div>
-          ))}
+        <div className="table-card" style={{ padding: "6px 20px 20px", overflow: "visible" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: "1px solid var(--border)", marginBottom: 4 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700 }}>Lab Details</div>
+            {!detailsEditMode ? (
+              <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "5px 12px" }} onClick={startEditDetails}>✎ Edit</button>
+            ) : (
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "5px 12px" }} onClick={cancelEditDetails} disabled={savingDetails}>Cancel</button>
+                <button className="btn btn-primary" style={{ fontSize: 11.5, padding: "5px 12px" }} onClick={handleSaveDetails} disabled={savingDetails}>{savingDetails ? "Saving…" : "Save Changes"}</button>
+              </div>
+            )}
+          </div>
+
+          {(() => {
+            const inputStyle = { border: "1px solid var(--border)", borderRadius: 7, padding: "6px 10px", fontSize: 13, fontFamily: "inherit", width: "100%", maxWidth: 320 };
+            const row = (label, readNode, editNode) => (
+              <div key={label} className="param-row" style={{ padding: "11px 0" }}>
+                <span className="pname" style={{ color: "var(--text-dim)", flex: "0 0 180px" }}>{label}</span>
+                {detailsEditMode && editNode ? editNode : <span style={{ fontWeight: 600 }}>{readNode}</span>}
+              </div>
+            );
+            return (
+              <>
+                {row("Lab Name", lab.name)}
+                {row("Lab ID", lab.id)}
+                {row("Lab Type", lab.type + " Lab")}
+                {row("Parent Lab", lab.parent ? (labs.find((l) => l.id === lab.parent) || {}).name || lab.parent : "—")}
+                {row("CSM Name", lab.csm)}
+                {row("Region Category", lab.region,
+                  <div>
+                    <select value={editRegion} onChange={(e) => setEditRegion(e.target.value)} style={inputStyle}>
+                      <option>Domestic</option><option>ROW</option>
+                    </select>
+                    {editRegion !== lab.region && (
+                      <div style={{ fontSize: 11, color: "var(--warn)", marginTop: 4, fontWeight: 400 }}>
+                        Domestic bills in ₹, ROW in $ — changing this doesn't convert the existing MRR figure, so double-check it afterward.
+                      </div>
+                    )}
+                  </div>
+                )}
+                {row("City", lab.city || "—", <input value={editCity} onChange={(e) => setEditCity(e.target.value)} style={inputStyle} />)}
+                {row("State", lab.state, <input value={editState} onChange={(e) => setEditState(e.target.value)} style={inputStyle} />)}
+                {row("Country", lab.country, <input value={editCountry} onChange={(e) => setEditCountry(e.target.value)} style={inputStyle} />)}
+                {row("Client Segment", `${seg.code} — ${SEG_NAME[seg.code]}`)}
+                {row("Credit Days", lab.creditDays || "30",
+                  <input
+                    type="number" min="0" step="1" inputMode="numeric" value={editCreditDays}
+                    onChange={(e) => setEditCreditDays(e.target.value.replace(/[^0-9]/g, ""))}
+                    placeholder="e.g. 30" style={inputStyle}
+                  />
+                )}
+                {row("Billing Type", lab.billingType || "Variable",
+                  <select value={editBillingType} onChange={(e) => setEditBillingType(e.target.value)} style={inputStyle}>
+                    <option>Fixed</option><option>Variable</option>
+                  </select>
+                )}
+                {row("Payment Cycle", lab.paymentCycle || "Monthly",
+                  <select value={editPaymentCycle} onChange={(e) => setEditPaymentCycle(e.target.value)} style={inputStyle}>
+                    <option>Monthly</option><option>Quarterly</option><option>Half Yearly</option><option>Annual</option>
+                  </select>
+                )}
+                {row("Current MRR", fmtMoney(effectiveMRR(lab), lab.region))}
+                {row("Current ARR", fmtMoney(effectiveMRR(lab) * 12, lab.region))}
+                {row("Status", lab.status)}
+                {row("Remarks", lab.remarks || "—",
+                  <textarea rows="2" value={editRemarks} onChange={(e) => setEditRemarks(e.target.value)} style={{ ...inputStyle, resize: "vertical" }} />
+                )}
+              </>
+            );
+          })()}
 
           <div style={{ padding: "14px 0", borderTop: "1px solid var(--border)", marginTop: 4 }}>
             <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", marginBottom: 8, display: "flex", alignItems: "center" }}>
@@ -781,7 +999,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
                     cursor: "pointer", userSelect: "none", fontSize: 11.5, padding: "4px 10px", borderRadius: 20,
                     border: `1px solid ${stageTags.includes(tag) ? "var(--accent)" : "var(--border)"}`,
                     background: stageTags.includes(tag) ? "var(--accent-dim)" : "transparent",
-                    color: stageTags.includes(tag) ? "#1948a8" : "var(--text-dim)",
+                    color: stageTags.includes(tag) ? "var(--info-text)" : "var(--text-dim)",
                     fontWeight: stageTags.includes(tag) ? 700 : 500,
                   }}
                 >
@@ -806,7 +1024,6 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
             <button className="btn btn-ghost" onClick={() => { setNewStatus(lab.status); setStatusOpen(true); }}>Change Status</button>
             <button className="btn btn-ghost" onClick={() => { setPulseHealth(lab.healthStatus || "No Risk"); setPulseRating(lab.lastRating != null ? String(lab.lastRating) : ""); setPulseNote(""); setPulseOpen(true); }}>Log Health Check</button>
             <button className="btn btn-ghost" onClick={() => { setTestimonialCollected(lab.testimonialCollected || false); setTestimonialUrl(lab.testimonialVideoUrl || ""); setTestimonialOpen(true); }}>Edit Testimonial</button>
-            <button className="btn btn-ghost" onClick={openEditDetails}>Edit Lab Details</button>
           </div>
         </div>
       )}
@@ -973,76 +1190,9 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
         )}
       </Modal>
 
-      <Modal
-        open={editDetailsOpen}
-        title="Edit Lab Details"
-        onClose={() => setEditDetailsOpen(false)}
-        actions={[
-          { label: "Cancel", className: "btn-ghost", onClick: () => setEditDetailsOpen(false) },
-          { label: savingDetails ? "Saving…" : "Save Changes", className: "btn-primary", onClick: handleSaveDetails, disabled: savingDetails },
-        ]}
-      >
-        <div className="tmpl-field-row" style={{ marginBottom: 12, display: "flex", gap: 10 }}>
-          <div className="tmpl-field" style={{ flex: 1 }}>
-            <label>City</label>
-            <input value={editCity} onChange={(e) => setEditCity(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
-          </div>
-          <div className="tmpl-field" style={{ flex: 1 }}>
-            <label>State</label>
-            <input value={editState} onChange={(e) => setEditState(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
-          </div>
-        </div>
-        <div className="tmpl-field-row" style={{ marginBottom: 12, display: "flex", gap: 10 }}>
-          <div className="tmpl-field" style={{ flex: 1 }}>
-            <label>Country</label>
-            <input value={editCountry} onChange={(e) => setEditCountry(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
-          </div>
-          <div className="tmpl-field" style={{ flex: 1 }}>
-            <label>Region Category</label>
-            <select value={editRegion} onChange={(e) => setEditRegion(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
-              <option>Domestic</option><option>ROW</option>
-            </select>
-            {editRegion !== lab.region && (
-              <div style={{ fontSize: 11, color: "var(--warn)", marginTop: 4 }}>
-                Domestic bills in ₹, ROW in $ — changing this doesn't convert the existing MRR figure, so double-check it afterward.
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="tmpl-field-row" style={{ marginBottom: 12, display: "flex", gap: 10 }}>
-          <div className="tmpl-field" style={{ flex: 1 }}>
-            <label>Billing Type</label>
-            <select value={editBillingType} onChange={(e) => setEditBillingType(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
-              <option>Fixed</option><option>Variable</option>
-            </select>
-          </div>
-          <div className="tmpl-field" style={{ flex: 1 }}>
-            <label>Payment Cycle</label>
-            <select value={editPaymentCycle} onChange={(e) => setEditPaymentCycle(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
-              <option>Monthly</option><option>Quarterly</option><option>Half Yearly</option><option>Annual</option>
-            </select>
-          </div>
-        </div>
-        <div className="tmpl-field" style={{ marginBottom: 12 }}>
-          <label>Credit Days</label>
-          <input
-            type="number" min="0" step="1" inputMode="numeric"
-            value={editCreditDays}
-            onChange={(e) => setEditCreditDays(e.target.value.replace(/[^0-9]/g, ""))}
-            placeholder="e.g. 30"
-            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}
-          />
-        </div>
-        <div className="tmpl-field">
-          <label>Remarks</label>
-          <textarea rows="2" value={editRemarks} onChange={(e) => setEditRemarks(e.target.value)}
-            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", resize: "vertical" }} />
-        </div>
-      </Modal>
-
       {tab === "childlabs" && (
         <>
-          <div className="table-card" style={{ padding: "14px 18px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div className="table-card" style={{ padding: "14px 18px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", overflow: "visible" }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center" }}>
               Billing Mode
               <InfoTip>Consolidated — one invoice covers the whole group, and {lab.name}'s own MRR is the group's real MRR. Per-Branch — each center is billed separately, and {lab.name}'s MRR is ignored in favor of summing every child's MRR.</InfoTip>
@@ -1093,7 +1243,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
         loadingAdoption ? (
           <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading adoption data…</div>
         ) : adoptionError ? (
-          <div className="warn-banner" style={{ background: "var(--bad-bg)", color: "var(--bad)", borderColor: "#f3b8b8" }}>
+          <div className="error-banner">
             Couldn't load adoption data — {adoptionError}
           </div>
         ) : (
@@ -1119,7 +1269,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
             </div>
 
             {hasDraftChanges && (
-              <div className="warn-banner" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", background: "var(--accent-dim)", color: "#1948a8", borderColor: "#c8dafc" }}>
+              <div className="info-banner" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <span><b>Unsaved changes</b> — the numbers above are a live preview. Nothing is recorded for this lab until you save.</span>
                 <div style={{ display: "flex", gap: 8, flex: "none" }}>
                   <button className="btn btn-ghost" style={{ fontSize: 11, padding: "5px 10px" }} onClick={handleDiscardAdoption} disabled={saving}>Discard</button>
@@ -1137,7 +1287,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
             </div>
 
             {planDeviations.length > 0 && (
-              <div className="warn-banner" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", background: "#fff7e6", borderColor: "#f3dfa8", color: "#8a5a00" }}>
+              <div className="warn-banner" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <span>Current scope differs from this lab's <b>{plan.name}</b> plan on <b>{planDeviations.length}</b> module{planDeviations.length > 1 ? "s" : ""} ({planDeviations.map((m) => m.name).join(", ")}) — a custom add-on or drop, not a plan change.</span>
                 <button className="btn btn-ghost" style={{ fontSize: 11, padding: "5px 10px", flex: "none" }} onClick={handleResetToPlanDefaults}>Reset to Plan Defaults</button>
               </div>
@@ -1259,11 +1409,11 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
         loadingColl || loadingInvoices ? (
           <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading collections…</div>
         ) : collError || invoicesError ? (
-          <div className="warn-banner" style={{ background: "var(--bad-bg)", color: "var(--bad)", borderColor: "#f3b8b8" }}>Couldn't load collections — {collError || invoicesError}</div>
+          <div className="error-banner">Couldn't load collections — {collError || invoicesError}</div>
         ) : !SUPABASE_CONFIGURED ? (
           <div className="table-card" style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Demo mode — Collections isn't tracked without a database connected.</div>
         ) : (
-          <div className="table-card" style={{ padding: "6px 20px 20px" }}>
+          <div className="table-card" style={{ padding: "6px 20px 20px", overflow: "visible" }}>
             <div style={{ display: "flex", alignItems: "center", fontSize: 11.5, color: "var(--text-faint)", padding: "10px 0 4px" }}>
               How invoices work
               <InfoTip>Upload an invoice below — its date, amount and type are read automatically and you confirm before saving. A Monthly invoice updates this lab's MRR; a Pro-Rata invoice is a one-off top-up that doesn't. Due date is the invoice date + this lab's Credit Days ({lab.creditDays || "30"}), not the invoice's own due date field.</InfoTip>
@@ -1302,7 +1452,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
                   const bal = invoiceBalance(inv);
                   return (
                     <tr key={inv.id}>
-                      <td>{inv.invoiceNumber}{!inv.extractedOk && <span className="cat-tag" style={{ background: "#fff7e6", color: "#8a5a00" }} title="Auto-extraction couldn't read every field — check this row's numbers"> ⚠ check</span>}</td>
+                      <td>{inv.invoiceNumber}{!inv.extractedOk && <span className="cat-tag cat-Warn" title="Auto-extraction couldn't read every field — check this row's numbers"> ⚠ check</span>}</td>
                       <td><span className={`cat-tag cat-${inv.invoiceType === "Monthly" ? "Adoption" : "Expansion"}`}>{inv.invoiceType === "Monthly" ? "Monthly" : "Pro-Rata"}</span></td>
                       <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{new Date(inv.invoiceDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" })}</td>
                       <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{new Date(inv.dueDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" })}</td>
@@ -1402,14 +1552,14 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
                       const parentLab = labs.find((l) => l.id === lab.parent);
                       if (parentLab?.billingMode === "Consolidated") {
                         return (
-                          <div className="warn-banner" style={{ background: "#fff7e6", borderColor: "#f3dfa8", color: "#8a5a00", marginBottom: 12 }}>
+                          <div className="warn-banner" style={{ marginBottom: 12 }}>
                             {parentLab.name} is billed <b>Consolidated</b> — only its own MRR counts toward the group's total. Saving this invoice will update {lab.name}'s MRR, but it won't affect the group's reported number. If this invoice covers the whole group, log it against {parentLab.name} instead.
                           </div>
                         );
                       }
                     } else if (lab.type === "Parent" && children.length && lab.billingMode !== "Consolidated") {
                       return (
-                        <div className="warn-banner" style={{ background: "#fff7e6", borderColor: "#f3dfa8", color: "#8a5a00", marginBottom: 12 }}>
+                        <div className="warn-banner" style={{ marginBottom: 12 }}>
                           {lab.name} is billed <b>Per-Branch</b> — its own MRR is ignored in favor of summing its child labs' MRR. Saving this invoice will update {lab.name}'s own MRR, but it won't affect the group's reported number. If this invoice is for one specific center, log it against that child lab instead — or switch Billing Mode to Consolidated on the Child Labs tab if it now covers the whole group.
                         </div>
                       );
@@ -1417,7 +1567,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
                     return null;
                   })()}
                   {!uploadForm.extractedOk && (
-                    <div className="warn-banner" style={{ background: "#fff7e6", borderColor: "#f3dfa8", color: "#8a5a00", marginBottom: 12 }}>
+                    <div className="warn-banner" style={{ marginBottom: 12 }}>
                       Couldn't auto-read every field from {uploadFile?.name} — please fill in / correct the details below.
                     </div>
                   )}
@@ -1486,7 +1636,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
         loadingActivity ? (
           <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading activity…</div>
         ) : activityError ? (
-          <div className="warn-banner" style={{ background: "var(--bad-bg)", color: "var(--bad)", borderColor: "#f3b8b8" }}>
+          <div className="error-banner">
             Couldn't load activity — {activityError}
           </div>
         ) : !SUPABASE_CONFIGURED ? (
@@ -1494,9 +1644,129 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
             Demo mode — activity isn't tracked without a database connected.
           </div>
         ) : (
+          openVisitId ? (
+            <div className="table-card" style={{ padding: "6px 20px 20px" }}>
+              <a onClick={closeVisitDetail} style={{ display: "inline-block", fontSize: 12, color: "var(--accent)", cursor: "pointer", padding: "14px 0 6px" }}>&larr; Back to Activity Timeline</a>
+
+              {loadingVisitDetail ? (
+                <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading visit…</div>
+              ) : visitDetailError ? (
+                <div className="error-banner">Couldn't load this visit — {visitDetailError}</div>
+              ) : visitDetail && (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0 11px", borderBottom: "1px solid var(--border)", marginBottom: 4 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700 }}>{ACTIVITY_ICONS[visitDetail.type] || "📝"} {visitDetail.type} — {new Date(visitDetail.visitDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</div>
+                    {!visitEditMode ? (
+                      <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "5px 12px" }} onClick={startEditVisit}>✎ Edit</button>
+                    ) : (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "5px 12px" }} onClick={cancelEditVisit} disabled={savingVisitDetail}>Cancel</button>
+                        <button className="btn btn-primary" style={{ fontSize: 11.5, padding: "5px 12px" }} onClick={handleSaveVisitDetail} disabled={savingVisitDetail}>{savingVisitDetail ? "Saving…" : "Save Changes"}</button>
+                      </div>
+                    )}
+                  </div>
+
+                  {(() => {
+                    const inputStyle = { border: "1px solid var(--border)", borderRadius: 7, padding: "6px 10px", fontSize: 13, fontFamily: "inherit", width: "100%", maxWidth: 320 };
+                    const row = (label, readNode, editNode) => (
+                      <div key={label} className="param-row" style={{ padding: "11px 0", alignItems: editNode ? "flex-start" : "center" }}>
+                        <span className="pname" style={{ color: "var(--text-dim)", flex: "0 0 180px", paddingTop: visitEditMode && editNode ? 4 : 0 }}>{label}</span>
+                        {visitEditMode && editNode ? editNode : <span style={{ fontWeight: 600 }}>{readNode}</span>}
+                      </div>
+                    );
+                    return (
+                      <>
+                        {row("Type", visitDetail.type,
+                          <select value={vType} onChange={(e) => setVType(e.target.value)} style={inputStyle}>
+                            {VISIT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        )}
+                        {row("Date", new Date(visitDetail.visitDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }),
+                          <input type="date" value={vDate} onChange={(e) => setVDate(e.target.value)} style={inputStyle} />
+                        )}
+                        {row("Duration (min)", visitDetail.durationMinutes ?? "—",
+                          <input type="number" min="0" value={vDuration} onChange={(e) => setVDuration(e.target.value)} style={inputStyle} />
+                        )}
+                        {row("Location", visitDetail.location || "—", <input value={vLocation} onChange={(e) => setVLocation(e.target.value)} style={inputStyle} />)}
+                        {row("Person Name", visitDetail.personName || "—", <input value={vPersonName} onChange={(e) => setVPersonName(e.target.value)} style={inputStyle} />)}
+                        {row("Person Designation", visitDetail.personDesignation || "—", <input value={vPersonDesignation} onChange={(e) => setVPersonDesignation(e.target.value)} style={inputStyle} />)}
+                        {row("Discussion Topics", visitDetail.discussionTopics?.length ? visitDetail.discussionTopics.join(", ") : "—",
+                          <div className="rule-chip-row">
+                            {VISIT_DISCUSSION_TOPICS.map((t) => (
+                              <label key={t} className="rule-chip" style={vTopics.includes(t) ? { borderColor: "var(--accent)", background: "var(--accent-dim)", color: "var(--accent)" } : undefined}>
+                                <input type="checkbox" checked={vTopics.includes(t)} onChange={() => toggleVTopic(t)} /> {t}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        {row("Notes", visitDetail.notes || "—",
+                          <textarea rows="3" value={vNotes} onChange={(e) => setVNotes(e.target.value)} style={{ ...inputStyle, resize: "vertical" }} />
+                        )}
+                        {row("Sentiment", visitDetail.sentiment || "Not set",
+                          <div style={{ display: "flex", gap: 8 }}>
+                            {VISIT_SENTIMENTS.map((s) => (
+                              <button
+                                key={s.key} type="button" onClick={() => setVSentiment(vSentiment === s.key ? "" : s.key)} className="btn"
+                                style={{
+                                  border: `1.5px solid ${vSentiment === s.key ? s.color : "var(--border)"}`,
+                                  background: vSentiment === s.key ? s.color : "#fff", color: vSentiment === s.key ? "#fff" : "var(--text)",
+                                  borderRadius: 9, padding: "7px 12px", fontSize: 12, fontWeight: 600,
+                                }}
+                              >
+                                {s.key}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {row("Flagged Modules", visitDetail.flaggedModules?.length ? visitDetail.flaggedModules.map((k) => modules.find((m) => m.key === k)?.name || k).join(", ") : "—",
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                            {modules.map((m) => (
+                              <label key={m.key} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, cursor: "pointer" }}>
+                                <input type="checkbox" checked={vFlagged.includes(m.key)} onChange={() => toggleVFlag(m.key)} /> {m.icon} {m.name}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        {row("Action Items", visitDetail.actionItems?.length ? `${visitDetail.actionItems.length} item${visitDetail.actionItems.length > 1 ? "s" : ""}` : "—",
+                          <div>
+                            {vActionItems.map((it, i) => (
+                              <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+                                <input style={{ ...inputStyle, flex: 1, maxWidth: 220 }} value={it.text} onChange={(e) => updateVActionItem(i, { text: e.target.value })} placeholder="Action item" />
+                                <input type="date" style={{ ...inputStyle, maxWidth: 150 }} value={it.dueDate || ""} onChange={(e) => updateVActionItem(i, { dueDate: e.target.value })} />
+                                <span className="icon-btn" title="Remove" onClick={() => removeVActionItem(i)} style={{ cursor: "pointer" }}>✕</span>
+                              </div>
+                            ))}
+                            <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={addVActionItem}>+ Add Action Item</button>
+                          </div>
+                        )}
+                        {!visitDetail.actionItems?.length ? null : !visitEditMode && (
+                          <div style={{ padding: "0 0 11px 180px", fontSize: 12.5 }}>
+                            {visitDetail.actionItems.map((it, i) => (
+                              <div key={i} style={{ color: "var(--text-dim)" }}>• {it.text}{it.dueDate ? ` — due ${new Date(it.dueDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}</div>
+                            ))}
+                          </div>
+                        )}
+                        {row("Next Follow-up Date", visitDetail.nextFollowupDate ? new Date(visitDetail.nextFollowupDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—",
+                          <input type="date" value={vFollowup} onChange={(e) => setVFollowup(e.target.value)} style={inputStyle} />
+                        )}
+                        {row("Follow-up Reason", visitDetail.nextFollowupReason || "—",
+                          <input value={vFollowupReason} onChange={(e) => setVFollowupReason(e.target.value)} placeholder="e.g. QBR" style={inputStyle} />
+                        )}
+                      </>
+                    );
+                  })()}
+                  {visitEditMode && (
+                    <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                      Changing the follow-up date here keeps this visit's linked task in sync — it updates the task's due date, creates one if there wasn't one, or removes it if the date is cleared.
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
           <div className="table-card" style={{ padding: "6px 20px 18px" }}>
             <div style={{ fontWeight: 700, fontSize: 14, paddingTop: 14 }}>Activity Timeline</div>
-            <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2 }}>Every logged system event for {lab.name}, newest first.</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2 }}>Every logged system event for {lab.name}, newest first. Visit/check-in entries can be opened for details.</div>
 
             <div className="summary-grid">
               <div className="stile"><div className="sval">{activity.length}</div><div className="slabel">Total Activities</div></div>
@@ -1512,10 +1782,11 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
                   <tr><td colSpan="4" style={{ textAlign: "center", color: "var(--text-faint)", padding: "20px 0" }}>No activity logged for this lab yet.</td></tr>
                 ) : activity.map((e) => {
                   const d = new Date(e.created_at);
+                  const visitId = e.details?.visitId;
                   return (
-                    <tr key={e.id}>
+                    <tr key={e.id} className={visitId ? "clickable" : undefined} style={visitId ? { cursor: "pointer" } : undefined} onClick={visitId ? () => openVisitDetail(visitId) : undefined} title={visitId ? "Open this visit's details" : undefined}>
                       <td className="adate">{d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}<br />{d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</td>
-                      <td><span className="aicon">{ACTIVITY_ICONS[e.kind] || "📝"}</span>{e.title}</td>
+                      <td><span className="aicon">{ACTIVITY_ICONS[e.kind] || "📝"}</span>{e.title}{visitId && <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--accent)", fontWeight: 700 }}>View →</span>}</td>
                       <td style={{ color: "var(--text-dim)" }}>{e.meta || "—"}</td>
                       <td>{nameById[e.csm_id] || "System"}</td>
                     </tr>
@@ -1524,6 +1795,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, cur
               </tbody>
             </table>
           </div>
+          )
         )
       )}
     </div>

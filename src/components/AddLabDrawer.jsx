@@ -144,7 +144,7 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
           <button className="drawer-close" onClick={onClose}>&times;</button>
         </div>
         <div className="drawer-body">
-          {saveError && <div className="warn-banner" style={{ background: "var(--bad-bg)", color: "var(--bad)", borderColor: "#f3b8b8", marginBottom: 14 }}>{saveError}</div>}
+          {saveError && <div className="error-banner">{saveError}</div>}
           <div className="form-card">
             <div className="fsection">
               <h4>1. Lab Hierarchy</h4>

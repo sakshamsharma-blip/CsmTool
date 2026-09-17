@@ -366,19 +366,19 @@ export default function App() {
   }
   if (loading) {
     return (
-      <div style={{ display: "flex", position: "fixed", inset: 0, background: "#f4f6f9", alignItems: "center", justifyContent: "center", color: "#475467", fontSize: 13, fontFamily: "sans-serif" }}>
+      <div style={{ display: "flex", position: "fixed", inset: 0, background: "var(--bg)", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 13, fontFamily: "inherit" }}>
         Loading your workspace…
       </div>
     );
   }
   if (error) {
     return (
-      <div style={{ display: "flex", position: "fixed", inset: 0, background: "#f4f6f9", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif" }}>
+      <div style={{ display: "flex", position: "fixed", inset: 0, background: "var(--bg)", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>
         <div style={{ maxWidth: 380, textAlign: "center" }}>
           <div style={{ fontSize: 28, marginBottom: 10 }}>⚠️</div>
-          <div style={{ fontWeight: 700, fontSize: 15, color: "#101828", marginBottom: 6 }}>Couldn't load data from the server</div>
-          <div style={{ fontSize: "12.5px", color: "#475467", marginBottom: 14 }}>{error}</div>
-          <button onClick={() => location.reload()} style={{ border: "none", borderRadius: 7, padding: "9px 16px", fontSize: 13, fontWeight: 600, background: "var(--brand)", color: "#fff", cursor: "pointer" }}>Retry</button>
+          <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)", marginBottom: 6 }}>Couldn't load data from the server</div>
+          <div style={{ fontSize: "12.5px", color: "var(--text-dim)", marginBottom: 14 }}>{error}</div>
+          <button className="btn btn-primary" onClick={() => location.reload()}>Retry</button>
         </div>
       </div>
     );
