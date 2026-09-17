@@ -67,7 +67,7 @@ export default function App() {
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   function handleGlobalSearch(q) {
     setGlobalSearchQuery(q);
-    if (q.trim()) setView("list");
+    if (q.trim()) navigate("list");
   }
 
   // Kick off the live USD→INR rate once per load. Every money display reads the rate directly
@@ -82,13 +82,36 @@ export default function App() {
     return unsub;
   }, []);
 
+  // Every top-level screen switch (Sidebar/TopBar nav, opening a lab, Log Check-in, "Back")
+  // goes through this instead of calling setView directly, so it also pushes a browser history
+  // entry. Without it the app has a single history entry total, so the very first Back press
+  // leaves the whole SPA (back to whatever tab/page was open before it) instead of going to the
+  // screen the person was just on — see the popstate listener below for the other half of this.
+  function navigate(nextView, extra = {}) {
+    const nextDetailLabId = "detailLabId" in extra ? extra.detailLabId : null;
+    const nextDetailInitialTab = extra.detailInitialTab || "details";
+    setView(nextView);
+    setDetailLabId(nextDetailLabId);
+    setDetailInitialTab(nextDetailInitialTab);
+    window.history.pushState({ view: nextView, detailLabId: nextDetailLabId, detailInitialTab: nextDetailInitialTab }, "");
+  }
+  useEffect(() => {
+    window.history.replaceState({ view: "list", detailLabId: null, detailInitialTab: "details" }, "");
+    function onPopState(e) {
+      const state = e.state || { view: "list", detailLabId: null, detailInitialTab: "details" };
+      setView(state.view || "list");
+      setDetailLabId(state.detailLabId ?? null);
+      setDetailInitialTab(state.detailInitialTab || "details");
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   function openLabDetail(id, tab = "details") {
-    setDetailLabId(id);
-    setDetailInitialTab(tab);
-    setView("lab-detail");
+    navigate("lab-detail", { detailLabId: id, detailInitialTab: tab });
   }
   function openLogCheckin() {
-    setView("log-checkin");
+    navigate("log-checkin", { detailLabId: detailLabId, detailInitialTab: detailInitialTab });
   }
   // If an Admin previewing "as" a CSM (or any other state change) drops lead access
   // while Manage Users is open, back out of it rather than showing a blank pane.
@@ -386,9 +409,9 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={setView} csmDirectory={csmDirectory} currentCSM={currentCSM} setCurrentCSM={setCurrentCSM} myName={myName} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
+      <Sidebar view={view} setView={navigate} csmDirectory={csmDirectory} currentCSM={currentCSM} setCurrentCSM={setCurrentCSM} myName={myName} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
       <div className="main">
-        <TopBar currentCSM={currentCSM} csmDirectory={csmDirectory} myName={myName} view={view} setView={setView} showToast={showToast} searchQuery={globalSearchQuery} onSearchChange={handleGlobalSearch} />
+        <TopBar currentCSM={currentCSM} csmDirectory={csmDirectory} myName={myName} view={view} setView={navigate} showToast={showToast} searchQuery={globalSearchQuery} onSearchChange={handleGlobalSearch} />
         <div className="content">
           {!SUPABASE_CONFIGURED && (
             <div className="banner">
@@ -444,7 +467,7 @@ export default function App() {
               currentCSM={currentCSM}
               idByName={idByName}
               initialTab={detailInitialTab}
-              onBack={() => setView("list")}
+              onBack={() => navigate("list")}
               onOpenLab={openLabDetail}
               onReassignCsm={handleReassignCsm}
               onChangePlan={handleChangePlan}
