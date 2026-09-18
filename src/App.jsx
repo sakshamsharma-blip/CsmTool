@@ -420,7 +420,7 @@ export default function App() {
             </div>
           )}
           {view === "list" && (
-            <LabsView labs={labs} csmNames={csmNames} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} onOpenLab={openLabDetail} initialQuery={globalSearchQuery} />
+            <LabsView labs={labs} csmNames={csmNames} csmDirectory={csmDirectory} currentCSM={currentCSM} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} onOpenLab={openLabDetail} initialQuery={globalSearchQuery} />
           )}
           {view === "adoption-template" && (
             <AdoptionTemplateView
