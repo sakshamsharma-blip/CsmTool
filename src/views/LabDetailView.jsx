@@ -48,7 +48,8 @@ function statusPillClass(s) { return "status-" + (s || "").replace(" ", ""); }
 function healthPillClass(s) { return isHealthyStatus(s) ? "status-Active" : s === "Churn" ? "status-Inactive" : "status-AtRisk"; }
 function initials(name) { return (name || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
 
-export default function LabDetailView({ lab, labs, modules, plans, csmNames, currentCSM, idByName, onBack, onOpenLab, onReassignCsm, onChangePlan, onInvoiceMrrUpdate, onPatchLab, onLogCheckin, onAddChildLab, initialTab, showToast }) {
+export default function LabDetailView({ lab, labs, modules, plans, csmNames, viewer, idByName, onBack, onOpenLab, onReassignCsm, onChangePlan, onInvoiceMrrUpdate, onPatchLab, onLogCheckin, onAddChildLab, initialTab, showToast }) {
+  const { currentCSM } = viewer;
   const [tab, setTab] = useState(initialTab || "details");
   const [expandedModule, setExpandedModule] = useState(null);
 

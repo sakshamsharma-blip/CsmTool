@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
-import { hasLeadAccess, roleLabel } from "../lib/roles";
+import { roleLabel } from "../lib/roles";
 import ChangePasswordModal from "./ChangePasswordModal";
 
-export default function TopBar({ currentCSM, csmDirectory, myName, view, setView, showToast, searchQuery, onSearchChange }) {
+export default function TopBar({ viewer, view, setView, showToast, searchQuery, onSearchChange }) {
+  const { currentCSM, csmDirectory, myName, isHead: canManageUsers } = viewer;
   const [menuOpen, setMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const menuRef = useRef(null);
@@ -22,9 +23,9 @@ export default function TopBar({ currentCSM, csmDirectory, myName, view, setView
   // currently previewing as — that's the Sidebar's separate "viewing as" switcher.
   const accountName = SUPABASE_CONFIGURED ? (myName || currentCSM) : currentCSM;
   const accountRole = roleLabel(csmDirectory.find((c) => c.name === accountName)?.role);
-  // What Manage Users offers still follows the previewed role, same as every other
-  // Admin/Lead-only affordance in the app (e.g. Team View) — so preview mode stays honest.
-  const canManageUsers = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
+  // What Manage Users offers still follows the previewed role (viewer.isHead, aliased above),
+  // same as every other Admin/Lead-only affordance in the app (e.g. Team View) — so preview
+  // mode stays honest.
 
   function handleChangePassword() {
     setMenuOpen(false);

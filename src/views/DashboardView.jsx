@@ -7,17 +7,15 @@ import { fetchAllCollectionsItems, labCollectionsSummary, isItemOpen, itemBalanc
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask, getOpenTasksFor } from "../lib/tasks";
 import { fetchAllVisits } from "../lib/visits";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
-import { hasLeadAccess } from "../lib/roles";
+import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import BarChart from "../components/BarChart";
 import TasksPanel from "../components/TasksPanel";
 import InfoTip from "../components/InfoTip";
 
-export default function DashboardView({ labs, modules, plans, csmDirectory, currentCSM, idByName, onOpenLab, showToast }) {
-  const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
-  const [scope, setScope] = useState("mine");
-  const [csmFilter, setCsmFilter] = useState("");
-  const csmNames = csmDirectory.map((c) => c.name);
+export default function DashboardView({ labs, modules, plans, viewer, idByName, onOpenLab, showToast }) {
+  const { currentCSM } = viewer;
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
 
   const [adoptionByLab, setAdoptionByLab] = useState({});
   const [collectionsItems, setCollectionsItems] = useState([]);
@@ -54,8 +52,6 @@ export default function DashboardView({ labs, modules, plans, csmDirectory, curr
   if (loading) return <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading dashboard…</div>;
   if (error) return <div className="error-banner">Couldn't load dashboard — {error}</div>;
 
-  const teamAll = isHead && scope === "team" && !csmFilter;
-  const scopeCsm = isHead && scope === "team" ? (csmFilter || null) : currentCSM;
   const scopeLabel = teamAll ? "All CSMs" : scopeCsm;
 
   const allRows = computeLabRollup(labs);

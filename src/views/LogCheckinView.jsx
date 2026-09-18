@@ -36,7 +36,8 @@ function plusDays(n) {
   return d.toISOString().slice(0, 10);
 }
 
-export default function LogCheckinView({ lab, modules, plans, currentCSM, idByName, onDone, showToast }) {
+export default function LogCheckinView({ lab, modules, plans, viewer, idByName, onDone, showToast }) {
+  const { currentCSM } = viewer;
   const plan = plans.find((p) => p.id === lab.plan) || plans[0];
   const seg = segmentFor(toINR(lab.mrr || 0, lab.region));
 

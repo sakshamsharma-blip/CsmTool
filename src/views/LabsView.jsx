@@ -5,7 +5,7 @@ import { computeLabRollup } from "../lib/labRollup";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fetchAllVisits } from "../lib/visits";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
-import { hasLeadAccess } from "../lib/roles";
+import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
@@ -30,7 +30,7 @@ function exportLabsCsv(labs) {
   URL.revokeObjectURL(url);
 }
 
-export default function LabsView({ labs, csmNames, csmDirectory, currentCSM, onOpenAddDrawer, onOpenLab, initialQuery }) {
+export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOpenLab, initialQuery }) {
   // Same "My Labs vs. Team View" scoping every other screen (Dashboard, My Portfolio,
   // Collections, Tasks, Visits, Reports) already has — Total Labs was the one screen that
   // skipped it and showed the full company list to everyone, CSM included. A plain CSM is
@@ -38,10 +38,7 @@ export default function LabsView({ labs, csmNames, csmDirectory, currentCSM, onO
   // their own too but can flip to Team View. currentCSM already reflects whoever an Admin is
   // currently previewing as (Sidebar's "Preview as"), so this also closes the gap where Total
   // Labs used to leak everyone's labs even while an Admin was previewing a plain CSM.
-  const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
-  const [scope, setScope] = useState("mine");
-  const [csmFilter, setCsmFilter] = useState("");
-  const scopeCsm = !isHead || scope === "mine" ? currentCSM : (csmFilter || null);
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, scopeCsm } = useScopedCsm(viewer);
 
   const [expanded, setExpanded] = useState({});
   const [filters, setFilters] = useState({ csm: "", region: "", status: "", segment: "" });

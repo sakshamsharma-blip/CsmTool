@@ -7,7 +7,7 @@ import {
   setModulePitchStatus, setParamPitchStatus, PITCH_STATUSES,
 } from "../lib/pitch";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask } from "../lib/tasks";
-import { hasLeadAccess } from "../lib/roles";
+import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import TasksPanel from "../components/TasksPanel";
 import Modal from "../components/Modal";
@@ -19,11 +19,9 @@ import InfoTip from "../components/InfoTip";
 // (To Do/Pitching/In Progress) so nothing sitting in the pitch worklist gets forgotten just
 // because it isn't a "task" yet. Status can be changed right from this table (same underlying
 // pitch_status row My Portfolio's dropdown edits) — no need to go find the lab there first.
-export default function TasksView({ labs, modules, plans, csmDirectory, currentCSM, idByName, onOpenLab, showToast }) {
-  const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
-  const [scope, setScope] = useState("mine");
-  const [csmFilter, setCsmFilter] = useState("");
-  const csmNames = csmDirectory.map((c) => c.name);
+export default function TasksView({ labs, modules, plans, viewer, idByName, onOpenLab, showToast }) {
+  const { currentCSM } = viewer;
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
 
   const [adoptionByLab, setAdoptionByLab] = useState({});
   const [pitchByLab, setPitchByLab] = useState({});
@@ -63,8 +61,6 @@ export default function TasksView({ labs, modules, plans, csmDirectory, currentC
   if (loading) return <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading tasks…</div>;
   if (error) return <div className="error-banner">Couldn't load tasks — {error}</div>;
 
-  const teamAll = isHead && scope === "team" && !csmFilter;
-  const scopeCsm = isHead && scope === "team" ? (csmFilter || null) : currentCSM;
   const scopeLabel = teamAll ? "the whole team" : scopeCsm;
 
   const labsById = {};

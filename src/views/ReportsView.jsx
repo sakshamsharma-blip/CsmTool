@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
 import { fetchChurnLog, quarterOf } from "../lib/churn";
-import { hasLeadAccess } from "../lib/roles";
+import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
@@ -13,12 +13,9 @@ const SEGMENTS = SEG_BANDS.map((b) => b.code);
 // time), and MRR Breakdown (Segment × CSM matrix, Region/Country splits) — the more granular
 // reporting the old "CS Dashboard 2026" pivot tabs carried that Dashboard's simple bucket
 // counts didn't replace.
-export default function ReportsView({ labs, csmDirectory, currentCSM, idByName, onOpenLab }) {
-  const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
+export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
   const [tab, setTab] = useState("churn");
-  const [scope, setScope] = useState("mine");
-  const [csmFilter, setCsmFilter] = useState("");
-  const csmNames = csmDirectory.map((c) => c.name);
 
   const [churnRows, setChurnRows] = useState([]);
   const [loadingChurn, setLoadingChurn] = useState(SUPABASE_CONFIGURED);
@@ -40,8 +37,6 @@ export default function ReportsView({ labs, csmDirectory, currentCSM, idByName, 
   const nameById = {};
   Object.entries(idByName || {}).forEach(([n, id]) => { nameById[id] = n; });
 
-  const teamAll = isHead && scope === "team" && !csmFilter;
-  const scopeCsm = isHead && scope === "team" ? (csmFilter || null) : currentCSM;
   const scopeLabel = teamAll ? "the whole team" : scopeCsm;
 
   // ---- Churn Report ----

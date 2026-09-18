@@ -9,7 +9,7 @@ import {
 } from "../lib/pitch";
 import { markModuleInScope as apiMarkModuleInScope } from "../lib/adoption";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask } from "../lib/tasks";
-import { hasLeadAccess } from "../lib/roles";
+import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import BarChart from "../components/BarChart";
 import TasksPanel from "../components/TasksPanel";
@@ -18,11 +18,9 @@ import InfoTip from "../components/InfoTip";
 
 const SEG_LABELS = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 
-export default function PortfolioView({ labs, modules, plans, csmDirectory, currentCSM, idByName, onOpenLab, showToast }) {
-  const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
-  const [scope, setScope] = useState("mine");
-  const [csmFilter, setCsmFilter] = useState("");
-  const csmNames = csmDirectory.map((c) => c.name);
+export default function PortfolioView({ labs, modules, plans, viewer, idByName, onOpenLab, showToast }) {
+  const { currentCSM } = viewer;
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
 
   const [adoptionByLab, setAdoptionByLab] = useState({});
   const [pitchByLab, setPitchByLab] = useState({});
@@ -64,8 +62,6 @@ export default function PortfolioView({ labs, modules, plans, csmDirectory, curr
   if (loading) return <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading portfolio…</div>;
   if (error) return <div className="error-banner">Couldn't load portfolio — {error}</div>;
 
-  const teamAll = isHead && scope === "team" && !csmFilter;
-  const scopeCsm = isHead && scope === "team" ? (csmFilter || null) : currentCSM;
   const scopeLabel = teamAll ? "the whole team" : scopeCsm;
 
   const allRows = computeLabRollup(labs);

@@ -4,16 +4,13 @@ import { fmtINR, fmtMoney, toINR } from "../lib/format";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllCollectionsItems, addCollectionsItem, logCollectionsReminder, labCollectionsSummary, daysSince, agingBucket, AGING_COLORS } from "../lib/collections";
 import { fetchAllInvoices, invoiceBalance, isInvoiceOpen } from "../lib/invoices";
-import { hasLeadAccess } from "../lib/roles";
+import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
 import InfoTip from "../components/InfoTip";
 
-export default function CollectionsView({ labs, csmDirectory, currentCSM, idByName, onOpenLab, showToast }) {
-  const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
-  const [scope, setScope] = useState("mine");
-  const [csmFilter, setCsmFilter] = useState("");
-  const csmNames = csmDirectory.map((c) => c.name);
+export default function CollectionsView({ labs, viewer, idByName, onOpenLab, showToast }) {
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
 
   const [items, setItems] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -47,8 +44,6 @@ export default function CollectionsView({ labs, csmDirectory, currentCSM, idByNa
   if (loading) return <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading collections…</div>;
   if (error) return <div className="error-banner">Couldn't load collections — {error}</div>;
 
-  const teamAll = isHead && scope === "team" && !csmFilter;
-  const scopeCsm = isHead && scope === "team" ? (csmFilter || null) : currentCSM;
   const scopeLabel = teamAll ? "the whole team" : scopeCsm;
 
   const allRows = computeLabRollup(labs);

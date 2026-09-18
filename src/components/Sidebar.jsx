@@ -41,13 +41,14 @@ function writeCollapsed(v) {
   try { localStorage.setItem("csm_sidebar_collapsed", v ? "1" : "0"); } catch { /* ignore */ }
 }
 
-export default function Sidebar({ view, setView, csmDirectory, currentCSM, setCurrentCSM, myName, onOpenAddDrawer }) {
+export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAddDrawer }) {
+  const { csmDirectory, currentCSM, myName, isAdmin } = viewer;
   const initials = (name) => (name || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
   const role = currentCSM ? roleLabel(csmDirectory.find((c) => c.name === currentCSM)?.role) : "";
   // Admin (myName's own real role, not currentCSM's — currentCSM may be swapped away from
   // it below) gets the same "viewing as" switcher demo mode always had, so one person can
   // test the CSM Lead view and the plain-CSM view without needing separate logins.
-  const isAdminPreviewing = SUPABASE_CONFIGURED && csmDirectory.find((c) => c.name === myName)?.role === "Admin";
+  const isAdminPreviewing = SUPABASE_CONFIGURED && isAdmin;
 
   const [collapsed, setCollapsed] = useState(readCollapsed);
   function toggleCollapsed() {

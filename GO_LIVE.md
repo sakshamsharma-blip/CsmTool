@@ -46,6 +46,28 @@ Two things are worth knowing before you flip the switch:
    6. `migrations/0006_identity_linking.sql` — lets one person sign in with more than one email and land
       on the same account (see section 1a below) — the schema/trigger for this needs to exist before you
       start inviting anyone with a second email.
+   7. `migrations/0007_admin_role.sql` — adds the Admin role (full Lead-equivalent access, plus the
+      ability to switch "viewing as" any teammate from the Sidebar in the real, non-demo app).
+   8. `migrations/0008_invoices.sql` — adds the `invoices` table (uploaded invoice PDFs, auto-extracted
+      number/date/sub total/total; a Monthly invoice's sub_total becomes the lab's MRR).
+   9. `migrations/0009_truncate_test_data.sql` — **not a routine migration** — wipes every lab and
+      everything hanging off a lab. Run this once, right before go-live, after testing is done and
+      before the team starts adding real labs. Configuration (modules, plans, the CSM roster) is left
+      alone.
+   10. `migrations/0010_team_identity.sql` — seeds each real teammate's two email addresses so either one
+       logs into the same account (see section 1a) — specific to CrelioHealth's own team roster.
+   11. `migrations/0011_health_stage_churn_testimonials.sql` — adds Health/sentiment tracking (lab_pulse_log),
+       Stage tags, Churn logging (churn_log), and testimonials.
+   12. `migrations/0012_lab_visibility_rls.sql` — **the real, database-enforced access control**: adds Row
+       Level Security policies so a plain CSM's queries can only ever return their own labs (and
+       everything hanging off them) — a CSM Lead or Admin still sees everything. This replaces the
+       permissive "any signed-in user" policy every table had since `0001_init.sql`, and is what section 4
+       below used to describe as still needing to happen — it's done, as of this migration. See the
+       comment at the top of `src/lib/roles.js` for how this relates to the app's own role checks.
+   13. `migrations/0013_billing_mode.sql` — adds `labs.billing_mode` (Consolidated vs. Per-Branch MRR for a
+       Parent lab's group of children).
+   14. `migrations/0014_task_source_visit.sql` — adds `tasks.source_visit_id`, linking a follow-up task
+       back to the visit/check-in that created it.
 3. **Settings → API**: copy the **Project URL** and the **`anon` public** key — you'll need both in step 3.
 4. **Authentication → Providers**: enable **Email**. Password is the right choice here (not magic link) —
    the login page now has a working "Forgot your password?" link that needs password auth to make sense.
@@ -130,10 +152,12 @@ falls back to demo mode.
 
 ## 4. After go-live
 
-- Tighten Row-Level Security once this is more than an internal trial — right now every signed-in user
-  can read/write every table (matches how the team already works day to day, but worth revisiting once
-  there's a real Lead-vs-CSM permission distinction to enforce, e.g. only a Lead can reassign a lab's CSM
-  or edit CSM Setup).
+- Row-Level Security scoping a plain CSM to their own labs is already in place as of
+  `migrations/0012_lab_visibility_rls.sql` (step 1.2.12 above) — if you're not sure whether that migration
+  was actually run against this project (as opposed to just existing in the repo), check now: try reading
+  the `labs` table as a plain CSM's login and confirm you only get their own rows back. If everyone can
+  still see everything, 0012 hasn't been applied yet — run it before treating this as more than an
+  internal trial.
 - Decide the Zoho badge question from section 0 whenever real Zoho Books API access is in scope.
 - This repo and the Supabase project behind it should live under CrelioHealth-owned accounts, not a
   personal one — see the "Ownership note" at the bottom of `README.md`.

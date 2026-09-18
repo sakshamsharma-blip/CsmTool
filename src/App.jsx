@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "./supabaseClient";
 import { fetchProfiles, upsertProfile, myProfileName } from "./lib/profiles";
 import {
@@ -113,13 +113,32 @@ export default function App() {
   function openLogCheckin() {
     navigate("log-checkin", { detailLabId: detailLabId, detailInitialTab: detailInitialTab });
   }
+  // Single source of truth for "who's viewing, and with what access" — currentCSM (whose POV is
+  // showing, which an Admin can swap via Sidebar's Preview As), myName (who's actually signed
+  // in, fixed) and csmDirectory (the roster, needed to look either of those up) used to each get
+  // threaded down as their own prop through nearly every view; they're bundled here instead so a
+  // view takes one `viewer` prop and reads viewer.currentCSM / viewer.isHead / etc. off it. Note
+  // isHead (and isAdmin) are UI-only convenience flags, same caveat as hasLeadAccess itself —
+  // see the comment on hasLeadAccess in lib/roles.js for the real (database-level) boundary.
+  const viewer = useMemo(() => {
+    const role = csmDirectory.find((c) => c.name === currentCSM)?.role;
+    return {
+      currentCSM,
+      myName,
+      csmDirectory,
+      role,
+      isHead: hasLeadAccess(role),
+      isAdmin: csmDirectory.find((c) => c.name === myName)?.role === "Admin",
+    };
+  }, [currentCSM, myName, csmDirectory]);
+
   // If an Admin previewing "as" a CSM (or any other state change) drops lead access
   // while Manage Users is open, back out of it rather than showing a blank pane.
   useEffect(() => {
-    if (view === "csm-setup" && !hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role)) {
+    if (view === "csm-setup" && !viewer.isHead) {
       setView("list");
     }
-  }, [view, currentCSM, csmDirectory]);
+  }, [view, viewer]);
   const [toastMsg, showToast] = useToast();
 
   useEffect(() => {
@@ -374,7 +393,7 @@ export default function App() {
   const activeCsmNames = csmDirectory.filter((c) => c.active !== false).map((c) => c.name);
   // Manage Users (top bar) is Admin/Lead-only — gate the view itself, not just the button,
   // so it can't be reached (e.g. an Admin preview switched away, or stale state) by anyone else.
-  const canManageUsers = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
+  const canManageUsers = viewer.isHead;
 
   if (SUPABASE_CONFIGURED && !authChecked) {
     return <div style={{ padding: 40, fontFamily: "sans-serif", color: "#475467" }}>Loading…</div>;
@@ -409,9 +428,9 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={navigate} csmDirectory={csmDirectory} currentCSM={currentCSM} setCurrentCSM={setCurrentCSM} myName={myName} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
+      <Sidebar view={view} setView={navigate} viewer={viewer} setCurrentCSM={setCurrentCSM} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
       <div className="main">
-        <TopBar currentCSM={currentCSM} csmDirectory={csmDirectory} myName={myName} view={view} setView={navigate} showToast={showToast} searchQuery={globalSearchQuery} onSearchChange={handleGlobalSearch} />
+        <TopBar viewer={viewer} view={view} setView={navigate} showToast={showToast} searchQuery={globalSearchQuery} onSearchChange={handleGlobalSearch} />
         <div className="content">
           {!SUPABASE_CONFIGURED && (
             <div className="banner">
@@ -420,7 +439,7 @@ export default function App() {
             </div>
           )}
           {view === "list" && (
-            <LabsView labs={labs} csmNames={csmNames} csmDirectory={csmDirectory} currentCSM={currentCSM} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} onOpenLab={openLabDetail} initialQuery={globalSearchQuery} />
+            <LabsView labs={labs} csmNames={csmNames} viewer={viewer} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} onOpenLab={openLabDetail} initialQuery={globalSearchQuery} />
           )}
           {view === "adoption-template" && (
             <AdoptionTemplateView
@@ -440,22 +459,22 @@ export default function App() {
             <CsmSetupView csmDirectory={csmDirectory} idByName={idByName} onSaveCsm={handleSaveCsm} />
           )}
           {view === "dashboard" && (
-            <DashboardView labs={labs} modules={modules} plans={plans} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <DashboardView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "portfolio" && (
-            <PortfolioView labs={labs} modules={modules} plans={plans} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <PortfolioView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "collections" && (
-            <CollectionsView labs={labs} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <CollectionsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "tasks" && (
-            <TasksView labs={labs} modules={modules} plans={plans} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <TasksView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "visits" && (
-            <VisitsView labs={labs} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <VisitsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "reports" && (
-            <ReportsView labs={labs} csmDirectory={csmDirectory} currentCSM={currentCSM} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <ReportsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "lab-detail" && detailLab && (
             <LabDetailView
@@ -464,7 +483,7 @@ export default function App() {
               modules={modules}
               plans={plans}
               csmNames={activeCsmNames}
-              currentCSM={currentCSM}
+              viewer={viewer}
               idByName={idByName}
               initialTab={detailInitialTab}
               onBack={() => navigate("list")}
@@ -483,7 +502,7 @@ export default function App() {
               lab={detailLab}
               modules={modules}
               plans={plans}
-              currentCSM={currentCSM}
+              viewer={viewer}
               idByName={idByName}
               onDone={(tab) => openLabDetail(detailLab.id, tab)}
               showToast={showToast}

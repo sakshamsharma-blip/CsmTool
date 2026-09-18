@@ -3,17 +3,15 @@ import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllVisits, addVisit, updateVisit } from "../lib/visits";
 import { taskBucket, addTask } from "../lib/tasks";
-import { hasLeadAccess } from "../lib/roles";
+import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
 
 const VISIT_TYPES = ["Visit", "Call", "Email", "WhatsApp", "Note"];
 
-export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, onOpenLab, showToast }) {
-  const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
-  const [scope, setScope] = useState("mine");
-  const [csmFilter, setCsmFilter] = useState("");
-  const csmNames = csmDirectory.map((c) => c.name);
+export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToast }) {
+  const { currentCSM } = viewer;
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
 
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
@@ -55,8 +53,6 @@ export default function VisitsView({ labs, csmDirectory, currentCSM, idByName, o
   if (loading) return <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading visits…</div>;
   if (error) return <div className="error-banner">Couldn't load visits — {error}</div>;
 
-  const teamAll = isHead && scope === "team" && !csmFilter;
-  const scopeCsm = isHead && scope === "team" ? (csmFilter || null) : currentCSM;
   const scopeLabel = teamAll ? "the whole team" : scopeCsm;
 
   const allRows = computeLabRollup(labs);
