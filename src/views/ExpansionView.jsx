@@ -153,9 +153,9 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
       <div className="summary-grid" style={{ gridTemplateColumns: "repeat(5,1fr)", marginBottom: 18 }}>
         <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Onboarding }}>{fmtINR(onboardingMRR)}</div><div className="slabel">Onboarding MRR</div></div>
         <div className="stile"><div className="sval">{fmtINR(pipelineMRR)}</div><div className="slabel">Pipeline MRR</div></div>
+        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Lost }}>{fmtINR(lostMRR)}</div><div className="slabel">Lost MRR</div></div>
         <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Live }}>{fmtINR(liveMRR)}</div><div className="slabel">Live MRR</div></div>
         <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Live }}>{fmtINR(liveARR)}</div><div className="slabel">Live ARR</div></div>
-        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Lost }}>{fmtINR(lostMRR)}</div><div className="slabel">Lost MRR</div></div>
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
