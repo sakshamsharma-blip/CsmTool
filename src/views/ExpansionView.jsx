@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR } from "../lib/format";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
-import { fetchAllExpansionOpportunities, addExpansionOpportunity, updateExpansionOpportunity, expansionSummary, EXPANSION_STATUSES } from "../lib/expansion";
+import { fetchAllExpansionOpportunities, addExpansionOpportunity, updateExpansionOpportunity, EXPANSION_STATUSES } from "../lib/expansion";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
@@ -58,13 +58,22 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
   labs.forEach((l) => { labsById[l.id] = l; });
 
   const scoped = items.filter((i) => flatIds.has(i.labId));
-  const summary = expansionSummary(scoped);
 
   // Same "convert to INR before summing across labs" rule Collections/Total Labs use — labs can
-  // be in different native currencies.
-  const pipelineValue = scoped
-    .filter((i) => i.status === "Onboarding" || i.status === "Pipeline")
-    .reduce((s, i) => s + toINR(i.monthlyRevenue, labsById[i.labId]?.region), 0);
+  // be in different native currencies. MRR is summed per status from monthly_revenue; Live ARR
+  // sums the deal's own annual_revenue (not monthly x 12) since that's the field CSMs actually
+  // enter and it can legitimately differ from a straight x12 (e.g. a non-calendar contract term).
+  function mrrSumFor(status) {
+    return scoped
+      .filter((i) => i.status === status)
+      .reduce((s, i) => s + toINR(i.monthlyRevenue, labsById[i.labId]?.region), 0);
+  }
+  const onboardingMRR = mrrSumFor("Onboarding");
+  const pipelineMRR = mrrSumFor("Pipeline");
+  const liveMRR = mrrSumFor("Live");
+  const liveARR = scoped
+    .filter((i) => i.status === "Live")
+    .reduce((s, i) => s + toINR(i.annualRevenue, labsById[i.labId]?.region), 0);
 
   const labOptions = [];
   allRows.forEach((r) => { labOptions.push(r); r.children.forEach((c) => labOptions.push(c)); });
@@ -140,12 +149,11 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
 
-      <div className="summary-grid" style={{ gridTemplateColumns: "repeat(5,1fr)", marginBottom: 18 }}>
-        <div className="stile"><div className="sval">{fmtINR(pipelineValue)}</div><div className="slabel">Monthly Value In Motion</div></div>
-        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Onboarding }}>{summary.byStatus.Onboarding || 0}</div><div className="slabel">Onboarding</div></div>
-        <div className="stile"><div className="sval">{summary.byStatus.Pipeline || 0}</div><div className="slabel">Pipeline</div></div>
-        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Live }}>{summary.byStatus.Live || 0}</div><div className="slabel">Live</div></div>
-        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Lost }}>{summary.byStatus.Lost || 0}</div><div className="slabel">Lost</div></div>
+      <div className="summary-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 18 }}>
+        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Onboarding }}>{fmtINR(onboardingMRR)}</div><div className="slabel">Onboarding MRR</div></div>
+        <div className="stile"><div className="sval">{fmtINR(pipelineMRR)}</div><div className="slabel">Pipeline MRR</div></div>
+        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Live }}>{fmtINR(liveMRR)}</div><div className="slabel">Live MRR</div></div>
+        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Live }}>{fmtINR(liveARR)}</div><div className="slabel">Live ARR</div></div>
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
