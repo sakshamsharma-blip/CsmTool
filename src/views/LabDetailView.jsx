@@ -1603,12 +1603,18 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               const daysOverdue = Math.max(itemSummary.daysOverdue, invOldestDays > 0 ? invOldestDays : 0);
               const bucket = openCount ? (daysOverdue >= 45 ? "Critical" : daysOverdue >= 30 ? "Overdue" : daysOverdue >= 15 ? "Due Soon" : "Current") : "Current";
               const lastPayment = [itemSummary.lastPayment, ...invoices.map((iv) => iv.collectedAt)].filter(Boolean).sort((a, b) => new Date(b) - new Date(a))[0] || null;
+              // Average MRR = average "Total" across this lab's Monthly invoices only — a Pro-Rata
+              // invoice is a one-off top-up (see the InfoTip above) and would skew an MRR-labeled
+              // average, so it's excluded the same way it's excluded from touching lab.mrr itself.
+              const mrrInvoices = invoices.filter((iv) => iv.invoiceType === "Monthly");
+              const avgMrr = mrrInvoices.length ? mrrInvoices.reduce((s, iv) => s + (iv.total || 0), 0) / mrrInvoices.length : null;
               return (
                 <div className="summary-grid" style={{ margin: "12px 0" }}>
                   <div className="stile"><div className="sval">{fmtMoney(outstanding, lab.region)}</div><div className="slabel">Outstanding</div></div>
                   <div className="stile"><div className="sval">{openCount ? `${daysOverdue}d` : "—"}</div><div className="slabel">Days Overdue</div></div>
                   <div className="stile"><div className="sval" style={{ color: AGING_COLORS[bucket] }}>{bucket}</div><div className="slabel">Status</div></div>
                   <div className="stile"><div className="sval" style={{ fontSize: 12.5 }}>{lastPayment ? new Date(lastPayment).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "—"}</div><div className="slabel">Last Payment</div></div>
+                  <div className="stile"><div className="sval">{avgMrr != null ? fmtMoney(avgMrr, lab.region) : "—"}</div><div className="slabel">Average MRR</div></div>
                 </div>
               );
             })()}
