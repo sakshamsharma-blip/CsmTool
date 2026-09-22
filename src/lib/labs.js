@@ -100,10 +100,10 @@ export async function updateLabPlan(labId, planId) {
 
 // Called when a Monthly invoice is uploaded and confirmed — see src/lib/invoices.js. Amount is
 // in the lab's own native currency (INR for Domestic, USD for ROW).
-export async function updateLabMRR(labId, newMrr, region) {
+export async function updateLabMRR(labId, newMrr, region, source = "invoice") {
   const { error } = await supabase.from("labs").update({ mrr: newMrr }).eq("id", labId);
   if (error) throw error;
-  if (region) recordMrrSnapshot(labId, newMrr, region, "invoice").catch((err) => console.error(err));
+  if (region) recordMrrSnapshot(labId, newMrr, region, source).catch((err) => console.error(err));
 }
 
 // Plain status changes (Active/Inactive/At Risk) — NOT for Churned, which goes through

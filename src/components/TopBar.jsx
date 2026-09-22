@@ -41,6 +41,9 @@ export default function TopBar({ viewer, view, setView, showToast, searchQuery, 
     <div className="topbar">
       <input
         className="search"
+        type="search"
+        name="global-search"
+        autoComplete="off"
         placeholder="🔍  Search by Lab ID, Lab Name, CSM, City..."
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}

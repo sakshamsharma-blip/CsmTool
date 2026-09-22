@@ -130,6 +130,9 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
 
       <div className="filters">
         <input
+          type="search"
+          name="lab-search"
+          autoComplete="off"
           placeholder="🔍  Search lab name…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}

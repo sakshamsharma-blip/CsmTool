@@ -8,7 +8,7 @@ import {
 } from "../lib/adoption";
 import { fetchLabActivity, logActivity, ACTIVITY_ICONS } from "../lib/activity";
 import {
-  fetchAllCollectionsItems, addCollectionsItem, updateItemCollected,
+  fetchAllCollectionsItems, addCollectionsItem, updateItemCollected, convertItemToChargeable,
   logCollectionsReminder, labCollectionsSummary, isItemOpen, itemBalance, itemStatusLabel, AGING_COLORS,
 } from "../lib/collections";
 import {
@@ -16,7 +16,7 @@ import {
   invoiceBalance, isInvoiceOpen, invoiceStatusLabel,
 } from "../lib/invoices";
 import { extractInvoiceFromFile } from "../lib/invoiceParse";
-import { updateLabStatus, updateLabStageTags, updateLabTestimonial, updateLabDetails, updateLabBillingMode, fetchMrrHistory } from "../lib/labs";
+import { updateLabStatus, updateLabStageTags, updateLabTestimonial, updateLabDetails, updateLabBillingMode, updateLabMRR, fetchMrrHistory } from "../lib/labs";
 import { HEALTH_STATUSES, isHealthyStatus, logLabPulse } from "../lib/pulse";
 import { fetchAllVisits, fetchVisitById, updateVisit } from "../lib/visits";
 import { syncFollowupTaskForVisit } from "../lib/tasks";
@@ -33,6 +33,18 @@ const STAGE_TAGS = ["Adoption", "Expansion", "Support", "Pending Dues", "Open Po
 
 // Same field vocab Log Check-in / Log Visit use — kept here too since the Visit Detail view
 // (Lab History tab) edits the very same visit/check-in records.
+// Testimonial Video Link only needs to be a real, reachable-looking URL — not a specific
+// platform (Drive/YouTube/etc all vary too much to whitelist by domain).
+function isValidHttpUrl(value) {
+  if (!value || !value.trim()) return false;
+  try {
+    const u = new URL(value.trim());
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 const VISIT_TYPES = ["Visit", "Call", "Email", "WhatsApp", "Note"];
 const VISIT_DISCUSSION_TOPICS = [
   "Adoption/Usage", "Billing & Payments", "Support Issue", "Renewal/Expansion",
@@ -69,6 +81,9 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   const [loadingColl, setLoadingColl] = useState(SUPABASE_CONFIGURED);
   const [collError, setCollError] = useState(null);
   const [collManualInputs, setCollManualInputs] = useState({});
+  const [convertItem, setConvertItem] = useState(null);
+  const [convertAmount, setConvertAmount] = useState("");
+  const [savingConvert, setSavingConvert] = useState(false);
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [addItemLabel, setAddItemLabel] = useState("");
   const [addItemAmount, setAddItemAmount] = useState("");
@@ -124,6 +139,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   const [editPaymentCycle, setEditPaymentCycle] = useState(lab.paymentCycle || "Monthly");
   const [editCreditDays, setEditCreditDays] = useState(lab.creditDays || "30");
   const [editRemarks, setEditRemarks] = useState(lab.remarks || "");
+  const [editMrr, setEditMrr] = useState(String(lab.mrr ?? ""));
   const [savingDetails, setSavingDetails] = useState(false);
   const [savingBillingMode, setSavingBillingMode] = useState(false);
 
@@ -348,14 +364,49 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lab.id]);
 
-  async function handleUpdateItemCollected(item) {
-    const val = parseFloat(collManualInputs[item.id]);
+  async function handleUpdateItemCollected(item, overrideAmount) {
+    const val = overrideAmount != null ? overrideAmount : parseFloat(collManualInputs[item.id]);
     if (!Number.isFinite(val) || val < 0) { showToast("Enter a valid amount."); return; }
     try {
       const status = await updateItemCollected(item.id, val, item.amount, lab.id, idByName?.[lab.csm], item.label);
+      setCollManualInputs((m) => ({ ...m, [item.id]: String(val) }));
       await loadCollections();
       showToast(status === "Collected" ? "Marked fully collected." : "Payment logged.");
     } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+  // Invoice/Collections amounts everywhere else display rounded (fmtMoney) — comparisons here
+  // stay exact on purpose, so "Mark Fully Collected" fills the *exact* stored owed amount
+  // (never a rounded figure) rather than asking the CSM to retype it and risk a mismatch.
+  function handleMarkItemFullyCollected(item) {
+    handleUpdateItemCollected(item, item.amount);
+  }
+
+  function openConvertToChargeable(item) {
+    setConvertItem(item);
+    setConvertAmount("");
+  }
+  async function handleConvertToChargeable() {
+    const amount = parseFloat(convertAmount);
+    if (!Number.isFinite(amount) || amount <= 0) { showToast("Enter a valid chargeable amount."); return; }
+    setSavingConvert(true);
+    try {
+      const csmId = idByName?.[lab.csm];
+      await convertItemToChargeable(convertItem.id, amount, lab.id, csmId, convertItem.label);
+      const newMrr = (lab.mrr || 0) + amount;
+      await updateLabMRR(lab.id, newMrr, lab.region, "manual");
+      onPatchLab && onPatchLab(lab.id, { mrr: newMrr });
+      logActivity(lab.id, {
+        kind: "MRR Updated", title: `MRR set to ${fmtMoney(newMrr, lab.region)}`, csmId,
+        meta: `+${amount} from converting ${convertItem.label} to chargeable`,
+      }).catch((err) => console.error(err));
+      await loadCollections();
+      setConvertItem(null);
+      showToast(`${convertItem.label} converted to chargeable — MRR updated.`);
+    } catch (err) {
+      showToast(`⚠ ${err.message}`);
+    } finally {
+      setSavingConvert(false);
+    }
   }
 
   async function loadInvoices() {
@@ -375,14 +426,18 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lab.id]);
 
-  async function handleUpdateInvoiceCollected(inv) {
-    const val = parseFloat(invManualInputs[inv.id]);
+  async function handleUpdateInvoiceCollected(inv, overrideAmount) {
+    const val = overrideAmount != null ? overrideAmount : parseFloat(invManualInputs[inv.id]);
     if (!Number.isFinite(val) || val < 0) { showToast("Enter a valid amount."); return; }
     try {
       const status = await updateInvoiceCollected(inv.id, val, inv.total, lab.id, idByName?.[lab.csm], inv.invoiceNumber);
+      setInvManualInputs((m) => ({ ...m, [inv.id]: String(val) }));
       await loadInvoices();
       showToast(status === "Collected" ? "Invoice marked fully collected." : "Payment logged.");
     } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+  function handleMarkInvoiceFullyCollected(inv) {
+    handleUpdateInvoiceCollected(inv, inv.total);
   }
 
   function openUploadInvoice() {
@@ -497,6 +552,28 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     }
     return l.mrr || 0;
   }
+
+  // Whether this lab's own `mrr` field is the real, billed number — vs. just an unused/rolled-up
+  // figure per computeLabRollup's Billing Mode rule. Only offer direct editing where it's real,
+  // so an edit here can never be silently overwritten (or silently ignored) by the rollup.
+  const mrrEditReason = (() => {
+    if (lab.type === "Child") {
+      const parentLab = labs.find((l) => l.id === lab.parent);
+      if (parentLab?.billingMode === "Consolidated") {
+        return `not editable — ${parentLab.name} bills Consolidated, so only its own MRR counts toward the group total. Edit MRR on ${parentLab.name} instead.`;
+      }
+      return null;
+    }
+    if (lab.type === "Parent") {
+      const children = labs.filter((l) => l.type === "Child" && l.parent === lab.id);
+      if (children.length && lab.billingMode !== "Consolidated") {
+        return "not editable here — this group is billed Per-Branch, so the total is the sum of each child lab's own MRR. Edit MRR on the individual child labs instead.";
+      }
+      return null;
+    }
+    return null;
+  })();
+  const mrrEditable = !mrrEditReason;
 
   function guardedNav(fn) {
     if (hasDraftChanges && !window.confirm("You have unsaved adoption changes for this lab — discard them?")) return;
@@ -735,6 +812,10 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   }
 
   async function handleTestimonialSave() {
+    if (testimonialCollected && !isValidHttpUrl(testimonialUrl)) {
+      showToast("⚠ Enter a valid http:// or https:// link before saving.");
+      return;
+    }
     setSavingTestimonial(true);
     try {
       const csmId = idByName?.[lab.csm];
@@ -767,6 +848,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setEditPaymentCycle(lab.paymentCycle || "Monthly");
     setEditCreditDays(lab.creditDays || "30");
     setEditRemarks(lab.remarks || "");
+    setEditMrr(String(lab.mrr ?? ""));
     setDetailsEditMode(true);
   }
 
@@ -775,6 +857,13 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   }
 
   async function handleSaveDetails() {
+    if (mrrEditable) {
+      const parsedMrr = parseFloat(editMrr);
+      if (editMrr !== "" && (!Number.isFinite(parsedMrr) || parsedMrr < 0)) {
+        showToast("Enter a valid MRR amount.");
+        return;
+      }
+    }
     setSavingDetails(true);
     try {
       const patch = {
@@ -785,6 +874,16 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       onPatchLab && onPatchLab(lab.id, patch);
       const csmId = idByName?.[lab.csm];
       logActivity(lab.id, { kind: "Details Updated", title: "Lab details updated", csmId }).catch((err) => console.error(err));
+
+      const parsedMrr = parseFloat(editMrr);
+      if (mrrEditable && Number.isFinite(parsedMrr) && parsedMrr !== (lab.mrr || 0)) {
+        await updateLabMRR(lab.id, parsedMrr, lab.region, "manual");
+        onPatchLab && onPatchLab(lab.id, { mrr: parsedMrr });
+        logActivity(lab.id, {
+          kind: "MRR Updated", title: `MRR set to ${fmtMoney(parsedMrr, lab.region)}`, csmId,
+        }).catch((err) => console.error(err));
+      }
+
       setDetailsEditMode(false);
       showToast("Lab details updated.");
     } catch (err) {
@@ -967,7 +1066,24 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                     <option>Monthly</option><option>Quarterly</option><option>Half Yearly</option><option>Annual</option>
                   </select>
                 )}
-                {row("Current MRR", fmtMoney(effectiveMRR(lab), lab.region))}
+                {row("Current MRR", fmtMoney(effectiveMRR(lab), lab.region),
+                  mrrEditable ? (
+                    <div>
+                      <input
+                        type="number" min="0" step="0.01" inputMode="decimal" value={editMrr}
+                        onChange={(e) => setEditMrr(e.target.value)}
+                        placeholder="e.g. 25000" style={inputStyle}
+                      />
+                    </div>
+                  ) : (
+                    <div style={{ fontWeight: 600 }}>
+                      {fmtMoney(effectiveMRR(lab), lab.region)}
+                      <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4, fontWeight: 400 }}>
+                        {mrrEditReason.charAt(0).toUpperCase() + mrrEditReason.slice(1)}
+                      </div>
+                    </div>
+                  )
+                )}
                 {row("Current ARR", fmtMoney(effectiveMRR(lab) * 12, lab.region))}
                 {row("Status", lab.status)}
                 {row("Remarks", lab.remarks || "—",
@@ -1082,6 +1198,29 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       </Modal>
 
       <Modal
+        open={!!convertItem}
+        title="Convert to Chargeable"
+        onClose={() => setConvertItem(null)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setConvertItem(null), disabled: savingConvert },
+          { label: savingConvert ? "Converting…" : "Convert", className: "btn-primary", onClick: handleConvertToChargeable, disabled: savingConvert },
+        ]}
+      >
+        <div className="tmpl-field">
+          <label>{convertItem?.label} — Chargeable Amount</label>
+          <input
+            type="number" min="0" step="0.01" inputMode="decimal" value={convertAmount}
+            onChange={(e) => setConvertAmount(e.target.value)}
+            placeholder="e.g. 5000" autoFocus
+            style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}
+          />
+          <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 6 }}>
+            This marks the item as chargeable and adds this amount to {lab.name}'s MRR.
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
         open={statusOpen}
         title="Change Status"
         onClose={() => setStatusOpen(false)}
@@ -1174,7 +1313,10 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
         onClose={() => setTestimonialOpen(false)}
         actions={[
           { label: "Cancel", className: "btn-ghost", onClick: () => setTestimonialOpen(false) },
-          { label: "Save", className: "btn-primary", onClick: handleTestimonialSave, disabled: savingTestimonial },
+          {
+            label: "Save", className: "btn-primary", onClick: handleTestimonialSave,
+            disabled: savingTestimonial || (testimonialCollected && !isValidHttpUrl(testimonialUrl)),
+          },
         ]}
       >
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
@@ -1185,8 +1327,13 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
         {testimonialCollected && (
           <div className="tmpl-field">
             <label>Video Link</label>
-            <input value={testimonialUrl} onChange={(e) => setTestimonialUrl(e.target.value)} placeholder="https://…"
+            <input type="url" value={testimonialUrl} onChange={(e) => setTestimonialUrl(e.target.value)} placeholder="https://…"
               style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
+            {testimonialUrl && !isValidHttpUrl(testimonialUrl) && (
+              <div style={{ color: "var(--danger, #c0392b)", fontSize: 12, marginTop: 4 }}>
+                Enter a valid http:// or https:// link.
+              </div>
+            )}
           </div>
         )}
       </Modal>
@@ -1460,11 +1607,21 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                       <td className="mrr-cell">{fmtMoney(inv.subTotal, lab.region)}</td>
                       <td className="mrr-cell">{fmtMoney(inv.total, lab.region)}</td>
                       <td>
-                        <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <input type="number" placeholder={bal > 0 ? String(inv.collectedManual || "") : undefined} value={invManualInputs[inv.id] ?? (inv.collectedManual || "")}
-                            onChange={(e) => setInvManualInputs((m) => ({ ...m, [inv.id]: e.target.value }))}
-                            style={{ width: 84, border: "1px solid var(--border)", borderRadius: 6, padding: "4px 6px", fontSize: 11.5 }} />
-                          <button className="mark-purchased" onClick={() => handleUpdateInvoiceCollected(inv)}>Update</button>
+                        <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <input type="number" placeholder={bal > 0 ? String(inv.collectedManual || "") : undefined} value={invManualInputs[inv.id] ?? (inv.collectedManual || "")}
+                              onChange={(e) => setInvManualInputs((m) => ({ ...m, [inv.id]: e.target.value }))}
+                              style={{ width: 84, border: "1px solid var(--border)", borderRadius: 6, padding: "4px 6px", fontSize: 11.5 }} />
+                            <button className="mark-purchased" onClick={() => handleUpdateInvoiceCollected(inv)}>Update</button>
+                          </span>
+                          {bal > 0 && (
+                            <span style={{ fontSize: 10.5, color: "var(--text-faint)" }}>
+                              Owed exactly {inv.total} — <button type="button" onClick={() => handleMarkInvoiceFullyCollected(inv)}
+                                style={{ border: "none", background: "none", padding: 0, font: "inherit", color: "var(--accent, #2563eb)", cursor: "pointer", textDecoration: "underline" }}>
+                                Mark Fully Collected
+                              </button>
+                            </span>
+                          )}
                         </span>
                       </td>
                       <td>
@@ -1498,12 +1655,24 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                       <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{new Date(item.addedDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</td>
                       <td className="mrr-cell">{item.isTrial ? "—" : fmtMoney(item.amount, lab.region)}</td>
                       <td>
-                        {item.isTrial ? "—" : (
-                          <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                            <input type="number" placeholder={String(item.collectedManual || "")} value={collManualInputs[item.id] ?? (item.collectedManual || "")}
-                              onChange={(e) => setCollManualInputs((m) => ({ ...m, [item.id]: e.target.value }))}
-                              style={{ width: 84, border: "1px solid var(--border)", borderRadius: 6, padding: "4px 6px", fontSize: 11.5 }} />
-                            <button className="mark-purchased" onClick={() => handleUpdateItemCollected(item)}>Update</button>
+                        {item.isTrial ? (
+                          <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => openConvertToChargeable(item)}>Convert to Chargeable</button>
+                        ) : (
+                          <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                            <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <input type="number" placeholder={String(item.collectedManual || "")} value={collManualInputs[item.id] ?? (item.collectedManual || "")}
+                                onChange={(e) => setCollManualInputs((m) => ({ ...m, [item.id]: e.target.value }))}
+                                style={{ width: 84, border: "1px solid var(--border)", borderRadius: 6, padding: "4px 6px", fontSize: 11.5 }} />
+                              <button className="mark-purchased" onClick={() => handleUpdateItemCollected(item)}>Update</button>
+                            </span>
+                            {bal > 0 && (
+                              <span style={{ fontSize: 10.5, color: "var(--text-faint)" }}>
+                                Owed exactly {item.amount} — <button type="button" onClick={() => handleMarkItemFullyCollected(item)}
+                                  style={{ border: "none", background: "none", padding: 0, font: "inherit", color: "var(--accent, #2563eb)", cursor: "pointer", textDecoration: "underline" }}>
+                                  Mark Fully Collected
+                                </button>
+                              </span>
+                            )}
                           </span>
                         )}
                       </td>

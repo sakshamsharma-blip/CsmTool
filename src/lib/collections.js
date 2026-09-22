@@ -87,6 +87,24 @@ export async function updateItemCollected(itemId, manualAmount, owedAmount, labI
   return fullyCollected ? "Collected" : "Partially Collected";
 }
 
+// Converts a trial/free Collections item to chargeable — sets the real amount and flips it back
+// into the normal owed/collected tracking (starts at 0 collected, same as any newly-added paid
+// item). MRR is NOT touched here — the caller bumps the lab's MRR separately (see labs.js's
+// updateLabMRR), since this module has no opinion on which lab record that belongs to.
+export async function convertItemToChargeable(itemId, amount, labId, csmId, label) {
+  const { error } = await supabase
+    .from("collections_items")
+    .update({ is_trial: false, amount, status: "Pending", collected_manual: 0, collected_at: null, resolution_comment: null })
+    .eq("id", itemId);
+  if (error) throw error;
+  logActivity(labId, {
+    kind: "Collections Update",
+    title: "Converted to chargeable",
+    meta: `${label || "Item"} now billed at ${amount}`,
+    csmId,
+  }).catch((err) => console.error(err));
+}
+
 export async function logCollectionsReminder(labId, csmId, labName) {
   await logActivity(labId, {
     kind: "Collections Reminder",
