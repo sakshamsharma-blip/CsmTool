@@ -71,6 +71,7 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
   const onboardingMRR = mrrSumFor("Onboarding");
   const pipelineMRR = mrrSumFor("Pipeline");
   const liveMRR = mrrSumFor("Live");
+  const lostMRR = mrrSumFor("Lost");
   const liveARR = scoped
     .filter((i) => i.status === "Live")
     .reduce((s, i) => s + toINR(i.annualRevenue, labsById[i.labId]?.region), 0);
@@ -149,11 +150,12 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
 
-      <div className="summary-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 18 }}>
+      <div className="summary-grid" style={{ gridTemplateColumns: "repeat(5,1fr)", marginBottom: 18 }}>
         <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Onboarding }}>{fmtINR(onboardingMRR)}</div><div className="slabel">Onboarding MRR</div></div>
         <div className="stile"><div className="sval">{fmtINR(pipelineMRR)}</div><div className="slabel">Pipeline MRR</div></div>
         <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Live }}>{fmtINR(liveMRR)}</div><div className="slabel">Live MRR</div></div>
         <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Live }}>{fmtINR(liveARR)}</div><div className="slabel">Live ARR</div></div>
+        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Lost }}>{fmtINR(lostMRR)}</div><div className="slabel">Lost MRR</div></div>
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
