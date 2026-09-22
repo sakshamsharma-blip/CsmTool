@@ -40,6 +40,6 @@ export async function logLabPulse(labId, { healthStatus, rating, note }, csmId) 
     title: `Health set to ${healthStatus}${rating != null ? ` · rating ${rating}/10` : ""}`,
     meta: note || null,
     csmId,
-    source: "manual",
+    source: "system",
   });
 }

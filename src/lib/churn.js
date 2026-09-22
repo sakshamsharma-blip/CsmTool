@@ -40,6 +40,6 @@ export async function logChurn(labId, { churnType, churnMonth, mrrLost, dueAmoun
     title: `${churnType} — ${mrrLost ? `MRR impact ${mrrLost}` : "no MRR figure given"}${reason ? ` (${reason})` : ""}`,
     meta: dueAmount ? `${dueAmount} outstanding at time of logging` : null,
     csmId,
-    source: "manual",
+    source: "system",
   });
 }
