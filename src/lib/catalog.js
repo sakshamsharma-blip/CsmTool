@@ -9,7 +9,10 @@ import { supabase } from "../supabaseClient";
 export async function fetchCatalog() {
   const [{ data: mods, error: e1 }, { data: params, error: e2 }] = await Promise.all([
     supabase.from("modules").select("key,name,icon,weight,description").order("weight", { ascending: false }),
-    supabase.from("module_params").select("module_key,name,type,weight,category"),
+    // description is a newer column (migration 0016) holding the Adoption Template's per-item
+    // validation notes — not yet surfaced in the Module Builder UI, but round-tripped here so a
+    // save through that screen doesn't silently drop it.
+    supabase.from("module_params").select("module_key,name,type,weight,category,description"),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
@@ -17,7 +20,7 @@ export async function fetchCatalog() {
     ...m,
     params: params
       .filter((p) => p.module_key === m.key)
-      .map((p) => ({ name: p.name, type: p.type, weight: p.weight, category: p.category })),
+      .map((p) => ({ name: p.name, type: p.type, weight: p.weight, category: p.category, description: p.description })),
   }));
 }
 
@@ -49,18 +52,19 @@ export async function deleteModule(key) {
   if (error) throw error;
 }
 
-export async function addModuleParam({ moduleKey, name, type, weight, category }) {
+export async function addModuleParam({ moduleKey, name, type, weight, category, description }) {
   const { error } = await supabase
     .from("module_params")
-    .insert({ module_key: moduleKey, name, type, weight, category });
+    .insert({ module_key: moduleKey, name, type, weight, category, description: description || null });
   if (error) throw error;
 }
 
 // module_params has no surrogate id in this app's data model (demo + live) — (module_key, name)
 // is the natural, unique key (enforced by a DB constraint), so updates/deletes address rows by it.
-export async function updateModuleParam(moduleKey, name, { newName, type, weight, category }) {
+export async function updateModuleParam(moduleKey, name, { newName, type, weight, category, description }) {
   const patch = { type, weight, category };
   if (newName && newName !== name) patch.name = newName;
+  if (description !== undefined) patch.description = description || null;
   const { error } = await supabase.from("module_params").update(patch).eq("module_key", moduleKey).eq("name", name);
   if (error) throw error;
 }
