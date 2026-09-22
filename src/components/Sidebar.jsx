@@ -17,6 +17,7 @@ const LIVE_NAV = [
     ],
   },
   { key: "collections", icon: "💰", label: "Collections" },
+  { key: "expansion", icon: "🔁", label: "Expansion" },
   { key: "tasks", icon: "✅", label: "Tasks" },
   { key: "visits", icon: "📅", label: "Visits & Meetings" },
   { key: "adoption-template", icon: "📈", label: "Adoption Template" },
@@ -27,7 +28,6 @@ const LIVE_NAV = [
 
 const PLANNED_NAV = [
   { icon: "🎫", label: "Support & Tickets" },
-  { icon: "🔁", label: "Renewals & Expansion" },
   { icon: "💬", label: "Feedback & NPS" },
   { icon: "🎯", label: "KPI Management" },
   { icon: "⚙️", label: "Automation" },
