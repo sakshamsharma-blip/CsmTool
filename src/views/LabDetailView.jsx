@@ -22,6 +22,9 @@ import { fetchAllVisits, fetchVisitById, updateVisit } from "../lib/visits";
 import { syncFollowupTaskForVisit } from "../lib/tasks";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { CHURN_TYPES, logChurn } from "../lib/churn";
+import { getCountryNames, getStatesForCountry, cityOptionsFor } from "../lib/geography";
+
+const COUNTRY_NAMES = getCountryNames();
 import Modal from "../components/Modal";
 import InfoTip from "../components/InfoTip";
 import Sparkline from "../components/Sparkline";
@@ -1045,9 +1048,32 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                     )}
                   </div>
                 )}
-                {row("City", lab.city || "—", <input value={editCity} onChange={(e) => setEditCity(e.target.value)} style={inputStyle} />)}
-                {row("State", lab.state, <input value={editState} onChange={(e) => setEditState(e.target.value)} style={inputStyle} />)}
-                {row("Country", lab.country, <input value={editCountry} onChange={(e) => setEditCountry(e.target.value)} style={inputStyle} />)}
+                {row("Country", lab.country,
+                  <select value={editCountry} onChange={(e) => { setEditCountry(e.target.value); setEditState(""); }} style={inputStyle}>
+                    <option value="">Select Country…</option>
+                    {COUNTRY_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                )}
+                {row("State", lab.state, (() => {
+                  const stateOptions = getStatesForCountry(editCountry);
+                  return stateOptions.length ? (
+                    <select value={editState} onChange={(e) => setEditState(e.target.value)} style={inputStyle} disabled={!editCountry}>
+                      <option value="">{editCountry ? "Select State…" : "Select a Country first"}</option>
+                      {stateOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  ) : (
+                    <input value={editState} onChange={(e) => setEditState(e.target.value)}
+                      placeholder={editCountry ? "Enter State" : "Select a Country first"} disabled={!editCountry} style={inputStyle} />
+                  );
+                })())}
+                {row("City", lab.city || "—", (
+                  <div>
+                    <input value={editCity} onChange={(e) => setEditCity(e.target.value)} style={inputStyle} list="lab-city-suggestions" />
+                    <datalist id="lab-city-suggestions">
+                      {cityOptionsFor(labs, editState).map((c) => <option key={c} value={c} />)}
+                    </datalist>
+                  </div>
+                ))}
                 {row("Client Segment", `${seg.code} — ${SEG_NAME[seg.code]}`)}
                 {row("Credit Days", lab.creditDays || "30",
                   <input

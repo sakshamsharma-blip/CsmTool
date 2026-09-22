@@ -41,7 +41,10 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
   const { isHead, scope, setScope, csmFilter, setCsmFilter, scopeCsm } = useScopedCsm(viewer);
 
   const [expanded, setExpanded] = useState({});
-  const [filters, setFilters] = useState({ csm: "", region: "", status: "", segment: "" });
+  const [filters, setFilters] = useState({ csm: "", region: "", status: "", segment: "", state: "" });
+  // Populated from whatever States actually exist on labs today — not the full geography
+  // dataset — so this only ever offers choices that will actually match something.
+  const stateOptions = useMemo(() => [...new Set(labs.map((l) => l.state).filter(Boolean))].sort(), [labs]);
   const [query, setQuery] = useState(initialQuery || "");
   const [visits, setVisits] = useState([]);
 
@@ -74,6 +77,7 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
     if (q) r = r.filter((row) => matchesLab(row) || row.children.some(matchesLab));
     if (filters.csm) r = r.filter((row) => row.csm === filters.csm || row.children.some((c) => c.csm === filters.csm));
     if (filters.region) r = r.filter((row) => row.region === filters.region);
+    if (filters.state) r = r.filter((row) => row.state === filters.state || row.children.some((c) => c.state === filters.state));
     if (filters.status) r = r.filter((row) => row.status === filters.status || row.children.some((c) => c.status === filters.status));
     if (filters.segment) r = r.filter((row) => segmentFor(toINR(row.mrr, row.region)).code === filters.segment);
     return r;
@@ -153,10 +157,14 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
         <select value={filters.region} onChange={(e) => setFilters((f) => ({ ...f, region: e.target.value }))}>
           <option value="">All Regions</option><option>Domestic</option><option>ROW</option>
         </select>
+        <select value={filters.state} onChange={(e) => setFilters((f) => ({ ...f, state: e.target.value }))}>
+          <option value="">All States</option>
+          {stateOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
         <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}>
           <option value="">All Status</option><option>Active</option><option>Inactive</option><option>At Risk</option><option>Churned</option>
         </select>
-        <span className="clear" onClick={() => { setFilters({ csm: "", region: "", status: "", segment: "" }); setQuery(""); }}>Clear all</span>
+        <span className="clear" onClick={() => { setFilters({ csm: "", region: "", status: "", segment: "", state: "" }); setQuery(""); }}>Clear all</span>
       </div>
 
       <div className="table-card">

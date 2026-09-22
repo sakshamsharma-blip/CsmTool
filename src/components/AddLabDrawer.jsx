@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { fmtMoney, toINR, segmentFor, nativeCurrency } from "../lib/format";
+import { getCountryNames, getStatesForCountry, cityOptionsFor } from "../lib/geography";
+
+const COUNTRY_NAMES = getCountryNames();
 
 const SEG_LABELS = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 
@@ -64,8 +67,17 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
   const needsBillingModeChoice = hierarchy === "child" && !!selectedParent && parentExistingChildren.length === 0 && !selectedParent.billingMode;
 
   function set(field, value) {
-    setForm((f) => (field === "parentId" ? { ...f, parentId: value, newParentBillingMode: "" } : { ...f, [field]: value }));
+    setForm((f) => {
+      if (field === "parentId") return { ...f, parentId: value, newParentBillingMode: "" };
+      // Changing Country invalidates any already-picked State (it's a different list), and State
+      // no longer matching also invalidates City, since City's suggestions are scoped by State.
+      if (field === "country") return { ...f, country: value, state: "" };
+      if (field === "state") return { ...f, state: value };
+      return { ...f, [field]: value };
+    });
   }
+  const stateOptions = getStatesForCountry(form.country);
+  const cityOptions = cityOptionsFor(labs, form.state);
 
   // "Save & Add Another" after a preset-parent add (adding several child labs in a row under
   // the same parent) should stay on that parent rather than snapping back to a blank Parent Lab
@@ -211,14 +223,31 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
                 </div>
               </div>
               <div className="frow">
-                <div className="field"><label>City <span className="req">*</span></label>
-                  <input value={form.city} onChange={(e) => set("city", e.target.value)} placeholder="Enter City" /></div>
+                <div className="field"><label>Country <span className="req">*</span></label>
+                  <select value={form.country} onChange={(e) => set("country", e.target.value)}>
+                    <option value="">Select Country…</option>
+                    {COUNTRY_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
                 <div className="field"><label>State <span className="req">*</span></label>
-                  <input value={form.state} onChange={(e) => set("state", e.target.value)} placeholder="Enter State" /></div>
+                  {stateOptions.length ? (
+                    <select value={form.state} onChange={(e) => set("state", e.target.value)} disabled={!form.country}>
+                      <option value="">{form.country ? "Select State…" : "Select a Country first"}</option>
+                      {stateOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  ) : (
+                    <input value={form.state} onChange={(e) => set("state", e.target.value)}
+                      placeholder={form.country ? "Enter State" : "Select a Country first"} disabled={!form.country} />
+                  )}
+                </div>
               </div>
               <div className="frow two">
-                <div className="field"><label>Country <span className="req">*</span></label>
-                  <input value={form.country} onChange={(e) => set("country", e.target.value)} placeholder="Enter Country" /></div>
+                <div className="field"><label>City <span className="req">*</span></label>
+                  <input value={form.city} onChange={(e) => set("city", e.target.value)} placeholder="Enter City" list="city-suggestions" />
+                  <datalist id="city-suggestions">
+                    {cityOptions.map((c) => <option key={c} value={c} />)}
+                  </datalist>
+                </div>
                 <div className="field"><label>Client Segment</label><input readOnly value={mrr ? `${seg.code} — ${SEG_LABELS[seg.code]}` : "Auto calculated"} /></div>
               </div>
             </div>
