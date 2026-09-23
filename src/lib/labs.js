@@ -9,6 +9,9 @@ export async function fetchLabs(idByName) {
   Object.entries(idByName).forEach(([name, id]) => { nameById[id] = name; });
   return data.map((l) => ({
     id: l.id,
+    // The editable, user-facing "Lab ID" (migration 0017) — falls back to the internal id for
+    // any row from before that migration ran, or before lab_code is backfilled there.
+    labCode: l.lab_code || l.id,
     name: l.name,
     type: l.type,
     parent: l.parent_id,
@@ -40,6 +43,9 @@ export async function fetchLabs(idByName) {
 export async function insertLab(lab, idByName) {
   const { error } = await supabase.from("labs").insert({
     id: lab.id,
+    // Starts equal to id (both come from the same "Lab ID" field on Add Lab) — lab_code is the
+    // one that can be renamed later from Lab Details; id stays fixed once created.
+    lab_code: lab.id,
     name: lab.name,
     type: lab.type,
     parent_id: lab.parent || null,
@@ -114,11 +120,11 @@ export async function updateLabStatus(labId, status) {
   if (error) throw error;
 }
 
-// Editable Lab Details fields — Lab Name plus anything that isn't Lab ID (the primary key — see
-// the note on the Lab ID row in LabDetailView.jsx for why that one isn't editable here) or already
+// Editable Lab Details fields — Lab Name and Lab ID (lab_code — see migration 0017; labs.id
+// itself, the internal primary key, is never touched here) plus anything else that isn't already
 // covered by its own dedicated action (CSM, Plan, Status). Available to whoever can already see
 // this lab (the owning CSM, or any Lead/Admin) — same visibility the RLS policy already enforces.
-export async function updateLabDetails(labId, { name, city, state, country, region, billingType, paymentCycle, creditDays, remarks }) {
+export async function updateLabDetails(labId, { name, labCode, city, state, country, region, billingType, paymentCycle, creditDays, remarks }) {
   const patch = {
     city: city || null,
     state,
@@ -130,6 +136,7 @@ export async function updateLabDetails(labId, { name, city, state, country, regi
     remarks: remarks || null,
   };
   if (name !== undefined) patch.name = name;
+  if (labCode !== undefined) patch.lab_code = labCode;
   const { error } = await supabase.from("labs").update(patch).eq("id", labId);
   if (error) throw error;
 }

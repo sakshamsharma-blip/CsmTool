@@ -326,7 +326,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
         <div>
           <div className="side-card">
             <h4>Lab Summary</h4>
-            <div className="seg-row"><span>Lab ID</span><span>{lab.id}</span></div>
+            <div className="seg-row"><span>Lab ID</span><span>{lab.labCode || lab.id}</span></div>
             <div className="seg-row"><span>Plan</span><span>{plan.name}</span></div>
             <div className="seg-row"><span>CSM</span><span>{lab.csm}</span></div>
             <div className="seg-row"><span>Segment</span><span><span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span></span></div>

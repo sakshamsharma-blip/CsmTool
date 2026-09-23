@@ -72,8 +72,10 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
     let r = computeLabRollup(labs);
     if (scopeCsm) r = r.filter((row) => row.csm === scopeCsm || row.children.some((c) => c.csm === scopeCsm));
     const q = query.trim().toLowerCase();
-    // Matches the top bar's promise — Lab ID, Lab Name, CSM, City — not just the name.
-    const matchesLab = (l) => [l.id, l.name, l.csm, l.city].some((v) => String(v || "").toLowerCase().includes(q));
+    // Matches the top bar's promise — Lab ID, Lab Name, CSM, City — not just the name. Lab ID
+    // here means labCode (the editable, user-facing one — see migration 0017), not the internal
+    // id, though they still match for any lab whose Lab ID has never been renamed.
+    const matchesLab = (l) => [l.labCode || l.id, l.name, l.csm, l.city].some((v) => String(v || "").toLowerCase().includes(q));
     if (q) r = r.filter((row) => matchesLab(row) || row.children.some(matchesLab));
     if (filters.csm) r = r.filter((row) => row.csm === filters.csm || row.children.some((c) => c.csm === filters.csm));
     if (filters.region) r = r.filter((row) => row.region === filters.region);
@@ -191,7 +193,7 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
                       {expanded[r.id] ? "▾" : "▸"}
                     </span>
                   )}</td>
-                  <td>{r.id}</td>
+                  <td>{r.labCode || r.id}</td>
                   <td className="lab-name clickable" onClick={() => onOpenLab(r.id)}>{r.name}</td>
                   <td>
                     <span className="pill pill-parent">Parent</span>
@@ -213,7 +215,7 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
                   const cseg = segmentFor(toINR(c.mrr, c.region));
                   return (
                     <tr className="child-row" key={c.id}>
-                      <td></td><td>{c.id}</td>
+                      <td></td><td>{c.labCode || c.id}</td>
                       <td className="lab-name clickable" onClick={() => onOpenLab(c.id)}>{c.name}</td>
                       <td><span className="pill pill-child">Child</span></td>
                       <td>{c.csm}</td>

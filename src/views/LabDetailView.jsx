@@ -135,6 +135,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
 
   const [detailsEditMode, setDetailsEditMode] = useState(false);
   const [editName, setEditName] = useState(lab.name || "");
+  const [editLabCode, setEditLabCode] = useState(lab.labCode || lab.id || "");
   const [editCity, setEditCity] = useState(lab.city || "");
   const [editState, setEditState] = useState(lab.state || "");
   const [editCountry, setEditCountry] = useState(lab.country || "");
@@ -845,6 +846,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   // a flat "edit everything and save" wouldn't preserve.
   function startEditDetails() {
     setEditName(lab.name || "");
+    setEditLabCode(lab.labCode || lab.id || "");
     setEditCity(lab.city || "");
     setEditState(lab.state || "");
     setEditCountry(lab.country || "");
@@ -867,6 +869,15 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       showToast("Lab Name can't be empty.");
       return;
     }
+    const trimmedLabCode = editLabCode.trim();
+    if (!trimmedLabCode) {
+      showToast("Lab ID can't be empty.");
+      return;
+    }
+    if (labs.some((l) => l.id !== lab.id && (l.labCode || l.id || "").trim().toLowerCase() === trimmedLabCode.toLowerCase())) {
+      showToast(`⚠ Lab ID "${trimmedLabCode}" is already in use by another lab.`);
+      return;
+    }
     if (mrrEditable) {
       const parsedMrr = parseFloat(editMrr);
       if (editMrr !== "" && (!Number.isFinite(parsedMrr) || parsedMrr < 0)) {
@@ -877,7 +888,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setSavingDetails(true);
     try {
       const patch = {
-        name: trimmedName, city: editCity, state: editState, country: editCountry, region: editRegion,
+        name: trimmedName, labCode: trimmedLabCode, city: editCity, state: editState, country: editCountry, region: editRegion,
         billingType: editBillingType, paymentCycle: editPaymentCycle, creditDays: editCreditDays, remarks: editRemarks,
       };
       await updateLabDetails(lab.id, patch);
@@ -897,7 +908,10 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       setDetailsEditMode(false);
       showToast("Lab details updated.");
     } catch (err) {
-      showToast(`⚠ ${err.message}`);
+      // Postgres unique_violation — the client-side check above already catches this for labs
+      // already loaded, but this is the backstop (e.g. a lab another CSM just renamed to the
+      // same code, not yet reflected in this session's local labs list).
+      showToast(err.code === "23505" ? `⚠ Lab ID "${trimmedLabCode}" is already in use by another lab.` : `⚠ ${err.message}`);
     } finally {
       setSavingDetails(false);
     }
@@ -985,7 +999,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           </div>
         </div>
         <div className="detail-meta">
-          <div className="m"><div>Lab ID</div><div>{lab.id}</div></div>
+          <div className="m"><div>Lab ID</div><div>{lab.labCode || lab.id}</div></div>
           <div className="m"><div>Type</div><div>{lab.type} Lab</div></div>
           <div className="m"><div>CSM</div><div>{lab.csm}</div></div>
           <div className="m"><div>Plan</div><div>{plan.name}</div></div>
@@ -1041,7 +1055,9 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                 {row("Lab Name", lab.name,
                   <input value={editName} onChange={(e) => setEditName(e.target.value)} style={inputStyle} placeholder="Lab name" />
                 )}
-                {row("Lab ID", <>{lab.id} <InfoTip>Lab ID is this lab's primary key — every collection, invoice, activity entry, adoption record and expansion opportunity is filed against it. Renaming it safely means updating all of those at once and needs a database-level change beyond this screen; flag it to your engineering/DB owner if it genuinely needs to change.</InfoTip></>)}
+                {row("Lab ID", lab.labCode || lab.id,
+                  <input value={editLabCode} onChange={(e) => setEditLabCode(e.target.value)} style={inputStyle} placeholder="Lab ID" />
+                )}
                 {row("Lab Type", lab.type + " Lab")}
                 {row("Parent Lab", lab.parent ? (labs.find((l) => l.id === lab.parent) || {}).name || lab.parent : "—")}
                 {row("CSM Name", lab.csm)}
@@ -1408,7 +1424,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                 const cseg = segmentFor(toINR(c.mrr, c.region));
                 return (
                   <tr key={c.id}>
-                    <td>{c.id}</td>
+                    <td>{c.labCode || c.id}</td>
                     <td className="lab-name clickable" onClick={() => guardedNav(() => onOpenLab(c.id))}>{c.name}</td>
                     <td>{c.csm}</td>
                     <td><span className="seg-badge" style={{ background: cseg.color }}>{cseg.code}</span></td>

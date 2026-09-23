@@ -110,7 +110,10 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
       return;
     }
     const trimmedId = form.id.trim();
-    if (labs.some((l) => l.id.trim().toLowerCase() === trimmedId.toLowerCase())) {
+    // Checks both id (the internal key a new lab's Lab ID also becomes) and labCode (what an
+    // existing lab's Lab ID may have since been renamed to — see migration 0017) so a collision
+    // with either surfaces here with a clear message, instead of a raw database error.
+    if (labs.some((l) => l.id.trim().toLowerCase() === trimmedId.toLowerCase() || (l.labCode || "").trim().toLowerCase() === trimmedId.toLowerCase())) {
       setSaveError(`Lab ID "${trimmedId}" is already in use — every lab (parent or child) needs a unique Lab ID.`);
       return;
     }
