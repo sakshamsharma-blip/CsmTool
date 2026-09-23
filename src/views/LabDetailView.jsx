@@ -134,6 +134,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   const [savingStageTags, setSavingStageTags] = useState(false);
 
   const [detailsEditMode, setDetailsEditMode] = useState(false);
+  const [editName, setEditName] = useState(lab.name || "");
   const [editCity, setEditCity] = useState(lab.city || "");
   const [editState, setEditState] = useState(lab.state || "");
   const [editCountry, setEditCountry] = useState(lab.country || "");
@@ -843,6 +844,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   // dedicated actions since those cascade to child labs or branch into the Churn workflow, which
   // a flat "edit everything and save" wouldn't preserve.
   function startEditDetails() {
+    setEditName(lab.name || "");
     setEditCity(lab.city || "");
     setEditState(lab.state || "");
     setEditCountry(lab.country || "");
@@ -860,6 +862,11 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   }
 
   async function handleSaveDetails() {
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      showToast("Lab Name can't be empty.");
+      return;
+    }
     if (mrrEditable) {
       const parsedMrr = parseFloat(editMrr);
       if (editMrr !== "" && (!Number.isFinite(parsedMrr) || parsedMrr < 0)) {
@@ -870,7 +877,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setSavingDetails(true);
     try {
       const patch = {
-        city: editCity, state: editState, country: editCountry, region: editRegion,
+        name: trimmedName, city: editCity, state: editState, country: editCountry, region: editRegion,
         billingType: editBillingType, paymentCycle: editPaymentCycle, creditDays: editCreditDays, remarks: editRemarks,
       };
       await updateLabDetails(lab.id, patch);
@@ -1031,8 +1038,10 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
             );
             return (
               <>
-                {row("Lab Name", lab.name)}
-                {row("Lab ID", lab.id)}
+                {row("Lab Name", lab.name,
+                  <input value={editName} onChange={(e) => setEditName(e.target.value)} style={inputStyle} placeholder="Lab name" />
+                )}
+                {row("Lab ID", <>{lab.id} <InfoTip>Lab ID is this lab's primary key — every collection, invoice, activity entry, adoption record and expansion opportunity is filed against it. Renaming it safely means updating all of those at once and needs a database-level change beyond this screen; flag it to your engineering/DB owner if it genuinely needs to change.</InfoTip></>)}
                 {row("Lab Type", lab.type + " Lab")}
                 {row("Parent Lab", lab.parent ? (labs.find((l) => l.id === lab.parent) || {}).name || lab.parent : "—")}
                 {row("CSM Name", lab.csm)}

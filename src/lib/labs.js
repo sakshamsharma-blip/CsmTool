@@ -114,11 +114,12 @@ export async function updateLabStatus(labId, status) {
   if (error) throw error;
 }
 
-// Editable Lab Details fields — anything that isn't an identity field (Lab ID/Name) or already
+// Editable Lab Details fields — Lab Name plus anything that isn't Lab ID (the primary key — see
+// the note on the Lab ID row in LabDetailView.jsx for why that one isn't editable here) or already
 // covered by its own dedicated action (CSM, Plan, Status). Available to whoever can already see
 // this lab (the owning CSM, or any Lead/Admin) — same visibility the RLS policy already enforces.
-export async function updateLabDetails(labId, { city, state, country, region, billingType, paymentCycle, creditDays, remarks }) {
-  const { error } = await supabase.from("labs").update({
+export async function updateLabDetails(labId, { name, city, state, country, region, billingType, paymentCycle, creditDays, remarks }) {
+  const patch = {
     city: city || null,
     state,
     country,
@@ -127,7 +128,9 @@ export async function updateLabDetails(labId, { city, state, country, region, bi
     payment_cycle: paymentCycle || null,
     credit_days: creditDays !== "" && creditDays != null ? parseInt(creditDays, 10) : null,
     remarks: remarks || null,
-  }).eq("id", labId);
+  };
+  if (name !== undefined) patch.name = name;
+  const { error } = await supabase.from("labs").update(patch).eq("id", labId);
   if (error) throw error;
 }
 
