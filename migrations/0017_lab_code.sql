@@ -20,6 +20,10 @@ update public.labs set lab_code = id where lab_code is null;
 
 alter table public.labs alter column lab_code set not null;
 
--- Case-insensitive uniqueness, matching the client-side check AddLabDrawer already does when
--- creating a lab (compares trimmed, lower-cased Lab IDs) — a backstop, not the primary guard.
-create unique index if not exists labs_lab_code_ci_key on public.labs (lower(lab_code));
+-- Plain (case-sensitive) uniqueness — guaranteed to succeed against today's data no matter what
+-- it looks like, since every lab_code is backfilled from id, and id is already unique as the
+-- primary key. The app's own checks (AddLabDrawer, Lab Details) additionally compare Lab IDs
+-- case-insensitively before ever reaching the database, which is the real day-to-day guard —
+-- this is just the backstop, and it's deliberately the weaker of the two rules so this migration
+-- can never fail on a same-id-different-case pair that might already exist.
+alter table public.labs add constraint labs_lab_code_key unique (lab_code);
