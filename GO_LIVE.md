@@ -73,6 +73,8 @@ Two things are worth knowing before you flip the switch:
    17. `migrations/0017_lab_code.sql` — adds `labs.lab_code`, the editable user-facing Lab ID.
    18. `migrations/0018_pitch_lost_stages_drop_partial.sql` — adds the two Lost pitch stages and removes
        the "Partially Adopted" adoption status (existing rows move to "In Progress").
+   19. `migrations/0019_rebalance_template_weights.sql` — scales the Adoption Template's module and parameter
+       weights to total exactly 100% (keeping every ratio).
 3. **Settings → API**: copy the **Project URL** and the **`anon` public** key — you'll need both in step 3.
 4. **Authentication → Providers**: enable **Email**. Password is the right choice here (not magic link) —
    the login page now has a working "Forgot your password?" link that needs password auth to make sense.

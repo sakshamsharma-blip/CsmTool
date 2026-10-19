@@ -2,14 +2,15 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
-## Oct 2026 — feedback batch 2 (12 items) — NOT YET COMMITTED/DEPLOYED
+## Oct 2026 — feedback batch 2 (12 items)
 
-**Needs a manual step:** run `migrations/0018_pitch_lost_stages_drop_partial.sql` in the Supabase SQL Editor.
+**Database:** migrations `0018_pitch_lost_stages_drop_partial.sql` and `0019_rebalance_template_weights.sql`
+(scales template weights to exactly 100%, ratios and scores unchanged) — both applied to the live database.
 
 ### Adoption Template
 - Module weights total ≤ 100%; each module's parameter weights total ≤ 100%. Edits that would exceed are
-  refused. Existing over-limit data (modules 118%; Registration/Inventory/Operations/Master Config/Branding
-  parameters over 100%) is flagged in red, not rewritten.
+  refused. Over-limit data (modules were 118%; Registration/Inventory/Operations/Master Config/Branding
+  parameters over 100%) was rebalanced to exactly 100% by migration 0019, keeping every ratio.
 - "Partially Adopted" status removed (Not Started / In Progress / Adopted). Migration 0018 moves the 3
   existing rows to In Progress.
 

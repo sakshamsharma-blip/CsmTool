@@ -244,7 +244,7 @@ export default function AdoptionTemplateView({
                 </div>
                 <div className="tmpl-field">
                   <label>Weightage (% of overall score — all modules ≤ {MAX_TOTAL}%)</label>
-                  <input type="number" min="1" max={MAX_TOTAL} value={draft.weight} onChange={(e) => handleModuleFieldChange("weight", e.target.value)} onBlur={() => handleModuleFieldBlur("weight")} />
+                  <input type="number" min="0.01" step="any" max={MAX_TOTAL} value={draft.weight} onChange={(e) => handleModuleFieldChange("weight", e.target.value)} onBlur={() => handleModuleFieldBlur("weight")} />
                   {moduleWeightError && <div style={{ color: "var(--bad)", fontSize: 11.5, marginTop: 5 }}>{moduleWeightError}</div>}
                 </div>
               </div>
@@ -298,7 +298,8 @@ export default function AdoptionTemplateView({
                         className="tw-input"
                         style={{ width: 50 }}
                         type="number"
-                        min="1"
+                        min="0.01"
+                        step="any"
                         max={MAX_TOTAL}
                         value={p.weight}
                         onChange={(e) => updateDraftParam(idx, { weight: e.target.value })}

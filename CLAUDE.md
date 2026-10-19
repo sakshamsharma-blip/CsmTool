@@ -149,12 +149,11 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership, Support & Tickets, Feedback &
   NPS, KPI Management, Automation (all still "Planned" and greyed out in the sidebar).
-- Latest migration: `0018_pitch_lost_stages_drop_partial.sql` — **written but must be run by hand in
-  the Supabase SQL Editor** (until it is, saving a Lost stage is rejected by the database).
-- Known data issue (Oct 2026): the live Adoption Template already totals 118% across modules, and
-  several modules' parameters total over 100% (Registration 200, Inventory 200, Operations 212,
-  Master Config 126, Branding 200). The new cap blocks raising weights until these are brought down;
-  the owner decides the right values (changing them shifts every lab's adoption scores).
+- Latest migration: `0019_rebalance_template_weights.sql` (0018 and 0019 are both applied).
+- Template weights were over 100 (modules 118%; Registration/Inventory/Operations/Master Config/Branding
+  parameters 126–212%); `0019_rebalance_template_weights.sql` scaled them to exactly 100 keeping every
+  ratio (scores unchanged) — applied Oct 2026. Weights are stored as decimals (2 places), so they may
+  show as e.g. 8.47. Branding Solutions' parameters total 55 (under the limit, left as is).
 
 ## If you're a different Claude session reading this
 
