@@ -70,6 +70,13 @@ export default function App() {
     setGlobalSearchQuery(q);
     if (q.trim()) navigate("list");
   }
+  // Clicking "Total Labs" in the sidebar should always show the lab list itself, never a leftover search
+  // (or text a browser autofilled into the top bar) — so it starts from an empty query. Typing in the
+  // top bar and pressing Enter still goes straight to the list with that text, via navigate() directly.
+  function navigateFromSidebar(nextView, extra) {
+    if (nextView === "list") setGlobalSearchQuery("");
+    navigate(nextView, extra);
+  }
 
   // Kick off the live USD→INR rate once per load. Every money display reads the rate directly
   // from fx.js's module-level cache (not React state) so it doesn't need threading through
@@ -429,7 +436,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={navigate} viewer={viewer} setCurrentCSM={setCurrentCSM} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
+      <Sidebar view={view} setView={navigateFromSidebar} viewer={viewer} setCurrentCSM={setCurrentCSM} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
       <div className="main">
         <TopBar viewer={viewer} view={view} setView={navigate} showToast={showToast} searchQuery={globalSearchQuery} onSearchChange={handleGlobalSearch} />
         <div className="content">

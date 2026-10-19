@@ -1,6 +1,8 @@
 import { useState } from "react";
 import Modal from "./Modal";
 import { todayISO } from "../lib/tasks";
+import SearchSelect from "./SearchSelect";
+import { labSelectOptions } from "../lib/selectOptions";
 
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -63,10 +65,7 @@ export default function AddTaskModal({ open, onClose, onSubmit, defaultAssignee,
       <div className="tmpl-field-row" style={{ marginBottom: 12, display: "flex", gap: 10 }}>
         <div className="tmpl-field" style={{ flex: 1 }}>
           <label>Lab (optional)</label>
-          <select style={fieldStyle} value={labId} onChange={(e) => setLabId(e.target.value)}>
-            <option value="">Not tied to a lab</option>
-            {labOptions.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
+          <SearchSelect value={labId} onChange={setLabId} options={labSelectOptions(labOptions)} emptyLabel="Not tied to a lab" placeholder="Search a lab…" inputStyle={fieldStyle} />
         </div>
         <div className="tmpl-field" style={{ flex: 1 }}>
           <label>Repeat</label>

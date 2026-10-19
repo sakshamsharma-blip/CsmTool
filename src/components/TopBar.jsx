@@ -39,14 +39,27 @@ export default function TopBar({ viewer, view, setView, showToast, searchQuery, 
 
   return (
     <div className="topbar">
+      {/* Browsers (and password managers) like to drop the saved login email into the first text box
+          on a page. This box is never an email field, so: no autocomplete, a name that doesn't hint at
+          "username/email", password-manager opt-outs, and any email-looking value that arrives without a
+          real keystroke (autofill dispatches a plain event, so inputType is undefined) is ignored. */}
       <input
         className="search"
-        type="search"
-        name="global-search"
+        type="text"
+        name="csm-lab-lookup"
         autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+        data-lpignore="true"
+        data-1p-ignore="true"
+        data-form-type="other"
         placeholder="🔍  Search by Lab ID, Lab Name, CSM, City..."
         value={searchQuery}
-        onChange={(e) => onSearchChange(e.target.value)}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (e.nativeEvent && e.nativeEvent.inputType === undefined && v.includes("@")) return;
+          onSearchChange(v);
+        }}
         onKeyDown={(e) => { if (e.key === "Enter") setView("list"); }}
       />
       <div className="topbar-spacer"></div>

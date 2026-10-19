@@ -1,8 +1,15 @@
 import { supabase } from "../supabaseClient";
 import { planIncludesModule, planIncludesParam } from "./plans";
 
-export const STATUS_ORDER = ["Not Started", "In Progress", "Partially Adopted", "Adopted"];
-export const STATUS_WEIGHT = { "Not Started": 0, "In Progress": 25, "Partially Adopted": 50, "Adopted": 100 };
+export const STATUS_ORDER = ["Not Started", "In Progress", "Adopted"];
+export const STATUS_WEIGHT = { "Not Started": 0, "In Progress": 25, "Adopted": 100 };
+
+// "Partially Adopted" was removed as a status (migration 0018 moves any stored row to "In Progress").
+// Until that migration has been run against a database, a row can still come back with the old value —
+// treat it as "In Progress" so scoring never hits an unknown status.
+function normalizeStatus(status) {
+  return status === "Partially Adopted" ? "In Progress" : status;
+}
 export const EXP_STAGES = ["Opportunity Identified", "Discussion", "Quotation Shared", "Negotiation"];
 
 const EMPTY_ADOPTION = { scope: {}, paramScope: {}, paramState: {} };
@@ -39,7 +46,7 @@ export async function fetchLabAdoption(labId) {
   (ps || []).forEach((r) => {
     paramState[`${r.module_key}|${r.param_name}`] = {
       included: r.included,
-      status: r.status,
+      status: normalizeStatus(r.status),
       expValue: r.exp_value != null ? Number(r.exp_value) : null,
       expStage: r.exp_stage || null,
     };
@@ -66,7 +73,7 @@ export async function fetchAllLabsAdoption() {
   (ps || []).forEach((r) => {
     ensure(r.lab_id).paramState[`${r.module_key}|${r.param_name}`] = {
       included: r.included,
-      status: r.status,
+      status: normalizeStatus(r.status),
       expValue: r.exp_value != null ? Number(r.exp_value) : null,
       expStage: r.exp_stage || null,
     };

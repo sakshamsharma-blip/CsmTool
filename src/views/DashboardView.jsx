@@ -67,7 +67,8 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
   // across a group, same as adoption isn't either.
   function sentimentHealthOf(lab) { return computeSentimentHealth(visitsByLab[lab.id]); }
 
-  const totalLabs = rows.length + rows.reduce((s, r) => s + r.children.length, 0);
+  const childCount = rows.reduce((s, r) => s + r.children.length, 0);
+  const totalLabs = rows.length + childCount;
   const totalMRR = rows.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
   const activeCount = rows.filter((r) => r.status === "Active").length + rows.reduce((s, r) => s + r.children.filter((c) => c.status === "Active").length, 0);
   const atRiskCount = rows.filter((r) => r.status === "At Risk").length + rows.reduce((s, r) => s + r.children.filter((c) => c.status === "At Risk").length, 0);
@@ -130,8 +131,10 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
 
-      <div className="summary-grid" style={{ gridTemplateColumns: "repeat(6,1fr)", marginBottom: 8 }}>
-        <div className="stile"><div className="sval">{totalLabs}</div><div className="slabel">Labs</div></div>
+      <div className="summary-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 8 }}>
+        <div className="stile"><div className="sval">{totalLabs}</div><div className="slabel">Total Labs</div></div>
+        <div className="stile"><div className="sval">{rows.length}</div><div className="slabel">Parent Labs (Clients)</div></div>
+        <div className="stile"><div className="sval">{childCount}</div><div className="slabel">Child Labs</div></div>
         <div className="stile"><div className="sval" style={{ color: "var(--accent)" }}>{fmtINR(totalMRR)}</div><div className="slabel">Total MRR</div></div>
         <div className="stile"><div className="sval" style={{ color: "var(--ok)" }}>{activeCount}</div><div className="slabel">Active</div></div>
         <div className="stile"><div className="sval" style={{ color: atRiskCount > 0 ? "var(--bad)" : "var(--text)" }}>{atRiskCount}</div><div className="slabel">At Risk</div></div>

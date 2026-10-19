@@ -8,8 +8,13 @@ import { planIncludesModule, planIncludesParam } from "./plans";
 // if the module itself isn't in scope yet), a 5-state pitch status. "Added" is the one status with
 // real consequences: the upsell succeeded, so the feature graduates onto the Adoption tab and a
 // Collections item is created for it (see markFeatureAdded below).
-export const PITCH_STATUSES = ["To Do", "Pitching", "In Progress", "Added", "Not Required"];
+export const PITCH_STATUSES = ["To Do", "Pitching", "In Progress", "Added", "Not Required", "Lost in Expansion", "Lost after Purchase"];
 export const PITCH_ACTIVE_STATUSES = ["To Do", "Pitching", "In Progress"];
+// Terminal "we lost it" stages — never counted as open work. "Lost in Expansion" = the pitch never
+// converted; "Lost after Purchase" = it was bought (Added) and then lost. Choosing either records the
+// stage and logs it; it does NOT touch the lab's scope, Collections or MRR on its own — adjust those
+// separately if the loss should change them.
+export const PITCH_LOST_STATUSES = ["Lost in Expansion", "Lost after Purchase"];
 
 // Bulk fetch across every lab — mirrors fetchAllLabsAdoption. Rows are keyed the same way the UI reads
 // them: "mod:<moduleKey>" for a module not yet in scope, "param:<moduleKey>|<paramName>" for an
@@ -24,6 +29,18 @@ export async function fetchAllPitchStatus() {
     byLab[r.lab_id][key] = r.status;
   });
   return byLab;
+}
+
+// One lab's pitch records, keyed the same way as fetchAllPitchStatus's per-lab map — what the lab's own
+// Adoption tab needs so its stage dropdowns match My Portfolio's (same pitch_status rows).
+export async function fetchLabPitchStatus(labId) {
+  const { data, error } = await supabase.from("pitch_status").select("module_key,param_name,status").eq("lab_id", labId);
+  if (error) throw error;
+  const map = {};
+  (data || []).forEach((r) => {
+    map[r.param_name ? `param:${r.module_key}|${r.param_name}` : `mod:${r.module_key}`] = r.status;
+  });
+  return map;
 }
 
 export function getModulePitchStatus(pitchForLab, moduleKey) {
@@ -43,14 +60,31 @@ async function upsertPitchStatus(labId, moduleKey, paramName, status) {
   if (error) throw error;
 }
 
-export async function setModulePitchStatus(labId, moduleKey, status, csmId) {
-  await upsertPitchStatus(labId, moduleKey, null, status);
-  logActivity(labId, { kind: "Pitch Updated", title: "Pitch status changed", meta: `${moduleKey} → ${status}`, csmId }).catch((err) => console.error(err));
+// Every pitch-stage change — whatever the stage, with or without a comment — is written to Lab History
+// as a check-in-sourced entry (activity_log.source = 'checkin'), so it sits alongside the lab's logged
+// check-ins. `comment` is optional; `from` is the stage it moved away from; `label` is the human name of
+// the module/feature (falls back to the raw key when a caller doesn't have one).
+function logPitchChange(labId, { moduleKey, paramName, label, from, to, comment, csmId, kind = "Pitch Updated", title }) {
+  const what = label || paramName || moduleKey;
+  const trimmed = (comment || "").trim();
+  return logActivity(labId, {
+    kind,
+    title: title || `Pitch stage changed: ${from || "—"} → ${to}`,
+    meta: `${what}: ${from || "—"} → ${to}${trimmed ? ` — ${trimmed}` : ""}`,
+    csmId,
+    source: "checkin",
+    details: { pitch: { moduleKey, paramName: paramName || null, label: what, from: from || null, to, comment: trimmed || null } },
+  }).catch((err) => console.error(err));
 }
 
-export async function setParamPitchStatus(labId, moduleKey, paramName, status, csmId) {
+export async function setModulePitchStatus(labId, moduleKey, status, csmId, { comment, from, label } = {}) {
+  await upsertPitchStatus(labId, moduleKey, null, status);
+  logPitchChange(labId, { moduleKey, paramName: null, label, from, to: status, comment, csmId });
+}
+
+export async function setParamPitchStatus(labId, moduleKey, paramName, status, csmId, { comment, from, label } = {}) {
   await upsertPitchStatus(labId, moduleKey, paramName, status);
-  logActivity(labId, { kind: "Pitch Updated", title: "Pitch status changed", meta: `${paramName} → ${status}`, csmId }).catch((err) => console.error(err));
+  logPitchChange(labId, { moduleKey, paramName, label, from, to: status, comment, csmId });
 }
 
 // Every Expansion-category pitch item across a set of labs that's still active (To Do / Pitching /
@@ -118,8 +152,8 @@ export function buildActivePitchRows({ labs, modules, plans, adoptionByLab, pitc
 
 // Confirms an "Added" pitch: records the pitch status, graduates the feature/module onto the Adoption
 // tab, and creates a real Collections item so there's something to collect against.
-export async function markFeatureAdded(target, amount, isTrial, csmId) {
-  const { labId, moduleKey, paramName, level, label, existingParamState } = target;
+export async function markFeatureAdded(target, amount, isTrial, csmId, comment) {
+  const { labId, moduleKey, paramName, level, label, existingParamState, fromStatus } = target;
   await upsertPitchStatus(labId, moduleKey, level === "param" ? paramName : null, "Added");
   if (level === "module") {
     await markModuleInScope(labId, moduleKey);
@@ -127,10 +161,13 @@ export async function markFeatureAdded(target, amount, isTrial, csmId) {
     await markParamIncluded(labId, moduleKey, paramName, existingParamState);
   }
   await addCollectionsItem({ labId, moduleKey, paramName: level === "param" ? paramName : null, label, amount: isTrial ? 0 : amount, isTrial, csmId });
+  const trimmed = (comment || "").trim();
   await logActivity(labId, {
     kind: "Expansion Converted",
-    title: "Marked Added",
-    meta: `${label}${isTrial ? " — trial/free" : ` — ₹${amount.toLocaleString("en-IN")}/mo`}`,
+    title: `Pitch stage changed: ${fromStatus || "—"} → Added`,
+    meta: `${label}: ${fromStatus || "—"} → Added${isTrial ? " — trial/free" : ` — ₹${amount.toLocaleString("en-IN")}/mo`}${trimmed ? ` — ${trimmed}` : ""}`,
     csmId,
+    source: "checkin",
+    details: { pitch: { moduleKey, paramName: level === "param" ? paramName : null, label, from: fromStatus || null, to: "Added", comment: trimmed || null, amount: isTrial ? 0 : amount, isTrial } },
   });
 }

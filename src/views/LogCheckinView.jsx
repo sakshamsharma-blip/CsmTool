@@ -139,6 +139,24 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
         });
       }
 
+      // Every action item typed into the check-in becomes a real task (type "Action Item") due on its
+      // date, owned by whoever logged the check-in — so it appears under Tasks / the Dashboard instead of
+      // only living inside the check-in record. (Kept separate from sourceVisitId on purpose: that link
+      // is reserved for the single follow-up task, which edits to the visit keep in sync.)
+      const cleanItems = actionItems.filter((it) => it.text.trim());
+      if (cleanItems.length) {
+        await Promise.all(cleanItems.map((it) => addTask({
+          labId: lab.id,
+          desc: `Action item — ${lab.name}: ${it.text.trim()}`,
+          owners: [currentCSM],
+          type: "action-item",
+          repeat: "none",
+          due: it.dueDate || null,
+          idByName,
+          assignedByName: currentCSM,
+        })));
+      }
+
       // Flagging a module for follow-up during a check-in auto-creates a training follow-up task,
       // so it doesn't just sit silently in the snapshot — someone owns chasing it.
       if (flagged.length) {
@@ -158,7 +176,8 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
         }));
       }
 
-      showToast("Check-in logged.");
+      const taskCount = cleanItems.length + (nextFollowup ? 1 : 0) + flagged.length;
+      showToast(taskCount ? `Check-in logged — ${taskCount} task${taskCount > 1 ? "s" : ""} added to Tasks.` : "Check-in logged.");
       onDone("history");
     } catch (err) {
       console.error(err);
@@ -183,7 +202,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
         <a onClick={() => onDone("details")}>Customer Master &gt; Total Labs</a> &gt; <a onClick={() => onDone("details")}>{lab.name}</a> &gt; <span>Log Check-in</span>
       </div>
       <h1 className="page-title">Log Check-in — {lab.name}</h1>
-      <p className="page-sub">Everything below lands on this lab's Activity Timeline once you submit.</p>
+      <p className="page-sub">Everything below lands on this lab's Lab History once you submit. Action items and the follow-up date also become tasks in Tasks.</p>
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, alignItems: "start" }}>
         <div>
@@ -296,7 +315,8 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
 
           {/* 7. Action items */}
           <div className="table-card" style={{ padding: "16px 18px", marginBottom: 14 }}>
-            <h3 style={{ fontSize: 13, margin: "0 0 10px" }}>7. Action Items</h3>
+            <h3 style={{ fontSize: 13, margin: "0 0 4px" }}>7. Action Items</h3>
+            <p style={{ fontSize: 11.5, color: "var(--text-dim)", margin: "0 0 10px" }}>Each action item becomes a task (due on its date) in Tasks, and is saved with this check-in in Lab History.</p>
             {actionItems.map((it, i) => (
               <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
                 <input style={{ ...fieldStyle, flex: 1 }} value={it.text} onChange={(e) => updateActionItem(i, { text: e.target.value })} placeholder="Action item" />
@@ -309,7 +329,8 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
 
           {/* Next follow-up */}
           <div className="table-card" style={{ padding: "16px 18px", marginBottom: 14 }}>
-            <h3 style={{ fontSize: 13, margin: "0 0 10px" }}>Next Follow-up (optional)</h3>
+            <h3 style={{ fontSize: 13, margin: "0 0 4px" }}>Next Follow-up / Reminder (optional)</h3>
+            <p style={{ fontSize: 11.5, color: "var(--text-dim)", margin: "0 0 10px" }}>Creates a follow-up task on this date in Tasks.</p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <div className="tmpl-field" style={{ flex: "1 1 160px" }}><label>Date</label><input type="date" style={fieldStyle} value={nextFollowup} onChange={(e) => setNextFollowup(e.target.value)} /></div>
               <div className="tmpl-field" style={{ flex: "1 1 160px" }}><label>Reason</label><input style={fieldStyle} value={nextFollowupReason} onChange={(e) => setNextFollowupReason(e.target.value)} placeholder="e.g. QBR" /></div>

@@ -7,6 +7,7 @@ import { fetchAllVisits } from "../lib/visits";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
+import SearchSelect from "../components/SearchSelect";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const CSV_COLUMNS = ["id", "name", "type", "parent", "csm", "region", "city", "state", "country", "mrr", "status"];
@@ -98,7 +99,7 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
   const totalMRR = allRowsForTiles.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
   const tiles = [
     ["Total Labs", totalLabs, ""],
-    ["Parent Labs", allRowsForTiles.length, ""],
+    ["Parent Labs (Clients)", allRowsForTiles.length, ""],
     ["Child Labs", allRowsForTiles.reduce((s, r) => s + r.children.length, 0), ""],
     ["Active Labs", activeCount, "ok"],
     ["Inactive Labs", totalLabs - activeCount, totalLabs - activeCount > 0 ? "bad" : ""],
@@ -135,13 +136,23 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
       </div>
 
       <div className="filters">
+        {/* Not an email field — see the note on the top bar's search box for why every autofill hint is off. */}
         <input
-          type="search"
-          name="lab-search"
+          type="text"
+          name="csm-lab-filter"
           autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          data-lpignore="true"
+          data-1p-ignore="true"
+          data-form-type="other"
           placeholder="🔍  Search lab name…"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (e.nativeEvent && e.nativeEvent.inputType === undefined && v.includes("@")) return;
+            setQuery(v);
+          }}
           style={{ minWidth: 200 }}
         />
         {/* Extra manual "jump to one CSM" narrowing on top of the scope above — only meaningful
@@ -159,10 +170,13 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
         <select value={filters.region} onChange={(e) => setFilters((f) => ({ ...f, region: e.target.value }))}>
           <option value="">All Regions</option><option>Domestic</option><option>ROW</option>
         </select>
-        <select value={filters.state} onChange={(e) => setFilters((f) => ({ ...f, state: e.target.value }))}>
-          <option value="">All States</option>
-          {stateOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <SearchSelect
+          value={filters.state}
+          onChange={(v) => setFilters((f) => ({ ...f, state: v }))}
+          options={stateOptions.map((s) => ({ value: s, label: s }))}
+          emptyLabel="All States"
+          placeholder="All States"
+        />
         <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}>
           <option value="">All Status</option><option>Active</option><option>Inactive</option><option>At Risk</option><option>Churned</option>
         </select>

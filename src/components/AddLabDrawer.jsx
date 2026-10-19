@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { fmtMoney, toINR, segmentFor, nativeCurrency } from "../lib/format";
 import { getCountryNames, getStatesForCountry, cityOptionsFor } from "../lib/geography";
+import SearchSelect from "./SearchSelect";
+import { labSelectOptions } from "../lib/selectOptions";
 
 const COUNTRY_NAMES = getCountryNames();
 
@@ -174,10 +176,13 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
               {hierarchy === "child" && (
                 <div className="field">
                   <label>Parent Lab (if Child Lab)</label>
-                  <select value={form.parentId} onChange={(e) => set("parentId", e.target.value)}>
-                    <option value="">{parents.length ? "Select a parent lab…" : "No parent labs yet — create one first"}</option>
-                    {parents.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
+                  <SearchSelect
+                    value={form.parentId}
+                    onChange={(v) => set("parentId", v)}
+                    options={labSelectOptions(parents)}
+                    placeholder={parents.length ? "Search a parent lab…" : "No parent labs yet — create one first"}
+                    disabled={!parents.length}
+                  />
                   <div className="hint">Select the parent lab this lab will be created under.</div>
                 </div>
               )}
@@ -227,17 +232,22 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
               </div>
               <div className="frow">
                 <div className="field"><label>Country <span className="req">*</span></label>
-                  <select value={form.country} onChange={(e) => set("country", e.target.value)}>
-                    <option value="">Select Country…</option>
-                    {COUNTRY_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
-                  </select>
+                  <SearchSelect
+                    value={form.country}
+                    onChange={(v) => set("country", v)}
+                    options={COUNTRY_NAMES.map((n) => ({ value: n, label: n }))}
+                    placeholder="Search a country…"
+                  />
                 </div>
                 <div className="field"><label>State <span className="req">*</span></label>
                   {stateOptions.length ? (
-                    <select value={form.state} onChange={(e) => set("state", e.target.value)} disabled={!form.country}>
-                      <option value="">{form.country ? "Select State…" : "Select a Country first"}</option>
-                      {stateOptions.map((n) => <option key={n} value={n}>{n}</option>)}
-                    </select>
+                    <SearchSelect
+                      value={form.state}
+                      onChange={(v) => set("state", v)}
+                      options={stateOptions.map((n) => ({ value: n, label: n }))}
+                      placeholder={form.country ? "Search a state…" : "Select a Country first"}
+                      disabled={!form.country}
+                    />
                   ) : (
                     <input value={form.state} onChange={(e) => set("state", e.target.value)}
                       placeholder={form.country ? "Enter State" : "Select a Country first"} disabled={!form.country} />

@@ -13,7 +13,7 @@ import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import BarChart from "../components/BarChart";
 import TasksPanel from "../components/TasksPanel";
-import Modal from "../components/Modal";
+import PitchStageModal from "../components/PitchStageModal";
 import InfoTip from "../components/InfoTip";
 
 const SEG_LABELS = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
@@ -30,10 +30,9 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
 
   const [expandedLab, setExpandedLab] = useState(null);
   const [expandedModule, setExpandedModule] = useState(null);
-  const [addedTarget, setAddedTarget] = useState(null); // {labId, moduleKey, paramName, level, label, existingParamState}
-  const [addedTrial, setAddedTrial] = useState(false);
-  const [addedAmount, setAddedAmount] = useState("");
-  const [addedError, setAddedError] = useState(false);
+  // A pitch-stage change waiting for its confirm step (optional comment; Added also asks for the cost):
+  // { target: {labId, moduleKey, paramName, level, label, existingParamState}, from, to }
+  const [pending, setPending] = useState(null);
 
   async function loadAll() {
     if (!SUPABASE_CONFIGURED) { setLoading(false); return; }
@@ -92,7 +91,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
 
   // Pitch Pipeline — every Expansion feature (or whole out-of-scope module) in this portfolio, bucketed
   // by pitch status.
-  const pitchCounts = { "To Do": 0, Pitching: 0, "In Progress": 0, Added: 0, "Not Required": 0 };
+  const pitchCounts = { "To Do": 0, Pitching: 0, "In Progress": 0, Added: 0, "Not Required": 0, "Lost in Expansion": 0, "Lost after Purchase": 0 };
   rows.forEach((lab) => {
     modules.forEach((mod) => {
       const pf = pitchByLab[lab.id];
@@ -126,31 +125,27 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
     catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
-  async function handlePitchStatusChange(status, target) {
-    if (status === "Added") {
-      setAddedTarget(target); setAddedTrial(false); setAddedAmount(""); setAddedError(false);
-      return;
-    }
-    try {
-      const csmId = idByName[labsById[target.labId]?.csm];
-      if (target.level === "module") await setModulePitchStatus(target.labId, target.moduleKey, status, csmId);
-      else await setParamPitchStatus(target.labId, target.moduleKey, target.paramName, status, csmId);
-      await loadAll();
-    } catch (err) { showToast(`⚠ ${err.message}`); }
+  // Every stage change goes through the confirm step, so each one can carry an optional comment and is
+  // logged to Lab History whether or not a comment was written.
+  function handlePitchStatusChange(status, target) {
+    if (status === target.fromStatus) return;
+    setPending({ target, from: target.fromStatus, to: status });
   }
-  async function confirmMarkAdded() {
-    const t = addedTarget;
-    let amount = 0;
-    if (!addedTrial) {
-      amount = parseFloat(addedAmount);
-      if (!amount || amount <= 0) { setAddedError(true); return; }
-    }
+  async function confirmStageChange({ comment, amount, isTrial }) {
+    const { target: t, from, to } = pending;
     try {
       const csmId = idByName[labsById[t.labId]?.csm];
-      await markFeatureAdded(t, amount, addedTrial, csmId);
-      setAddedTarget(null);
+      if (to === "Added") {
+        await markFeatureAdded({ ...t, fromStatus: from }, amount, isTrial, csmId, comment);
+        showToast(`${t.label} marked Added.`);
+      } else {
+        const opts = { comment, from, label: t.label };
+        if (t.level === "module") await setModulePitchStatus(t.labId, t.moduleKey, to, csmId, opts);
+        else await setParamPitchStatus(t.labId, t.moduleKey, t.paramName, to, csmId, opts);
+        showToast(`${t.label}: ${from} → ${to}.`);
+      }
+      setPending(null);
       await loadAll();
-      showToast(`${t.label} marked Added.`);
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
   async function handleToggleScope(lab, moduleKey) {
@@ -179,12 +174,14 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, margin: "0 0 18px" }}>
         <div className="table-card" style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Pitch Pipeline (Expansion features)</div>
-          <BarChart labelWidth={95} data={[
+          <BarChart labelWidth={125} data={[
             { label: "To Do", value: pitchCounts["To Do"], color: "var(--text-faint)" },
             { label: "Pitching", value: pitchCounts.Pitching, color: "var(--warn)" },
             { label: "In Progress", value: pitchCounts["In Progress"], color: "var(--accent)" },
             { label: "Added", value: pitchCounts.Added, color: "var(--ok)" },
             { label: "Not Required", value: pitchCounts["Not Required"], color: "var(--text-dim)" },
+            { label: "Lost in Expansion", value: pitchCounts["Lost in Expansion"], color: "var(--bad)" },
+            { label: "Lost after Purchase", value: pitchCounts["Lost after Purchase"], color: "var(--bad)" },
           ]} />
         </div>
         <div className="table-card" style={{ padding: "16px 18px" }}>
@@ -201,7 +198,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
 
       <h3 style={{ fontSize: 14, margin: "0 0 8px", display: "flex", alignItems: "center" }}>
         Labs
-        <InfoTip>Modules already in scope break down by <b>Expansion</b>-category feature only — set a pitch status from its dropdown (To Do → Pitching → In Progress → Added → Not Required). Picking <b>Added</b> asks for the added cost (or trial/free), then moves the feature onto the Adoption tab and creates a Collections entry automatically. A module not yet in scope is pitched as a whole — picking Added there adds it to scope. To pull a module <i>out</i> of scope, use this lab's Adoption tab.</InfoTip>
+        <InfoTip>Modules already in scope break down by <b>Expansion</b>-category feature only — set a pitch status from its dropdown (To Do → Pitching → In Progress → Added → Not Required, or Lost). Every stage change asks for an optional comment and is logged to Lab History. Picking <b>Added</b> also asks for the added cost (or trial/free), then moves the feature onto the Adoption tab and creates a Collections entry automatically. <b>Lost in Expansion</b> and <b>Lost after Purchase</b> only record the outcome; they do not change the lab's scope or MRR. A module not yet in scope is pitched as a whole — picking Added there adds it to scope. To pull a module <i>out</i> of scope, use this lab's Adoption tab.</InfoTip>
       </h3>
       {!rows.length ? (
         <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>No labs assigned to {scopeLabel} yet.</div>
@@ -259,7 +256,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
                             <div className="bar-track"></div>
                             <select className="status-select" onClick={(e) => e.stopPropagation()}
                               value={modStatus}
-                              onChange={(e) => handlePitchStatusChange(e.target.value, { labId: lab.id, moduleKey: mod.key, level: "module", label: mod.name })}>
+                              onChange={(e) => handlePitchStatusChange(e.target.value, { labId: lab.id, moduleKey: mod.key, level: "module", label: mod.name, fromStatus: modStatus })}>
                               {PITCH_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                             </select>
                           </div>
@@ -310,7 +307,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
                                 <span className={`status-chip st-${st.status.replace(/ /g, "")}`} style={{ cursor: "default" }}>{st.included ? st.status : "Not purchased"}</span>
                                 <select className="status-select" onClick={(e) => e.stopPropagation()}
                                   value={pStatus}
-                                  onChange={(e) => handlePitchStatusChange(e.target.value, { labId: lab.id, moduleKey: mod.key, paramName: p.name, level: "param", label: p.name, existingParamState: st })}>
+                                  onChange={(e) => handlePitchStatusChange(e.target.value, { labId: lab.id, moduleKey: mod.key, paramName: p.name, level: "param", label: p.name, existingParamState: st, fromStatus: pStatus })}>
                                   {PITCH_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                                 </select>
                               </div>
@@ -327,29 +324,9 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
         );
       })}
 
-      <Modal
-        open={!!addedTarget}
-        title={addedTarget ? `Mark "${addedTarget.label}" as Added` : ""}
-        onClose={() => setAddedTarget(null)}
-        actions={[
-          { label: "Cancel", className: "btn-ghost", onClick: () => setAddedTarget(null) },
-          { label: "Confirm Added", className: "btn-primary", onClick: confirmMarkAdded },
-        ]}
-      >
-        <div className="tmpl-field" style={{ marginBottom: 12 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, cursor: "pointer" }}>
-            <input type="checkbox" checked={addedTrial} onChange={(e) => setAddedTrial(e.target.checked)} /> This is a trial / free addition (no charge yet)
-          </label>
-        </div>
-        {!addedTrial && (
-          <div className="tmpl-field">
-            <label>Added Monthly Cost (₹)</label>
-            <input type="number" min="0" placeholder="e.g. 5000" value={addedAmount} onChange={(e) => setAddedAmount(e.target.value)}
-              style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
-          </div>
-        )}
-        {addedError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>Enter an amount, or mark this as trial/free.</div>}
-      </Modal>
+      {pending && (
+        <PitchStageModal target={pending.target} fromStatus={pending.from} toStatus={pending.to} onClose={() => setPending(null)} onConfirm={confirmStageChange} />
+      )}
     </div>
   );
 }

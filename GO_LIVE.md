@@ -68,6 +68,11 @@ Two things are worth knowing before you flip the switch:
        Parent lab's group of children).
    14. `migrations/0014_task_source_visit.sql` — adds `tasks.source_visit_id`, linking a follow-up task
        back to the visit/check-in that created it.
+   15. `migrations/0015_expansion_opportunities.sql` — the Expansion tab's deal table.
+   16. `migrations/0016_adoption_catalog_seed.sql` — seeds the Adoption Template catalog.
+   17. `migrations/0017_lab_code.sql` — adds `labs.lab_code`, the editable user-facing Lab ID.
+   18. `migrations/0018_pitch_lost_stages_drop_partial.sql` — adds the two Lost pitch stages and removes
+       the "Partially Adopted" adoption status (existing rows move to "In Progress").
 3. **Settings → API**: copy the **Project URL** and the **`anon` public** key — you'll need both in step 3.
 4. **Authentication → Providers**: enable **Email**. Password is the right choice here (not magic link) —
    the login page now has a working "Forgot your password?" link that needs password auth to make sense.

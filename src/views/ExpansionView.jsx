@@ -7,6 +7,8 @@ import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
 import InfoTip from "../components/InfoTip";
+import SearchSelect from "../components/SearchSelect";
+import { labSelectOptions } from "../lib/selectOptions";
 
 const STATUS_COLORS = { Onboarding: "var(--accent)", Pipeline: "var(--text-dim)", Live: "var(--ok)", Lost: "var(--bad)" };
 
@@ -201,10 +203,7 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
       >
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
           <label>Lab</label>
-          <select value={form.labId} onChange={(e) => setField("labId", e.target.value)} style={inputStyle} disabled={!!editingId}>
-            <option value="">Select a lab…</option>
-            {labOptions.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
+          <SearchSelect value={form.labId} onChange={(v) => setField("labId", v)} options={labSelectOptions(labOptions)} placeholder="Search a lab…" inputStyle={inputStyle} disabled={!!editingId} />
         </div>
         <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           <div className="tmpl-field" style={{ flex: 1 }}>

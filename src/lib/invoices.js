@@ -103,11 +103,17 @@ export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate
 
 export async function updateInvoiceCollected(invoiceId, manualAmount, totalOwed, labId, csmId, invoiceNumber) {
   const nowIso = new Date().toISOString();
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("invoices")
     .update({ collected_manual: manualAmount, collected_at: nowIso })
-    .eq("id", invoiceId);
+    .eq("id", invoiceId)
+    .select("id");
   if (error) throw error;
+  // Row Level Security can make an UPDATE match zero rows without raising any error — the call "succeeds"
+  // but nothing is saved. Treat that as a failure so the person sees it instead of a silent no-op.
+  if (!updated || updated.length === 0) {
+    throw new Error("The payment wasn't saved — this invoice couldn't be updated (you may not have access to this lab). Nothing changed.");
+  }
   const fullyCollected = manualAmount >= totalOwed;
   logActivity(labId, {
     kind: "Collections Update",

@@ -1,90 +1,111 @@
 # CSM Tool
 
-Internal tool for CrelioHealth's Customer Success team — replaces the old Excel-based process for tracking diagnostic-lab clients (Customer Master, Plans, Adoption Template, CSM roster, and more to come).
+An internal CrelioHealth tool for the Customer Success team. It replaces the old Excel-based process
+for tracking diagnostic-lab clients: which features each lab has adopted, what they pay (MRR),
+upsell/expansion deals, visits and check-ins, follow-up tasks, and a full history per lab.
+
+It is **live and in daily use** at `csm-tool-two.vercel.app`, and still being actively built out.
+
+> Working on this with an AI assistant? Read [CLAUDE.md](CLAUDE.md) first — it holds the business
+> rules, workflow rules (including git/commit rules) and current status. Keep both files up to date
+> as the project changes.
+
+## What it does
+
+| Area | What it's for |
+| --- | --- |
+| **Customer Master (Labs)** | Every lab, with Plan, CSM owner, region, parent/child hierarchy, editable Lab Name and Lab ID |
+| **Adoption Template** | The catalog of modules/parameters; each is Adoption (base plan) or Expansion (paid add-on), Mandatory or Optional. Module weights total ≤ 100%, and so do each module's parameter weights |
+| **Plans** | LIMS Starter/Growth/Advance/Premium/Enterprise, each with a default scope |
+| **My Portfolio / Dashboard** | A CSM's own labs and KPIs; Leads/Admins can switch to Team View |
+| **Collections** | Invoices (PDF upload with auto-extraction), MRR, payments, trial→chargeable conversion |
+| **Expansion** | Upsell pitches (To Do → Pitching → In Progress → Added → Not Required / Lost in Expansion / Lost after Purchase) on My Portfolio, each change with an optional comment logged to Lab History; plus deal tracking with Pipeline/Lost/Live MRR |
+| **Visits & Meetings** | Offline (in-person) visits only: log a past visit, or plan a future one (becomes a task) |
+| **Log Check-in** | Calls, visits, emails, WhatsApp, notes — with sentiment, flagged modules and action items; action items and follow-ups become tasks |
+| **Tasks** | Follow-ups, linked back to the visit that created them |
+| **Lab History** | Activity log of everything that happens to a lab |
+| **Health, churn, reports** | Health tracking, stage tags, churn logging, reports |
+
+**Not real yet:** Zoho Books sync (Collections simulates it), full Plan CRUD, Support & Tickets,
+Feedback & NPS, KPI Management, Automation (greyed out as "Planned" in the sidebar).
+
+## Who can see what
+
+Roles are CSM, CS Lead and Admin. A CSM sees only their own labs; Leads and Admins see everyone.
+This is enforced in the database with Row Level Security (migration 0012), not just in the UI. A
+person can have two login emails (@livehealth.in and @creliohealth.com) that land on one profile.
 
 ## Tech stack
 
-- **Frontend:** React + [Vite](https://vitejs.dev). Split into components (`src/components`, `src/views`) rather than one giant file — see Project structure below.
-- **Backend:** [Supabase](https://supabase.com) — hosted Postgres database, authentication, and an auto-generated REST API. No separate backend server to run; the frontend talks to Supabase directly via `@supabase/supabase-js`.
-- **Database schema + seed data:** `migrations/0001_init.sql`, then `migrations/0002_visits.sql`, then `migrations/0003_catalog_description.sql`, then `migrations/0004_collections_zoho.sql`, then `migrations/0005_checkins.sql`, then `migrations/0006_identity_linking.sql` — run once each, in order, against a fresh Supabase project (SQL Editor → paste → Run).
+- **Frontend:** React 19 + [Vite](https://vitejs.dev)
+- **Backend:** [Supabase](https://supabase.com) — Postgres, Auth and Row Level Security. There is no
+  separate server; the browser talks to Supabase through `@supabase/supabase-js`.
+- **Hosting:** Vercel, auto-deploying on every push to `main`.
 
 ## Project structure
 
 ```
 src/
-  supabaseClient.js       ← creates the Supabase client from .env values
-  lib/                    ← data layer: one file per domain (labs.js, plans.js, catalog.js, profiles.js,
-                             collections.js), each just wraps the matching Supabase table(s) in a few plain functions
-  lib/demoSeed.js          ← seed data used only when .env isn't configured yet (demo mode)
-  hooks/useToast.js        ← small shared UI hook
-  components/              ← reusable pieces: Sidebar, TopBar, Modal, Toast, LoginScreen, AddLabDrawer, etc.
-  views/                   ← one file per screen: LabsView, PlansView, AdoptionTemplateView, CsmSetupView,
-                             CollectionsView, LabDetailView, DashboardView, VisitsView, PortfolioView
-  App.jsx                  ← wires it all together: auth state, data loading, which view is showing
-  index.css                ← all styling (shared across every screen)
-migrations/0001_init.sql   ← base schema + seed data — run once, in order, against your Supabase project
-migrations/0002_visits.sql ← adds the visits table (Visits & Meetings) — run once, after 0001
-migrations/0003_catalog_description.sql ← adds modules.description (Adoption Template) — run once, after 0002
-migrations/0004_collections_zoho.sql ← adds collections_items.collected_at (Collections "Last Payment") — run once, after 0003
-migrations/0005_checkins.sql ← adds visits columns used by Log Check-in (meeting details, discussion
-                             topics, sentiment, flagged modules, action items) — run once, after 0004
-migrations/0006_identity_linking.sql ← lets one person sign in with more than one email (e.g. their
-                             @creliohealth.com alongside @livehealth.in) and land on the same
-                             account/data — run once, after 0005. See GO_LIVE.md to link a second
-                             email for someone.
-migrations/000N_*.sql      ← future schema changes go here, one file per change, in order (see below)
-GO_LIVE.md                 ← the current guide for going from demo mode to a real, deployed tool:
-                             Supabase project setup, a real working check, and deployment steps
-MIGRATION_PLAN.md          ← historical — the original build plan from when only a few screens were
-                             wired up. Superseded by GO_LIVE.md for setup steps; kept for context.
-archive_app_single_file.html   ← an earlier, fully working single-HTML-file version of this same app (no
-                             build step, same features) — kept as a working reference/fallback, not the
-                             version to develop further
-archive_prototype.html     ← the original design prototype (seeded/local-only, no database) — historical
-                             reference only
+  supabaseClient.js   creates the Supabase client from env values
+  lib/                data-access layer, one file per domain (labs, collections, expansion,
+                      adoption, catalog, plans, visits, tasks, invoices, ...) plus shared helpers
+                      (format.js, fx.js, roles.js, useScopedCsm.js)
+  views/              one file per screen (LabsView, LabDetailView, CollectionsView, ExpansionView, ...)
+  components/         shared pieces (Sidebar, TopBar, Modal, drawers, SearchSelect = type-to-filter dropdown,
+                      PitchStageModal = stage-change confirm with optional comment, ...)
+  App.jsx             auth state, data loading, which view is showing
+  index.css           all styling
+migrations/           numbered SQL files = the full history of the database schema (0001 ... latest)
+GO_LIVE.md            setup, verification and deployment guide
+MIGRATION_PLAN.md     historical — original build plan, superseded by GO_LIVE.md
+CLAUDE.md             context and working rules for AI sessions (and a good summary for humans)
+archive_*.html        earlier single-file versions, kept only as reference
 ```
 
 ## Running it locally
 
 ```
 npm install
-cp .env.example .env       # then fill in your Supabase URL + anon key (see below)
-npm run dev                # starts a local dev server with hot-reload
+cp .env.example .env.local     # fill in the Supabase URL and anon key (Supabase → Settings → API)
+npm run dev
 ```
 
-Without a `.env` file, the app still runs — it falls back to demo mode (seeded local data, no login, nothing saved) so it's always safe to open.
+Without env values the app starts in **demo mode** (seeded local data, no login, nothing saved).
+Never commit `.env` / `.env.local`.
 
-## First-time setup (Supabase project)
+Checks before shipping a change: `npm run build` and `npm run lint` should both be clean.
 
-1. Create a Supabase project at supabase.com.
-2. SQL Editor → paste `migrations/0001_init.sql` → Run. Then paste `migrations/0002_visits.sql` → Run (adds the `visits` table used by Visits & Meetings). Then paste `migrations/0003_catalog_description.sql` → Run (adds an optional description field used by the Adoption Template's Module Builder). Then paste `migrations/0004_collections_zoho.sql` → Run (adds a `collected_at` timestamp used by Collections' "Last Payment" column). Then paste `migrations/0005_checkins.sql` → Run (adds the meeting-detail columns used by Log Check-in). Then paste `migrations/0006_identity_linking.sql` → Run (lets someone sign in with more than one email and land on the same account).
-3. Settings → API: copy the Project URL and `anon public` key into your `.env` file (see `.env.example`).
-4. Authentication → Providers: enable Email.
-5. Authentication → Users: invite each team member.
-6. Once someone accepts their invite, link their login to their CSM roster row (SQL Editor):
-   ```sql
-   update profiles set auth_user_id = '<their-user-id-from-the-Users-tab>' where name = 'Their Name';
-   ```
+## Database changes
 
-Full detail (Supabase project setup, a real working check before onboarding the team, and deployment) is
-in `GO_LIVE.md`.
+- Schema lives in `migrations/`. Never edit a migration that has already been run — add a new file
+  `migrations/NNNN_description.sql` (next sequential number) with only the new SQL.
+- Migrations are run by hand, in order, in the Supabase **SQL Editor**, then committed to the repo.
+- Every new table needs Row Level Security policies in the same shape as migration 0012
+  (`is_lead_or_admin()` / `current_profile_id()`).
+- The live Supabase project ("CSM console") is the final source of truth if the repo and the database
+  ever disagree.
+- The data is real customer data. Prefer migrations that are provably safe against existing rows.
 
-## Making changes
+## Key business rules (short version — full list in CLAUDE.md)
 
-- **Adding to an existing screen** (e.g. a new field on Labs): edit the relevant file in `src/views/` or `src/components/`, and the matching function in `src/lib/` if it needs to read/write a new column.
-- **Adding a new database-backed screen**: add a table via a new migration file (see below), add a small file to `src/lib/` with functions to read/write it (follow the pattern in `src/lib/labs.js`), add a view component in `src/views/`, and wire it into `src/App.jsx` (add a case to the view switch + a nav entry in `src/components/Sidebar.jsx`).
-- **Changing the database schema:** don't edit `migrations/0001_init.sql` after it's been run once — add a new file `migrations/000N_your_change.sql` with just the new SQL, run its contents in the Supabase SQL Editor, and commit it here so there's a record of every schema change in order.
-- This can all be done by hand, or by asking an AI coding tool (Claude Code, or similar) to make the change and describing what you want — the codebase is small and conventional enough (plain React, no exotic patterns) that a coding agent should be able to work in it without much extra context.
+- Always convert to INR before summing money across labs (Domestic = INR, ROW = USD).
+- Parent/Child billing: **Consolidated** uses the parent's MRR; **Per-Branch** sums the children's.
+- A *Monthly* invoice sets a lab's MRR; a *ProRata* invoice never does.
+- `labs.id` is the permanent internal key; `labs.lab_code` is the editable, user-facing "Lab ID".
+- Adoption features are always in scope; Expansion features are pitched and sold.
+- `activity_log.source` accepts only `'system'` and `'checkin'`.
 
 ## Deploying
 
-`npm run build` produces a static `dist/` folder — deploy it anywhere that serves static files. Easiest: connect this repo to [Vercel](https://vercel.com) or [Netlify](https://netlify.com) — both auto-detect Vite, auto-build (`npm run build`) and auto-deploy on every push to main. Set the two `VITE_SUPABASE_*` values from `.env.example` as environment variables in the host's project settings (not committed to the repo).
+Pushing to `main` triggers an automatic Vercel build and deploy, so a push is a production release.
+The two env vars `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set in Vercel's project
+settings, not in the repo. After a deploy, confirm the site isn't silently in demo mode (that means
+the env vars are missing). See `GO_LIVE.md` for the full verification checklist.
 
 ## Troubleshooting
 
-**`sh: vite: command not found` (or `npm run dev` fails right after `npm install`)**
-
-This is a known npm bug ([npm/cli#4828](https://github.com/npm/cli/issues/4828)), not something wrong with this repo. Vite installs a small platform-specific native binary as an "optional dependency" — if `package-lock.json` was generated on a different machine/OS than the one you're installing on, npm can resolve the wrong one (or fail partway through), leaving `vite` missing from `node_modules/.bin`. Fix:
+**`sh: vite: command not found` right after `npm install`** — a known npm bug with platform-specific
+optional dependencies ([npm/cli#4828](https://github.com/npm/cli/issues/4828)):
 
 ```
 rm -rf node_modules package-lock.json
@@ -92,8 +113,9 @@ npm install
 npm run dev
 ```
 
-This forces npm to resolve the correct native binary for your actual machine. If it still fails, check `node -v` (needs 18+) and make sure you're running the command from inside the `csm-tool-repo` folder (the one with `package.json` in it).
+Needs Node 18+, and the command must be run from the folder containing `package.json`.
 
-## Ownership note (why this is in a repo at all)
+## Ownership
 
-This repo and the Supabase project behind it should live under CrelioHealth-owned accounts (a company GitHub org, a company Supabase org), not a single person's personal account — so the CSM tool keeps working and stays maintainable regardless of who's actively working on it. If either currently lives under a personal account, moving it to a company one is worth doing early.
+The repo (currently under a personal GitHub account) and the Supabase project should eventually live
+under CrelioHealth-owned accounts so the tool survives any one person's availability.

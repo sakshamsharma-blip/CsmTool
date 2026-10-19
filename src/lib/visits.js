@@ -45,6 +45,20 @@ export async function fetchVisitById(id) {
   };
 }
 
+// One-line summary shown in Lab History next to a logged visit/check-in, so the timeline row tells the
+// story without opening it: notes, then sentiment, topics, how many action items / flagged modules, and
+// the next follow-up. (The full record is behind the row's "View" link.)
+function visitSummary({ notes, sentiment, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason }) {
+  const parts = [];
+  if (notes) parts.push(notes);
+  if (sentiment) parts.push(`Sentiment: ${sentiment}`);
+  if (discussionTopics && discussionTopics.length) parts.push(`Topics: ${discussionTopics.join(", ")}`);
+  if (actionItems && actionItems.length) parts.push(`${actionItems.length} action item${actionItems.length > 1 ? "s" : ""}`);
+  if (flaggedModules && flaggedModules.length) parts.push(`${flaggedModules.length} module${flaggedModules.length > 1 ? "s" : ""} flagged`);
+  if (nextFollowupDate) parts.push(`Next follow-up ${nextFollowupDate}${nextFollowupReason ? " — " + nextFollowupReason : ""}`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 // A plain "Log Visit" (from Visits & Meetings) passes just the base fields; the fuller
 // "Log Check-in" screen passes the rest too — everything past nextFollowupReason is optional
 // and simply lands as null/empty for a plain visit. Returns the new visit's id so a caller that
@@ -78,7 +92,7 @@ export async function addVisit({
   logActivity(labId, {
     kind: type,
     title: isCheckin ? `${type} check-in logged` : `${type} logged`,
-    meta: notes || (nextFollowupDate ? `Next follow-up ${nextFollowupDate}${nextFollowupReason ? " — " + nextFollowupReason : ""}` : null),
+    meta: visitSummary({ notes, sentiment, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason }),
     csmId,
     source: isCheckin ? "checkin" : "system",
     // visitId is always included (not just for check-ins) — it's what lets Lab History's
@@ -119,7 +133,7 @@ export async function updateVisit(id, {
   supabase.from("activity_log")
     .update({
       title: isCheckin ? `${type} check-in logged` : `${type} logged`,
-      meta: notes || (nextFollowupDate ? `Next follow-up ${nextFollowupDate}${nextFollowupReason ? " — " + nextFollowupReason : ""}` : null),
+      meta: visitSummary({ notes, sentiment, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason }),
     })
     .filter("details->>visitId", "eq", id)
     .then(({ error: e2 }) => { if (e2) console.error(e2); });

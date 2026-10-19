@@ -8,6 +8,8 @@ import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
 import InfoTip from "../components/InfoTip";
+import SearchSelect from "../components/SearchSelect";
+import { labSelectOptions } from "../lib/selectOptions";
 
 export default function CollectionsView({ labs, viewer, idByName, onOpenLab, showToast }) {
   const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
@@ -165,10 +167,8 @@ export default function CollectionsView({ labs, viewer, idByName, onOpenLab, sho
       >
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
           <label>Lab</label>
-          <select value={addLabId} onChange={(e) => setAddLabId(e.target.value)} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}>
-            <option value="">Select a lab…</option>
-            {labOptions.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
+          <SearchSelect value={addLabId} onChange={setAddLabId} options={labSelectOptions(labOptions)} placeholder="Search a lab…"
+            inputStyle={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
         </div>
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
           <label>Feature / Description</label>

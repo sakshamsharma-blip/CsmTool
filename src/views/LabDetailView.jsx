@@ -3,7 +3,7 @@ import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtMoney, toINR, nativeCurrency, segmentFor } from "../lib/format";
 import { planIncludesModule, planIncludesParam } from "../lib/plans";
 import {
-  STATUS_ORDER, EXP_STAGES, defaultParamState,
+  STATUS_ORDER, defaultParamState,
   fetchLabAdoption, saveLabAdoption, computeLabScores,
 } from "../lib/adoption";
 import { fetchLabActivity, logActivity, ACTIVITY_ICONS } from "../lib/activity";
@@ -19,7 +19,7 @@ import { extractInvoiceFromFile } from "../lib/invoiceParse";
 import { updateLabStatus, updateLabStageTags, updateLabTestimonial, updateLabDetails, updateLabBillingMode, updateLabMRR, fetchMrrHistory } from "../lib/labs";
 import { HEALTH_STATUSES, isHealthyStatus, logLabPulse } from "../lib/pulse";
 import { fetchAllVisits, fetchVisitById, updateVisit } from "../lib/visits";
-import { syncFollowupTaskForVisit } from "../lib/tasks";
+import { syncFollowupTaskForVisit, addTask } from "../lib/tasks";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { CHURN_TYPES, logChurn } from "../lib/churn";
 import { getCountryNames, getStatesForCountry, cityOptionsFor } from "../lib/geography";
@@ -28,6 +28,12 @@ const COUNTRY_NAMES = getCountryNames();
 import Modal from "../components/Modal";
 import InfoTip from "../components/InfoTip";
 import Sparkline from "../components/Sparkline";
+import SearchSelect from "../components/SearchSelect";
+import PitchStageModal from "../components/PitchStageModal";
+import {
+  fetchLabPitchStatus, getModulePitchStatus, getParamPitchStatus, PITCH_STATUSES,
+  setModulePitchStatus, setParamPitchStatus, markFeatureAdded,
+} from "../lib/pitch";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const EMPTY_ADOPTION = { scope: {}, paramScope: {}, paramState: {} };
@@ -196,6 +202,17 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lab.id]);
 
+  // Expansion pitch stages for this lab — the very same pitch_status records My Portfolio edits, so the
+  // two screens always agree. A change waits in `pendingPitch` for its confirm step (optional comment).
+  const [pitch, setPitch] = useState({});
+  const [pendingPitch, setPendingPitch] = useState(null);
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) { setPitch({}); return; }
+    let cancelled = false;
+    fetchLabPitchStatus(lab.id).then((m) => { if (!cancelled) setPitch(m); }).catch((err) => console.error(err));
+    return () => { cancelled = true; };
+  }, [lab.id]);
+
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) {
       setActivity([]);
@@ -338,6 +355,16 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
         visitId: openVisitId, labId: lab.id, labName: lab.name, ownerName: lab.csm, idByName,
         nextFollowupDate: vFollowup || null, nextFollowupReason: vFollowupReason,
       });
+      // Action items added while editing become tasks too (same as at Log Check-in). Existing ones are
+      // matched by their text so re-saving an unchanged check-in never creates duplicate tasks.
+      const hadTexts = new Set((visitDetail?.actionItems || []).map((it) => (it.text || "").trim()));
+      const newItems = vActionItems.filter((it) => it.text.trim() && !hadTexts.has(it.text.trim()));
+      if (newItems.length) {
+        await Promise.all(newItems.map((it) => addTask({
+          labId: lab.id, desc: `Action item — ${lab.name}: ${it.text.trim()}`, owners: [lab.csm], type: "action-item", repeat: "none",
+          due: it.dueDate || null, idByName, assignedByName: currentCSM,
+        })));
+      }
       const refreshed = await fetchVisitById(openVisitId);
       setVisitDetail(refreshed);
       setVisitEditMode(false);
@@ -558,27 +585,32 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     return l.mrr || 0;
   }
 
-  // Whether this lab's own `mrr` field is the real, billed number — vs. just an unused/rolled-up
-  // figure per computeLabRollup's Billing Mode rule. Only offer direct editing where it's real,
-  // so an edit here can never be silently overwritten (or silently ignored) by the rollup.
-  const mrrEditReason = (() => {
+  // Every lab — parent or child — can have its own MRR edited here. What differs is whether that value is
+  // the one counted in the group total (see computeLabRollup in lib/labRollup.js), so `mrrNote` explains
+  // that right next to the field instead of silently ignoring the edit:
+  //  - Consolidated parent: its own MRR IS the group's MRR (normally set by the group's invoice).
+  //  - Per-Branch parent: the group total is the sum of the children's MRR; the parent's own is kept but not counted.
+  //  - Child of a Consolidated parent: kept for reference; only the parent's MRR counts toward the group.
+  const mrrNote = (() => {
     if (lab.type === "Child") {
       const parentLab = labs.find((l) => l.id === lab.parent);
       if (parentLab?.billingMode === "Consolidated") {
-        return `not editable — ${parentLab.name} bills Consolidated, so only its own MRR counts toward the group total. Edit MRR on ${parentLab.name} instead.`;
+        return `${parentLab.name} bills Consolidated, so only its own MRR counts toward the group total — this child's MRR is kept for reference.`;
       }
       return null;
     }
     if (lab.type === "Parent") {
-      const children = labs.filter((l) => l.type === "Child" && l.parent === lab.id);
-      if (children.length && lab.billingMode !== "Consolidated") {
-        return "not editable here — this group is billed Per-Branch, so the total is the sum of each child lab's own MRR. Edit MRR on the individual child labs instead.";
+      const kids = labs.filter((l) => l.type === "Child" && l.parent === lab.id);
+      if (kids.length && lab.billingMode === "Consolidated") {
+        return "Consolidated — this is the group's MRR (normally set by the group's Monthly invoice). ARR = MRR × 12.";
       }
-      return null;
+      if (kids.length) {
+        return `Per-Branch — the group's MRR is the sum of each child lab's MRR (${fmtMoney(effectiveMRR(lab), lab.region)} right now), so this parent's own MRR is kept but not counted.`;
+      }
     }
     return null;
   })();
-  const mrrEditable = !mrrEditReason;
+  const mrrEditable = true;
 
   function guardedNav(fn) {
     if (hasDraftChanges && !window.confirm("You have unsaved adoption changes for this lab — discard them?")) return;
@@ -600,9 +632,6 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   }
   function handleSetExpValue(moduleKey, paramName, raw) {
     updateDraftParam(`${moduleKey}|${paramName}`, { expValue: raw === "" ? null : Number(raw) });
-  }
-  function handleSetExpStage(moduleKey, paramName, stage) {
-    updateDraftParam(`${moduleKey}|${paramName}`, { expStage: stage });
   }
   function handleToggleScope(moduleKey) {
     setDraftScope((d) => ({ ...d, [moduleKey]: !effectiveScope(moduleKey) }));
@@ -692,6 +721,34 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setDraftScope({});
     setDraftParamScope({});
     showToast(`Reset to ${plan.name} defaults.`);
+  }
+
+  function handlePitchStageChange(status, target) {
+    if (status === target.fromStatus) return;
+    // "Added" / the Lost stages write to the database straight away (scope, Collections), which would
+    // collide with unsaved edits on this tab — so settle those first.
+    if (hasDraftChanges) { showToast("Save or discard your unsaved adoption changes before changing an expansion stage."); return; }
+    setPendingPitch({ target, from: target.fromStatus, to: status });
+  }
+  async function confirmPitchStage({ comment, amount, isTrial }) {
+    const { target: t, from, to } = pendingPitch;
+    try {
+      const csmId = idByName?.[lab.csm];
+      if (to === "Added") {
+        await markFeatureAdded({ ...t, labId: lab.id, fromStatus: from }, amount, isTrial, csmId, comment);
+        const [fresh] = await Promise.all([fetchLabAdoption(lab.id), loadCollections()]);
+        setSaved(fresh);
+        showToast(`${t.label} marked Added.`);
+      } else {
+        const opts = { comment, from, label: t.label };
+        if (t.level === "module") await setModulePitchStatus(lab.id, t.moduleKey, to, csmId, opts);
+        else await setParamPitchStatus(lab.id, t.moduleKey, t.paramName, to, csmId, opts);
+        showToast(`${t.label}: ${from} → ${to}.`);
+      }
+      setPitch(await fetchLabPitchStatus(lab.id));
+      fetchLabActivity(lab.id).then(setActivity).catch((err) => console.error(err));
+      setPendingPitch(null);
+    } catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
   async function handleReassignClick() {
@@ -1074,18 +1131,29 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                   </div>
                 )}
                 {row("Country", lab.country,
-                  <select value={editCountry} onChange={(e) => { setEditCountry(e.target.value); setEditState(""); }} style={inputStyle}>
-                    <option value="">Select Country…</option>
-                    {COUNTRY_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
-                  </select>
+                  <div style={{ maxWidth: 320 }}>
+                    <SearchSelect
+                      value={editCountry}
+                      onChange={(v) => { setEditCountry(v); setEditState(""); }}
+                      options={COUNTRY_NAMES.map((n) => ({ value: n, label: n }))}
+                      placeholder="Search a country…"
+                      inputStyle={inputStyle}
+                    />
+                  </div>
                 )}
                 {row("State", lab.state, (() => {
                   const stateOptions = getStatesForCountry(editCountry);
                   return stateOptions.length ? (
-                    <select value={editState} onChange={(e) => setEditState(e.target.value)} style={inputStyle} disabled={!editCountry}>
-                      <option value="">{editCountry ? "Select State…" : "Select a Country first"}</option>
-                      {stateOptions.map((n) => <option key={n} value={n}>{n}</option>)}
-                    </select>
+                    <div style={{ maxWidth: 320 }}>
+                      <SearchSelect
+                        value={editState}
+                        onChange={setEditState}
+                        options={stateOptions.map((n) => ({ value: n, label: n }))}
+                        placeholder={editCountry ? "Search a state…" : "Select a Country first"}
+                        disabled={!editCountry}
+                        inputStyle={inputStyle}
+                      />
+                    </div>
                   ) : (
                     <input value={editState} onChange={(e) => setEditState(e.target.value)}
                       placeholder={editCountry ? "Enter State" : "Select a Country first"} disabled={!editCountry} style={inputStyle} />
@@ -1118,22 +1186,14 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                   </select>
                 )}
                 {row("Current MRR", fmtMoney(effectiveMRR(lab), lab.region),
-                  mrrEditable ? (
-                    <div>
-                      <input
-                        type="number" min="0" step="0.01" inputMode="decimal" value={editMrr}
-                        onChange={(e) => setEditMrr(e.target.value)}
-                        placeholder="e.g. 25000" style={inputStyle}
-                      />
-                    </div>
-                  ) : (
-                    <div style={{ fontWeight: 600 }}>
-                      {fmtMoney(effectiveMRR(lab), lab.region)}
-                      <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4, fontWeight: 400 }}>
-                        {mrrEditReason.charAt(0).toUpperCase() + mrrEditReason.slice(1)}
-                      </div>
-                    </div>
-                  )
+                  <div>
+                    <input
+                      type="number" min="0" step="0.01" inputMode="decimal" value={editMrr}
+                      onChange={(e) => setEditMrr(e.target.value)}
+                      placeholder="e.g. 25000" style={inputStyle}
+                    />
+                    {mrrNote && <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4, fontWeight: 400, maxWidth: 420 }}>{mrrNote}</div>}
+                  </div>
                 )}
                 {row("Current ARR", fmtMoney(effectiveMRR(lab) * 12, lab.region))}
                 {row("Status", lab.status)}
@@ -1506,8 +1566,17 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                       <span className="mtoggle"></span>
                       <span>{mod.icon}</span>
                       <span className="mname">{mod.name}</span>
-                      <span className="out-of-scope-tag">Not applicable to this lab</span>
+                      <span className="out-of-scope-tag">Not applicable to this lab — can be pitched as a new module</span>
                       <div className="bar-track"></div>
+                      {(() => {
+                        const modStatus = getModulePitchStatus(pitch, mod.key);
+                        return (
+                          <select className="status-select" value={modStatus} onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => handlePitchStageChange(e.target.value, { moduleKey: mod.key, level: "module", label: mod.name, fromStatus: modStatus })}>
+                            {PITCH_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        );
+                      })()}
                       {scopeToggle}
                     </div>
                   </div>
@@ -1557,6 +1626,15 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                             <select className="status-select" value={st.status} onChange={(e) => handleSetStatus(mod.key, p.name, e.target.value)}>
                               {STATUS_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
                             </select>
+                            {p.category === "Expansion" && (() => {
+                              const pStatus = getParamPitchStatus(pitch, mod.key, p.name, st.included);
+                              return (
+                                <select className="status-select" title="Expansion stage" value={pStatus}
+                                  onChange={(e) => handlePitchStageChange(e.target.value, { moduleKey: mod.key, paramName: p.name, level: "param", label: p.name, existingParamState: st, fromStatus: pStatus })}>
+                                  {PITCH_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                              );
+                            })()}
                             {paramScopeToggle}
                           </div>
                         );
@@ -1575,14 +1653,15 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                               style={{ width: 62, border: "none", background: "transparent", color: "inherit", font: "inherit", fontWeight: 700 }}
                             />
                           </span>
-                          <select
-                            value={st.expStage || ""}
-                            onChange={(e) => handleSetExpStage(mod.key, p.name, e.target.value)}
-                            style={{ fontSize: 11, border: "1px solid var(--border)", borderRadius: 6, padding: "3px 5px", fontFamily: "inherit", flex: "none" }}
-                          >
-                            <option value="">Stage…</option>
-                            {EXP_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
-                          </select>
+                          {(() => {
+                            const pStatus = getParamPitchStatus(pitch, mod.key, p.name, st.included);
+                            return (
+                              <select className="status-select" title="Expansion stage — same as My Portfolio" value={pStatus}
+                                onChange={(e) => handlePitchStageChange(e.target.value, { moduleKey: mod.key, paramName: p.name, level: "param", label: p.name, existingParamState: st, fromStatus: pStatus })}>
+                                {PITCH_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            );
+                          })()}
                           <button className="mark-purchased" onClick={() => handleToggleIncluded(mod.key, p.name)}>Mark purchased</button>
                           {paramScopeToggle}
                         </div>
@@ -1597,7 +1676,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               Module Progress % = Completed Mandatory Weightage ÷ Total Mandatory Weightage × 100. Scope defaults from this lab's <b>{plan.name}</b> plan
               — untick "In scope" on a module this lab doesn't need, or tick one that isn't in their plan as a custom add-on.
               Each feature has its own "In scope" tick too. A feature's <b>Adoption</b>/<b>Expansion</b> tag is set once in the <b>Adoption Template</b> —
-              Adoption features are always tracked on status, Expansion features are gated behind "Mark purchased" until bought. Edits stay local to this
+              Adoption features are always tracked on status; Expansion features also carry an expansion stage (the same stages as My Portfolio, each change logged to Lab History) and are gated behind "Mark purchased" until bought. Edits stay local to this
               screen until you hit <b>Save Changes</b>.
             </div>
           </div>
@@ -2024,6 +2103,10 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           </div>
           )
         )
+      )}
+
+      {pendingPitch && (
+        <PitchStageModal target={pendingPitch.target} fromStatus={pendingPitch.from} toStatus={pendingPitch.to} onClose={() => setPendingPitch(null)} onConfirm={confirmPitchStage} />
       )}
     </div>
   );

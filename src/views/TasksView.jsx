@@ -10,7 +10,7 @@ import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTa
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import TasksPanel from "../components/TasksPanel";
-import Modal from "../components/Modal";
+import PitchStageModal from "../components/PitchStageModal";
 import InfoTip from "../components/InfoTip";
 
 // Everything a CSM (or a Lead, across the team) needs to work through — every task regardless of
@@ -29,10 +29,8 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
 
-  const [addedTarget, setAddedTarget] = useState(null); // {labId, moduleKey, paramName, level, label, existingParamState}
-  const [addedTrial, setAddedTrial] = useState(false);
-  const [addedAmount, setAddedAmount] = useState("");
-  const [addedError, setAddedError] = useState(false);
+  // A pitch-stage change waiting for its confirm step (optional comment; Added also asks for the cost).
+  const [pending, setPending] = useState(null);
 
   function invert(m) { const out = {}; Object.entries(m).forEach(([name, id]) => { out[id] = name; }); return out; }
 
@@ -80,31 +78,25 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
     catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
-  async function handlePitchStatusChange(status, target) {
-    if (status === "Added") {
-      setAddedTarget(target); setAddedTrial(false); setAddedAmount(""); setAddedError(false);
-      return;
-    }
-    try {
-      const csmId = idByName[labsById[target.labId]?.csm];
-      if (target.level === "module") await setModulePitchStatus(target.labId, target.moduleKey, status, csmId);
-      else await setParamPitchStatus(target.labId, target.moduleKey, target.paramName, status, csmId);
-      await loadAll();
-    } catch (err) { showToast(`⚠ ${err.message}`); }
+  function handlePitchStatusChange(status, target) {
+    if (status === target.fromStatus) return;
+    setPending({ target, from: target.fromStatus, to: status });
   }
-  async function confirmMarkAdded() {
-    const t = addedTarget;
-    let amount = 0;
-    if (!addedTrial) {
-      amount = parseFloat(addedAmount);
-      if (!amount || amount <= 0) { setAddedError(true); return; }
-    }
+  async function confirmStageChange({ comment, amount, isTrial }) {
+    const { target: t, from, to } = pending;
     try {
       const csmId = idByName[labsById[t.labId]?.csm];
-      await markFeatureAdded(t, amount, addedTrial, csmId);
-      setAddedTarget(null);
+      if (to === "Added") {
+        await markFeatureAdded({ ...t, fromStatus: from }, amount, isTrial, csmId, comment);
+        showToast(`${t.label} marked Added.`);
+      } else {
+        const opts = { comment, from, label: t.label };
+        if (t.level === "module") await setModulePitchStatus(t.labId, t.moduleKey, to, csmId, opts);
+        else await setParamPitchStatus(t.labId, t.moduleKey, t.paramName, to, csmId, opts);
+        showToast(`${t.label}: ${from} → ${to}.`);
+      }
+      setPending(null);
       await loadAll();
-      showToast(`${t.label} marked Added.`);
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
@@ -123,7 +115,7 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
       <div style={{ marginTop: 26 }}>
         <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center" }}>
           Pitch Reminders (Expansion) <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>({pitchRows.length})</span>
-          <InfoTip>Every Expansion feature still sitting at To Do / Pitching / In Progress across {teamAll ? "the team" : `${scopeCsm}'s`} labs. Change a status right here — it's the same pitch record My Portfolio's lab view edits, so either place stays in sync. Picking <b>Added</b> asks for the added cost (or trial/free), then moves the feature onto that lab's Adoption tab and creates a Collections entry automatically.</InfoTip>
+          <InfoTip>Every Expansion feature still sitting at To Do / Pitching / In Progress across {teamAll ? "the team" : `${scopeCsm}'s`} labs. Change a status right here — it's the same pitch record My Portfolio's lab view edits, so either place stays in sync. Every stage change asks for an optional comment and is logged to Lab History. Picking <b>Added</b> also asks for the added cost (or trial/free), then moves the feature onto that lab's Adoption tab and creates a Collections entry automatically.</InfoTip>
         </div>
         {!pitchRows.length ? (
           <div className="table-card" style={{ padding: "18px 20px", color: "var(--text-faint)", fontSize: 12.5 }}>No open pitch items for {scopeLabel} right now.</div>
@@ -141,7 +133,7 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
                     value={r.status}
                     onChange={(e) => handlePitchStatusChange(e.target.value, {
                       labId: r.labId, moduleKey: r.moduleKey, paramName: r.paramName,
-                      level: r.level, label: r.label, existingParamState: r.existingParamState,
+                      level: r.level, label: r.label, existingParamState: r.existingParamState, fromStatus: r.status,
                     })}
                   >
                     {PITCH_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -153,29 +145,9 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
         )}
       </div>
 
-      <Modal
-        open={!!addedTarget}
-        title={addedTarget ? `Mark "${addedTarget.label}" as Added` : ""}
-        onClose={() => setAddedTarget(null)}
-        actions={[
-          { label: "Cancel", className: "btn-ghost", onClick: () => setAddedTarget(null) },
-          { label: "Confirm Added", className: "btn-primary", onClick: confirmMarkAdded },
-        ]}
-      >
-        <div className="tmpl-field" style={{ marginBottom: 12 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, cursor: "pointer" }}>
-            <input type="checkbox" checked={addedTrial} onChange={(e) => setAddedTrial(e.target.checked)} /> This is a trial / free addition (no charge yet)
-          </label>
-        </div>
-        {!addedTrial && (
-          <div className="tmpl-field">
-            <label>Added Monthly Cost (₹)</label>
-            <input type="number" min="0" placeholder="e.g. 5000" value={addedAmount} onChange={(e) => setAddedAmount(e.target.value)}
-              style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
-          </div>
-        )}
-        {addedError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>Enter an amount, or mark this as trial/free.</div>}
-      </Modal>
+      {pending && (
+        <PitchStageModal target={pending.target} fromStatus={pending.from} toStatus={pending.to} onClose={() => setPending(null)} onConfirm={confirmStageChange} />
+      )}
     </div>
   );
 }

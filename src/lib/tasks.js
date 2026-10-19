@@ -65,6 +65,7 @@ export function repeatLabel(t) {
 export function taskTypeLabel(t) {
   if (t.type === "follow-up") return "Follow-up";
   if (t.type === "action-item") return "Action Item";
+  if (t.type === "planned-visit") return "Planned Visit";
   if (t.type === "collection") return "Collection Due";
   if (t.type === "pitch") return "Pitch Reminder";
   return t.repeat && t.repeat !== "none" ? "Recurring" : "Personal";

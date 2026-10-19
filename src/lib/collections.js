@@ -73,11 +73,16 @@ export function itemStatusLabel(item) {
 export async function updateItemCollected(itemId, manualAmount, owedAmount, labId, csmId, label) {
   const nowIso = new Date().toISOString();
   const fullyCollected = manualAmount >= owedAmount;
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("collections_items")
     .update({ collected_manual: manualAmount, collected_at: nowIso, status: fullyCollected ? "Resolved" : "Pending" })
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .select("id");
   if (error) throw error;
+  // An RLS-filtered UPDATE affects zero rows without an error — surface that instead of looking saved.
+  if (!updated || updated.length === 0) {
+    throw new Error("The payment wasn't saved — this item couldn't be updated (you may not have access to this lab). Nothing changed.");
+  }
   logActivity(labId, {
     kind: "Collections Update",
     title: fullyCollected ? "Marked fully collected" : "Payment logged",
