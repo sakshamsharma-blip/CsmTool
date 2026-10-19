@@ -7,7 +7,6 @@ import {
   fetchAllPitchStatus, getModulePitchStatus, getParamPitchStatus, markFeatureAdded,
   setModulePitchStatus, setParamPitchStatus, PITCH_STATUSES, PITCH_ACTIVE_STATUSES,
 } from "../lib/pitch";
-import { markModuleInScope as apiMarkModuleInScope } from "../lib/adoption";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask } from "../lib/tasks";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
@@ -129,7 +128,8 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
   // logged to Lab History whether or not a comment was written.
   function handlePitchStatusChange(status, target) {
     if (status === target.fromStatus) return;
-    setPending({ target, from: target.fromStatus, to: status });
+    // region rides along so the Added step asks for the cost in the lab's own currency (₹ or $).
+    setPending({ target: { ...target, region: labsById[target.labId]?.region }, from: target.fromStatus, to: status });
   }
   async function confirmStageChange({ comment, amount, isTrial }) {
     const { target: t, from, to } = pending;
@@ -148,18 +148,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
       await loadAll();
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
-  async function handleToggleScope(lab, moduleKey) {
-    try {
-      const wasInScope = isModuleInScope(lab, moduleKey);
-      if (wasInScope) {
-        // Un-scoping isn't part of this worklist's job (Adoption tab owns that edit) — nudge there instead.
-        showToast("Untick scope from this lab's Adoption tab.");
-        return;
-      }
-      await apiMarkModuleInScope(lab.id, moduleKey);
-      await loadAll();
-    } catch (err) { showToast(`⚠ ${err.message}`); }
-  }
+
 
   const labOptions = [];
   computeLabRollup(labs).forEach((r) => { labOptions.push(r); r.children.forEach((c) => labOptions.push(c)); });

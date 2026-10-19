@@ -162,10 +162,11 @@ export async function markFeatureAdded(target, amount, isTrial, csmId, comment) 
   }
   await addCollectionsItem({ labId, moduleKey, paramName: level === "param" ? paramName : null, label, amount: isTrial ? 0 : amount, isTrial, csmId });
   const trimmed = (comment || "").trim();
+  const sym = target.region === "ROW" ? "$" : "₹";
   await logActivity(labId, {
     kind: "Expansion Converted",
     title: `Pitch stage changed: ${fromStatus || "—"} → Added`,
-    meta: `${label}: ${fromStatus || "—"} → Added${isTrial ? " — trial/free" : ` — ₹${amount.toLocaleString("en-IN")}/mo`}${trimmed ? ` — ${trimmed}` : ""}`,
+    meta: `${label}: ${fromStatus || "—"} → Added${isTrial ? " — trial/free" : ` — ${sym}${amount.toLocaleString("en-IN")}/mo`}${trimmed ? ` — ${trimmed}` : ""}`,
     csmId,
     source: "checkin",
     details: { pitch: { moduleKey, paramName: level === "param" ? paramName : null, label, from: fromStatus || null, to: "Added", comment: trimmed || null, amount: isTrial ? 0 : amount, isTrial } },

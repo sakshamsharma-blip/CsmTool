@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Modal from "./Modal";
 
-export default function CsmFormModal({ open, editing, onClose, onSave }) {
+export default function CsmFormModal({ open, editing, onClose, onSave, canChangeRole = false }) {
   const [name, setName] = useState(editing?.name || "");
   // Admin isn't a selectable role here — there's exactly one Admin account, created directly
   // in the database, and this form can't create or hand out another one.
@@ -42,6 +42,15 @@ export default function CsmFormModal({ open, editing, onClose, onSave }) {
             <input value="Admin" disabled style={{ color: "var(--text-dim)", background: "var(--bg)" }} />
             <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 5 }}>
               The Admin role isn't changeable here.
+            </div>
+          </>
+        ) : editing && !canChangeRole ? (
+          // Only the Admin can change an existing team member's role (enforced in the database too —
+          // migration 0021). A Lead can still add people and edit their name / active status.
+          <>
+            <input value={role === "Lead" ? "CSM Lead" : "CSM"} disabled style={{ color: "var(--text-dim)", background: "var(--bg)" }} />
+            <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 5 }}>
+              Only the Admin can change someone's role.
             </div>
           </>
         ) : (

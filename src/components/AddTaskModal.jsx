@@ -36,7 +36,7 @@ export default function AddTaskModal({ open, onClose, onSubmit, defaultAssignee,
     reset();
   }
 
-  const fieldStyle = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, color: "var(--text)", background: "#fff", fontFamily: "inherit" };
+  const fieldStyle = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, color: "var(--text)", background: "var(--surface)", fontFamily: "inherit" };
 
   return (
     <Modal

@@ -80,7 +80,8 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
 
   function handlePitchStatusChange(status, target) {
     if (status === target.fromStatus) return;
-    setPending({ target, from: target.fromStatus, to: status });
+    // region rides along so the Added step asks for the cost in the lab's own currency (₹ or $).
+    setPending({ target: { ...target, region: labsById[target.labId]?.region }, from: target.fromStatus, to: status });
   }
   async function confirmStageChange({ comment, amount, isTrial }) {
     const { target: t, from, to } = pending;

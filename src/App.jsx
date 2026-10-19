@@ -209,7 +209,11 @@ export default function App() {
   async function handleAddLab(lab) {
     // Not a real column on the child row — AddLabDrawer sets this the moment a previously
     // childless parent gets its first child, since that's when Billing Mode first matters.
-    const { setParentBillingMode, ...labFields } = lab;
+    const { setParentBillingMode, ...rest } = lab;
+    // labCode starts equal to id (see insertLab) — set it locally too so the new row behaves exactly
+    // like one loaded from the database (search, duplicate-ID checks) without a reload.
+    const labFields = { ...rest, labCode: rest.labCode || rest.id };
+    const prevParentMode = setParentBillingMode ? labs.find((l) => l.id === lab.parent)?.billingMode ?? null : null;
     setLabs((ls) => {
       const next = [...ls, labFields];
       return setParentBillingMode ? next.map((l) => (l.id === lab.parent ? { ...l, billingMode: setParentBillingMode } : l)) : next;
@@ -217,36 +221,65 @@ export default function App() {
     if (SUPABASE_CONFIGURED) {
       try {
         await insertLab(labFields, idByName);
-        if (setParentBillingMode) await updateLabBillingMode(lab.parent, setParentBillingMode);
-        const csmId = idByName[lab.csm];
-        logActivity(lab.id, {
-          kind: "Lab Created",
-          title: lab.type === "Child" ? "Added as a child lab" : "Parent lab created",
-          meta: `${lab.csm} · Lab Hierarchy`,
-          csmId,
-        }).catch((err) => console.error(err));
+      } catch (err) {
+        // Previously the lab stayed on screen (and a "saved" toast immediately replaced this warning)
+        // even though the database rejected it — it then vanished on the next reload. Undo just this add.
+        console.error(err);
+        setLabs((ls) => ls
+          .filter((l) => l.id !== labFields.id)
+          .map((l) => (setParentBillingMode && l.id === lab.parent ? { ...l, billingMode: prevParentMode } : l)));
+        showToast(`⚠ ${lab.name} was NOT saved — ${err.message}`);
+        return;
       }
-      catch (err) { console.error(err); showToast(`⚠ ${lab.name} saved locally but NOT to the database — ${err.message}`); }
+      if (setParentBillingMode) {
+        try { await updateLabBillingMode(lab.parent, setParentBillingMode); }
+        catch (err) {
+          // The lab itself is saved; only the parent's Billing Mode didn't stick — undo that part alone.
+          console.error(err);
+          setLabs((ls) => ls.map((l) => (l.id === lab.parent ? { ...l, billingMode: prevParentMode } : l)));
+          showToast(`⚠ ${lab.name} saved, but the parent's Billing Mode wasn't — set it from the parent's Child Labs tab. (${err.message})`);
+          return;
+        }
+      }
+      const csmId = idByName[lab.csm];
+      logActivity(lab.id, {
+        kind: "Lab Created",
+        title: lab.type === "Child" ? "Added as a child lab" : "Parent lab created",
+        meta: `${lab.csm} · Lab Hierarchy`,
+        csmId,
+      }).catch((err) => console.error(err));
     }
     showToast(`${lab.name} saved.`);
   }
 
   async function handleReassignCsm(labId, newCsm, extraLabIds = []) {
     const ids = [labId, ...extraLabIds];
+    const before = Object.fromEntries(labs.filter((l) => ids.includes(l.id)).map((l) => [l.id, l.csm]));
     setLabs((ls) => ls.map((l) => (ids.includes(l.id) ? { ...l, csm: newCsm } : l)));
     if (SUPABASE_CONFIGURED) {
       try { await Promise.all(ids.map((id) => updateLabCsm(id, newCsm, idByName))); }
-      catch (err) { console.error(err); showToast(`⚠ Reassignment not saved to the database — ${err.message}`); return; }
+      catch (err) {
+        console.error(err);
+        setLabs((ls) => ls.map((l) => (l.id in before ? { ...l, csm: before[l.id] } : l)));
+        showToast(`⚠ Reassignment not saved to the database — ${err.message}`);
+        return;
+      }
     }
     showToast(ids.length > 1 ? `CSM reassigned for ${ids.length} labs.` : "CSM reassigned.");
   }
 
   async function handleChangePlan(labId, newPlanId, extraLabIds = []) {
     const ids = [labId, ...extraLabIds];
+    const before = Object.fromEntries(labs.filter((l) => ids.includes(l.id)).map((l) => [l.id, l.plan]));
     setLabs((ls) => ls.map((l) => (ids.includes(l.id) ? { ...l, plan: newPlanId } : l)));
     if (SUPABASE_CONFIGURED) {
       try { await Promise.all(ids.map((id) => updateLabPlan(id, newPlanId))); }
-      catch (err) { console.error(err); showToast(`⚠ Plan change not saved to the database — ${err.message}`); return; }
+      catch (err) {
+        console.error(err);
+        setLabs((ls) => ls.map((l) => (l.id in before ? { ...l, plan: before[l.id] } : l)));
+        showToast(`⚠ Plan change not saved to the database — ${err.message}`);
+        return;
+      }
     }
     showToast(ids.length > 1 ? `Plan changed for ${ids.length} labs.` : "Plan changed.");
   }
@@ -382,15 +415,32 @@ export default function App() {
     setModules((ms) => ms.map((m) => (m.key === moduleKey ? { ...m, params: m.params.filter((p) => p.name !== name) } : m)));
   }
 
+  // The app keys people by name (labs.csm, tasks.owner, idByName), so two people can't share a name,
+  // and a rename has to be carried through to every lab that shows the old name.
   async function handleSaveCsm({ id, name, role, active }) {
+    const existing = id ? csmDirectory.find((c) => idByName[c.name] === id) : null;
+    const clash = csmDirectory.find((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase() && c !== existing);
+    if (clash) throw new Error(`There is already a team member called "${clash.name}" — use a different name.`);
+    const oldName = existing ? existing.name : null;
+    let savedId = id;
     if (SUPABASE_CONFIGURED) {
       const saved = await upsertProfile({ id, name, role, active });
-      setIdByName((m) => ({ ...m, [name]: saved.id }));
+      savedId = saved.id;
+    }
+    setIdByName((m) => {
+      const next = { ...m };
+      if (oldName && oldName !== name) delete next[oldName];
+      if (savedId) next[name] = savedId;
+      return next;
+    });
+    if (oldName && oldName !== name) {
+      setLabs((ls) => ls.map((l) => (l.csm === oldName ? { ...l, csm: name } : l)));
+      if (currentCSM === oldName) setCurrentCSM(name);
+      if (myName === oldName) setMyName(name);
     }
     setCsmDirectory((dir) => {
-      const existing = id ? dir.find((c) => idByName[c.name] === id) : null;
       if (existing) return dir.map((c) => (c === existing ? { ...c, name, role, active } : c));
-      return [...dir, { name, role, active: active !== false, linked: false }];
+      return [...dir, { id: savedId, name, role, active: active !== false, linked: false }];
     });
     showToast(`${name} saved.`);
   }
@@ -404,7 +454,7 @@ export default function App() {
   const canManageUsers = viewer.isHead;
 
   if (SUPABASE_CONFIGURED && !authChecked) {
-    return <div style={{ padding: 40, fontFamily: "sans-serif", color: "#475467" }}>Loading…</div>;
+    return <div style={{ padding: 40, fontFamily: "sans-serif", color: "var(--text-dim)" }}>Loading…</div>;
   }
   // Takes priority over the plain "not signed in" check below — a recovery-link visit does
   // establish a session, but they still need to set a new password before anything else.
@@ -464,7 +514,7 @@ export default function App() {
             />
           )}
           {view === "csm-setup" && canManageUsers && (
-            <CsmSetupView csmDirectory={csmDirectory} idByName={idByName} onSaveCsm={handleSaveCsm} />
+            <CsmSetupView csmDirectory={csmDirectory} idByName={idByName} onSaveCsm={handleSaveCsm} canChangeRole={!SUPABASE_CONFIGURED || viewer.isAdmin} />
           )}
           {view === "dashboard" && (
             <DashboardView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />

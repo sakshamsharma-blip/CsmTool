@@ -2,12 +2,31 @@ import { useEffect, useRef, useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
 import { roleLabel } from "../lib/roles";
 import ChangePasswordModal from "./ChangePasswordModal";
+import { applyTheme, getStoredMode, saveMode, watchSystemTheme } from "../lib/theme";
+
+const THEME_OPTIONS = [
+  { mode: "light", icon: "☀", label: "Light mode" },
+  { mode: "system", icon: "◐", label: "Match system setting" },
+  { mode: "dark", icon: "☾", label: "Dark mode" },
+];
 
 export default function TopBar({ viewer, view, setView, showToast, searchQuery, onSearchChange }) {
   const { currentCSM, csmDirectory, myName, isHead: canManageUsers } = viewer;
   const [menuOpen, setMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const menuRef = useRef(null);
+  const [themeMode, setThemeMode] = useState(getStoredMode);
+
+  function chooseTheme(mode) {
+    setThemeMode(mode);
+    saveMode(mode);
+    applyTheme(mode);
+  }
+  // While on "System", follow the operating system if it flips between light and dark.
+  useEffect(() => {
+    if (themeMode !== "system") return undefined;
+    return watchSystemTheme(() => applyTheme("system"));
+  }, [themeMode]);
 
   useEffect(() => {
     function onDocClick(e) {
@@ -63,6 +82,13 @@ export default function TopBar({ viewer, view, setView, showToast, searchQuery, 
         onKeyDown={(e) => { if (e.key === "Enter") setView("list"); }}
       />
       <div className="topbar-spacer"></div>
+      <div className="theme-toggle" role="group" aria-label="Display mode">
+        {THEME_OPTIONS.map((o) => (
+          <button key={o.mode} type="button" className={themeMode === o.mode ? "active" : ""} title={o.label} aria-label={o.label} aria-pressed={themeMode === o.mode} onClick={() => chooseTheme(o.mode)}>
+            {o.icon}
+          </button>
+        ))}
+      </div>
       <div className="account-menu" ref={menuRef}>
         <button type="button" className={`account-trigger${menuOpen ? " open" : ""}`} onClick={() => setMenuOpen((o) => !o)}>
           <div className="avatar" style={{ width: 36, height: 36, fontSize: "13px" }}>{initials(accountName)}</div>

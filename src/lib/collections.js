@@ -70,7 +70,7 @@ export function itemStatusLabel(item) {
 
 // Updates how much has been collected so far for one item — callable repeatedly as more money
 // comes in (not a one-time action). `manualAmount` is the new running total, not a delta.
-export async function updateItemCollected(itemId, manualAmount, owedAmount, labId, csmId, label) {
+export async function updateItemCollected(itemId, manualAmount, owedAmount, labId, csmId, label, region) {
   const nowIso = new Date().toISOString();
   const fullyCollected = manualAmount >= owedAmount;
   const { data: updated, error } = await supabase
@@ -86,7 +86,7 @@ export async function updateItemCollected(itemId, manualAmount, owedAmount, labI
   logActivity(labId, {
     kind: "Collections Update",
     title: fullyCollected ? "Marked fully collected" : "Payment logged",
-    meta: `₹${Number(manualAmount).toLocaleString("en-IN")} collected so far${label ? ` for ${label}` : ""}`,
+    meta: `${region === "ROW" ? "$" : "₹"}${Number(manualAmount).toLocaleString("en-IN")} collected so far${label ? ` for ${label}` : ""}`,
     csmId,
   }).catch((err) => console.error(err));
   return fullyCollected ? "Collected" : "Partially Collected";

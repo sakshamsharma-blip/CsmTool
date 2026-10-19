@@ -9,7 +9,7 @@ import {
 import { fetchLabActivity, logActivity, ACTIVITY_ICONS } from "../lib/activity";
 import {
   fetchAllCollectionsItems, addCollectionsItem, updateItemCollected, convertItemToChargeable,
-  logCollectionsReminder, labCollectionsSummary, isItemOpen, itemBalance, itemStatusLabel, AGING_COLORS,
+  logCollectionsReminder, labCollectionsSummary, itemBalance, itemStatusLabel, AGING_COLORS,
 } from "../lib/collections";
 import {
   fetchInvoicesForLab, saveInvoice, updateInvoiceCollected,
@@ -20,6 +20,7 @@ import { updateLabStatus, updateLabStageTags, updateLabTestimonial, updateLabDet
 import { HEALTH_STATUSES, isHealthyStatus, logLabPulse } from "../lib/pulse";
 import { fetchAllVisits, fetchVisitById, updateVisit } from "../lib/visits";
 import { syncFollowupTaskForVisit, addTask } from "../lib/tasks";
+import { todayISO } from "../lib/dates";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { CHURN_TYPES, logChurn } from "../lib/churn";
 import { getCountryNames, getStatesForCountry, cityOptionsFor } from "../lib/geography";
@@ -125,7 +126,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   const [newStatus, setNewStatus] = useState(lab.status);
   const [churnOpen, setChurnOpen] = useState(false);
   const [churnType, setChurnType] = useState("Churned");
-  const [churnMonth, setChurnMonth] = useState(new Date().toISOString().slice(0, 10));
+  const [churnMonth, setChurnMonth] = useState(todayISO());
   const [churnMrrLost, setChurnMrrLost] = useState("");
   const [churnReason, setChurnReason] = useState("");
   const [savingStatus, setSavingStatus] = useState(false);
@@ -352,7 +353,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
         actionItems: vActionItems.filter((it) => it.text.trim()).map((it) => ({ text: it.text.trim(), dueDate: it.dueDate || null })),
       });
       await syncFollowupTaskForVisit({
-        visitId: openVisitId, labId: lab.id, labName: lab.name, ownerName: lab.csm, idByName,
+        visitId: openVisitId, labId: lab.id, labName: lab.name, ownerName: lab.csm || currentCSM, idByName,
         nextFollowupDate: vFollowup || null, nextFollowupReason: vFollowupReason,
       });
       // Action items added while editing become tasks too (same as at Log Check-in). Existing ones are
@@ -361,7 +362,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       const newItems = vActionItems.filter((it) => it.text.trim() && !hadTexts.has(it.text.trim()));
       if (newItems.length) {
         await Promise.all(newItems.map((it) => addTask({
-          labId: lab.id, desc: `Action item — ${lab.name}: ${it.text.trim()}`, owners: [lab.csm], type: "action-item", repeat: "none",
+          labId: lab.id, desc: `Action item — ${lab.name}: ${it.text.trim()}`, owners: [lab.csm || currentCSM], type: "action-item", repeat: "none",
           due: it.dueDate || null, idByName, assignedByName: currentCSM,
         })));
       }
@@ -400,7 +401,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     const val = overrideAmount != null ? overrideAmount : parseFloat(collManualInputs[item.id]);
     if (!Number.isFinite(val) || val < 0) { showToast("Enter a valid amount."); return; }
     try {
-      const status = await updateItemCollected(item.id, val, item.amount, lab.id, idByName?.[lab.csm], item.label);
+      const status = await updateItemCollected(item.id, val, item.amount, lab.id, idByName?.[lab.csm], item.label, lab.region);
       setCollManualInputs((m) => ({ ...m, [item.id]: String(val) }));
       await loadCollections();
       showToast(status === "Collected" ? "Marked fully collected." : "Payment logged.");
@@ -462,7 +463,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     const val = overrideAmount != null ? overrideAmount : parseFloat(invManualInputs[inv.id]);
     if (!Number.isFinite(val) || val < 0) { showToast("Enter a valid amount."); return; }
     try {
-      const status = await updateInvoiceCollected(inv.id, val, inv.total, lab.id, idByName?.[lab.csm], inv.invoiceNumber);
+      const status = await updateInvoiceCollected(inv.id, val, inv.total, lab.id, idByName?.[lab.csm], inv.invoiceNumber, lab.region);
       setInvManualInputs((m) => ({ ...m, [inv.id]: String(val) }));
       await loadInvoices();
       showToast(status === "Collected" ? "Invoice marked fully collected." : "Payment logged.");
@@ -728,7 +729,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     // "Added" / the Lost stages write to the database straight away (scope, Collections), which would
     // collide with unsaved edits on this tab — so settle those first.
     if (hasDraftChanges) { showToast("Save or discard your unsaved adoption changes before changing an expansion stage."); return; }
-    setPendingPitch({ target, from: target.fromStatus, to: status });
+    setPendingPitch({ target: { ...target, region: lab.region }, from: target.fromStatus, to: status });
   }
   async function confirmPitchStage({ comment, amount, isTrial }) {
     const { target: t, from, to } = pendingPitch;
@@ -797,7 +798,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     if (newStatus === "Churned" || newStatus === "Contraction") {
       setStatusOpen(false);
       setChurnType(newStatus === "Churned" ? "Churned" : "Contraction");
-      setChurnMonth(new Date().toISOString().slice(0, 10));
+      setChurnMonth(todayISO());
       setChurnMrrLost(String(effectiveMRR(lab) || ""));
       setChurnReason("");
       setChurnOpen(true);
@@ -847,6 +848,10 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     try {
       const csmId = idByName?.[lab.csm];
       const rating = pulseRating.trim() ? parseFloat(pulseRating) : null;
+      if (rating != null && (!Number.isFinite(rating) || rating < 0 || rating > 10)) {
+        showToast("Rating must be a number from 0 to 10.");
+        return;
+      }
       await logLabPulse(lab.id, { healthStatus: pulseHealth, rating, note: pulseNote }, csmId);
       onPatchLab && onPatchLab(lab.id, { healthStatus: pulseHealth, lastRating: rating });
       setPulseOpen(false);
@@ -1048,7 +1053,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
             )}
             <span
               className="status-pill"
-              style={{ background: "#f4f6f9", color: HEALTH_BUCKET_COLORS[sentHealth.bucket] }}
+              style={{ background: "var(--bg)", color: HEALTH_BUCKET_COLORS[sentHealth.bucket] }}
               title="Lab Health (Sentiment) — auto, from logged visit/check-in sentiment. Separate from the manual Health Status above."
             >
               Lab Health: {sentHealth.bucket}
@@ -1509,8 +1514,8 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           <div>
             <div className="adopt-summary">
               <div className="adopt-ring-card">
-                <div className="ring" style={{ background: `conic-gradient(${ringColor} ${scores.mandatoryPct * 3.6}deg, #eef0f3 0deg)` }}>
-                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>
+                <div className="ring" style={{ background: `conic-gradient(${ringColor} ${scores.mandatoryPct * 3.6}deg, var(--surface-3) 0deg)` }}>
+                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>
                     {Math.round(scores.mandatoryPct)}%
                   </div>
                 </div>
@@ -1524,7 +1529,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               <div className="tile"><div className="tval" style={{ color: "var(--ok)" }}>{fullyAdopted}</div><div className="tlabel">Modules ≥ 91% (mandatory)</div></div>
               <div className="tile"><div className="tval" style={{ color: "var(--warn)" }}>{inProgress}</div><div className="tlabel">Modules in progress</div></div>
               <div className="tile"><div className="tval">{notStarted}</div><div className="tlabel">Modules not started</div></div>
-              <div className="tile"><div className="tval" style={{ color: "#7c3aed" }}>{fmtMoney(expansionPipeline, lab.region)}</div><div className="tlabel">Expansion pipeline</div></div>
+              <div className="tile"><div className="tval" style={{ color: "var(--purple-text)" }}>{fmtMoney(expansionPipeline, lab.region)}</div><div className="tlabel">Expansion pipeline</div></div>
             </div>
 
             {hasDraftChanges && (
@@ -1787,7 +1792,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                   const bal = itemBalance(item);
                   return (
                     <tr key={item.id}>
-                      <td>{item.label}{item.isTrial && <span className="cat-tag" style={{ background: "#eef2ff", color: "#4338ca" }}> Trial/Free</span>}</td>
+                      <td>{item.label}{item.isTrial && <span className="cat-tag" style={{ background: "var(--indigo-bg)", color: "var(--indigo-text)" }}> Trial/Free</span>}</td>
                       <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{new Date(item.addedDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</td>
                       <td className="mrr-cell">{item.isTrial ? "—" : fmtMoney(item.amount, lab.region)}</td>
                       <td>
@@ -2015,7 +2020,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                                 key={s.key} type="button" onClick={() => setVSentiment(vSentiment === s.key ? "" : s.key)} className="btn"
                                 style={{
                                   border: `1.5px solid ${vSentiment === s.key ? s.color : "var(--border)"}`,
-                                  background: vSentiment === s.key ? s.color : "#fff", color: vSentiment === s.key ? "#fff" : "var(--text)",
+                                  background: vSentiment === s.key ? s.color : "var(--surface)", color: vSentiment === s.key ? "#fff" : "var(--text)",
                                   borderRadius: 9, padding: "7px 12px", fontSize: 12, fontWeight: 600,
                                 }}
                               >

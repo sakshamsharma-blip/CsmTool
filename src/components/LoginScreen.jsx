@@ -61,7 +61,7 @@ export default function LoginScreen({ onLoggedIn }) {
     >
       <form
         onSubmit={handleSubmit}
-        style={{ background: "#fff", borderRadius: 14, padding: "34px 32px", width: 340, boxShadow: "0 8px 32px rgba(16,24,40,.10)", border: "1px solid var(--border)" }}
+        style={{ background: "var(--surface)", borderRadius: 14, padding: "34px 32px", width: 340, boxShadow: "0 8px 32px rgba(16,24,40,.10)", border: "1px solid var(--border)" }}
       >
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 22 }}>
           <img src="/brand/crelio-wordmark.png" alt="CrelioHealth" style={{ height: 30, width: "auto" }} />

@@ -3,6 +3,7 @@ import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
 import { fetchChurnLog, quarterOf } from "../lib/churn";
 import { useScopedCsm } from "../lib/useScopedCsm";
+import { computeLabRollup } from "../lib/labRollup";
 import ScopeToggle from "../components/ScopeToggle";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
@@ -56,7 +57,13 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
   const totalDueAtChurn = churnFiltered.reduce((s, r) => s + toINR(r.dueAmount, labsById[r.labId]?.region), 0);
 
   // ---- MRR Breakdown ----
-  const breakdownLabs = useMemo(() => labs.filter((l) => !scopeCsm || l.csm === scopeCsm), [labs, scopeCsm]);
+  // One row per client (parent lab) with its billed MRR from computeLabRollup — the same numbers Total
+  // Labs and Dashboard show. Summing every lab's raw mrr double-counted groups: a Per-Branch parent's own
+  // mrr is ignored in its group total, and so are the children of a Consolidated parent.
+  const breakdownLabs = useMemo(() => {
+    const rows = computeLabRollup(labs);
+    return scopeCsm ? rows.filter((r) => r.csm === scopeCsm || r.children.some((c) => c.csm === scopeCsm)) : rows;
+  }, [labs, scopeCsm]);
 
   const segByCsm = useMemo(() => {
     const csmsInScope = teamAll || !isHead ? csmNames.filter((n) => teamAll || n === scopeCsm) : [scopeCsm].filter(Boolean);
@@ -174,7 +181,7 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
       {tab === "mrr" && (
         <>
           <div className="table-card" style={{ marginBottom: 18 }}>
-            <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>MRR by Segment{segByCsm.cols.length > 1 ? " × CSM" : ""}</div>
+            <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>MRR by Segment{segByCsm.cols.length > 1 ? " × CSM" : ""} <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>— per client (parent lab), group MRR</span></div>
             <div className="table-scroll">
               <table className="child-mini">
                 <thead><tr><th>Segment</th>{segByCsm.cols.map((c) => <th key={c}>{c}</th>)}<th>Total</th><th>%</th></tr></thead>
@@ -202,7 +209,7 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
           </div>
 
           <div className="table-card" style={{ marginBottom: 18 }}>
-            <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>Lab Count by Segment{segByCsm.cols.length > 1 ? " × CSM" : ""}</div>
+            <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>Client Count by Segment{segByCsm.cols.length > 1 ? " × CSM" : ""} <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>— parent labs</span></div>
             <div className="table-scroll">
               <table className="child-mini">
                 <thead><tr><th>Segment</th>{segByCsm.cols.map((c) => <th key={c}>{c}</th>)}<th>Total</th><th>%</th></tr></thead>

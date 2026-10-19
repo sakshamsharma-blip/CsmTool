@@ -2,7 +2,7 @@ import { useState } from "react";
 import { roleLabel } from "../lib/roles";
 import CsmFormModal from "../components/CsmFormModal";
 
-export default function CsmSetupView({ csmDirectory, idByName, onSaveCsm }) {
+export default function CsmSetupView({ csmDirectory, idByName, onSaveCsm, canChangeRole }) {
   const [modalState, setModalState] = useState(null); // null | {} (add) | {id,name,role} (edit)
 
   return (
@@ -38,6 +38,7 @@ export default function CsmSetupView({ csmDirectory, idByName, onSaveCsm }) {
         <CsmFormModal
           open
           editing={modalState.name ? modalState : null}
+          canChangeRole={canChangeRole}
           onClose={() => setModalState(null)}
           onSave={async (payload) => { await onSaveCsm(payload); setModalState(null); }}
         />

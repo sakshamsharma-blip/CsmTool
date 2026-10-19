@@ -2,6 +2,25 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 2026 — full-repo check (bug fixes)
+- Dates were computed in UTC, so in India "today" was yesterday: new tasks defaulted to overdue, check-in/visit
+  dates and follow-ups were a day off, and invoice due dates were saved one day early. New `lib/dates.js`;
+  migration `0020_fix_invoice_due_dates.sql` repaired the 17 existing invoices (applied).
+- Security: only the Admin can change a team member's role (Manage Users locks the field for Leads);
+  migration `0021_protect_profiles_and_functions.sql` enforces it in the database (to be run).
+- Adding a lab that the database rejected stayed on screen and showed "saved"; it now rolls back with an error.
+- CSM reassignment / plan change now roll back on screen if the save fails.
+- Renaming a team member now carries the new name to their labs; duplicate names are blocked.
+- Reports → MRR Breakdown double-counted parent/child groups; it now uses the same group MRR as Dashboard.
+- ROW (USD) labs: the "Added" cost box and payment log entries showed ₹; now show $.
+- Tasks from a lab with no CSM assigned are given to the person logging them instead of nobody.
+- Health-check rating limited to 0–10; Total Labs export now exports what's on screen, uses the editable
+  Lab ID, adds Currency, and can't inject spreadsheet formulas. Removed dead code.
+
+## Oct 2026 — display mode
+- Light / System / Dark toggle in the top bar (remembered per browser; System follows the OS setting live).
+  Hard-coded white/grey colours were moved onto theme variables so every screen follows the chosen mode.
+
 ## Oct 2026 — feedback batch 2 (12 items)
 
 **Database:** migrations `0018_pitch_lost_stages_drop_partial.sql` and `0019_rebalance_template_weights.sql`

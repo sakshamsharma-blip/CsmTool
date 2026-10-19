@@ -2,6 +2,7 @@ import { supabase } from "../supabaseClient";
 import { logActivity } from "./activity";
 import { updateLabMRR } from "./labs";
 import { nativeCurrency } from "./format";
+import { addDaysISO } from "./dates";
 
 export async function fetchInvoicesForLab(labId) {
   const { data, error } = await supabase
@@ -58,7 +59,7 @@ export function invoiceStatusLabel(inv) {
 // Pro-Rata invoices never touch MRR (the next Monthly invoice already carries the new run-rate).
 export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate, subTotal, total, extractedOk, sourceFilename, csmId }) {
   const creditDays = parseInt(lab.creditDays, 10) || 0;
-  const dueDate = addDays(invoiceDate, creditDays);
+  const dueDate = addDaysISO(invoiceDate, creditDays);
   const currency = nativeCurrency(lab.region);
 
   const { data, error } = await supabase
@@ -101,7 +102,7 @@ export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate
   return data.id;
 }
 
-export async function updateInvoiceCollected(invoiceId, manualAmount, totalOwed, labId, csmId, invoiceNumber) {
+export async function updateInvoiceCollected(invoiceId, manualAmount, totalOwed, labId, csmId, invoiceNumber, region) {
   const nowIso = new Date().toISOString();
   const { data: updated, error } = await supabase
     .from("invoices")
@@ -118,14 +119,8 @@ export async function updateInvoiceCollected(invoiceId, manualAmount, totalOwed,
   logActivity(labId, {
     kind: "Collections Update",
     title: fullyCollected ? "Invoice marked fully collected" : "Payment logged against invoice",
-    meta: `₹${Number(manualAmount).toLocaleString("en-IN")} collected so far against ${invoiceNumber}`,
+    meta: `${region === "ROW" ? "$" : "₹"}${Number(manualAmount).toLocaleString("en-IN")} collected so far against ${invoiceNumber}`,
     csmId,
   }).catch((err) => console.error(err));
   return fullyCollected ? "Collected" : "Partially Collected";
-}
-
-function addDays(isoDate, days) {
-  const d = new Date(isoDate + "T00:00:00");
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
 }

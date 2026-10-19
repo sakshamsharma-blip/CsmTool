@@ -6,25 +6,47 @@ import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fetchAllVisits } from "../lib/visits";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { useScopedCsm } from "../lib/useScopedCsm";
+import { todayISO } from "../lib/dates";
 import ScopeToggle from "../components/ScopeToggle";
 import SearchSelect from "../components/SearchSelect";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
-const CSV_COLUMNS = ["id", "name", "type", "parent", "csm", "region", "city", "state", "country", "mrr", "status"];
+// [header, value getter]. "Lab ID" is the editable user-facing lab_code (not the internal id), the parent is
+// shown by its Lab ID too, and MRR is each lab's own figure in its own currency.
+const CSV_COLUMNS = [
+  ["Lab ID", (l) => l.labCode || l.id],
+  ["Lab Name", (l) => l.name],
+  ["Type", (l) => l.type],
+  ["Parent Lab ID", (l, byId) => (l.parent ? (byId[l.parent]?.labCode || l.parent) : "")],
+  ["CSM", (l) => l.csm],
+  ["Region", (l) => l.region],
+  ["City", (l) => l.city],
+  ["State", (l) => l.state],
+  ["Country", (l) => l.country],
+  ["MRR", (l) => l.mrr],
+  ["Currency", (l) => (l.region === "ROW" ? "USD" : "INR")],
+  ["Status", (l) => l.status],
+];
 
-function exportLabsCsv(labs) {
-  const header = CSV_COLUMNS.join(",");
-  const lines = labs.map((l) => CSV_COLUMNS.map((c) => {
-    const v = l[c] ?? "";
-    const s = String(v).replace(/"/g, '""');
-    return /[",\n]/.test(s) ? `"${s}"` : s;
-  }).join(","));
+function csvCell(v) {
+  let s = String(v ?? "");
+  // Spreadsheet apps execute cells starting with = + - @ as formulas — prefix them so they stay text.
+  if (/^[=+\-@]/.test(s)) s = "'" + s;
+  s = s.replace(/"/g, '""');
+  return /[",\n]/.test(s) ? `"${s}"` : s;
+}
+
+function exportLabsCsv(labs, allLabs) {
+  const byId = {};
+  allLabs.forEach((l) => { byId[l.id] = l; });
+  const header = CSV_COLUMNS.map(([h]) => h).join(",");
+  const lines = labs.map((l) => CSV_COLUMNS.map(([, get]) => csvCell(get(l, byId))).join(","));
   const csv = [header, ...lines].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `total-labs-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `total-labs-${todayISO()}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -118,7 +140,7 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
           <p className="page-sub">The lab master record — Customer Master.</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn btn-ghost" onClick={() => exportLabsCsv(labs)}>Export</button>
+          <button className="btn btn-ghost" title="Exports the labs currently listed below (your scope + filters), parents and their child labs" onClick={() => exportLabsCsv(rows.flatMap((r) => [labs.find((l) => l.id === r.id) || r, ...r.children]), labs)}>Export</button>
           <button className="btn btn-ghost" disabled title="Coming next — bulk CSV import" style={{ opacity: 0.55, cursor: "not-allowed" }}>Import Labs</button>
           <button className="btn btn-primary" onClick={onOpenAddDrawer}>+ Add New Lab</button>
         </div>

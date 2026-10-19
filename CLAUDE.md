@@ -91,6 +91,12 @@ with the same context and follows the same rules. Read it fully before making ch
   value is *counted* still follows billing mode — Consolidated = the parent's own MRR (set by the
   group's Monthly invoice), Per-Branch = sum of the children. ARR = MRR × 12 everywhere.
 - **Total Labs and Dashboard tiles**: Total Labs, Parent Labs (Clients), Child Labs.
+- **Dates**: build `YYYY-MM-DD` strings with `lib/dates.js` (`todayISO`, `addDaysISO`, `daysFromTodayISO`) —
+  never `toISOString().slice(0, 10)`, which is UTC and gives yesterday's date in India.
+- **Display mode**: Light / System / Dark toggle in the top bar (`lib/theme.js`, saved per browser). Colours must
+  come from the CSS variables in `index.css` (`var(--surface)`, `--surface-2/3`, `--text`, …) — never hard-code
+  `#fff` or light greys for backgrounds, or that spot stays white in dark mode. Dark values live under
+  `:root[data-theme="dark"]`.
 - **Plans** are a real named entity (LIMS Starter/Growth/Advance/Premium/Enterprise), each with a
   default module/param scope. A lab's actual scope can deviate from its Plan's defaults, but
   deviating never renames or forks the Plan — it only produces a deviation note, logged to Lab
@@ -149,7 +155,9 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership, Support & Tickets, Feedback &
   NPS, KPI Management, Automation (all still "Planned" and greyed out in the sidebar).
-- Latest migration: `0019_rebalance_template_weights.sql` (0018 and 0019 are both applied).
+- Latest migration: `0021_protect_profiles_and_functions.sql` — **written, NOT yet run** (only Leads/Admins
+  can edit the roster, only the Admin can change roles or touch the Admin profile). 0018–0020 are applied.
+- **Roles**: only the Admin can change a team member's role (UI locks the field; DB trigger in 0021).
 - Template weights were over 100 (modules 118%; Registration/Inventory/Operations/Master Config/Branding
   parameters 126–212%); `0019_rebalance_template_weights.sql` scaled them to exactly 100 keeping every
   ratio (scores unchanged) — applied Oct 2026. Weights are stored as decimals (2 places), so they may

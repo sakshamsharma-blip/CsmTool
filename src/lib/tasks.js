@@ -1,11 +1,10 @@
 import { supabase } from "../supabaseClient";
 import { logActivity } from "./activity";
+import { todayISO } from "./dates";
 
-export function todayISO() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().slice(0, 10);
-}
+// Re-exported so existing `import { todayISO } from "../lib/tasks"` callers keep working — the real
+// (local-time-zone) implementation lives in lib/dates.js.
+export { todayISO };
 
 // A one-off task counts as due/shown every day until checked (however old). A recurring task is only
 // "due" on the day its pattern says — daily every day, weekly/fortnightly on their weekday, monthly on
@@ -153,7 +152,6 @@ export async function addTask({ labId, desc, owners, type, repeat, repeatDay, re
   const { data, error } = await supabase.from("tasks").insert(rows).select("id");
   if (error) throw error;
   if (labId) {
-    const lab = { id: labId };
     logActivity(labId, {
       kind: "Task Added",
       title: "Task added",

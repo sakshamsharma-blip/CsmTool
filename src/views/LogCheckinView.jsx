@@ -5,6 +5,7 @@ import { fetchLabAdoption, computeSavedLabScores } from "../lib/adoption";
 import { fetchLabActivity, ACTIVITY_ICONS } from "../lib/activity";
 import { fetchAllVisits, addVisit } from "../lib/visits";
 import { addTask } from "../lib/tasks";
+import { todayISO, daysFromTodayISO } from "../lib/dates";
 
 const CHECKIN_TYPES = [
   { key: "Call", icon: "📞" },
@@ -31,9 +32,7 @@ function snapshotStatus(pct) {
 function statusChipClass(label) { return "st-" + label.replace(/ /g, ""); }
 
 function plusDays(n) {
-  const d = new Date();
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  return daysFromTodayISO(n);
 }
 
 export default function LogCheckinView({ lab, modules, plans, viewer, idByName, onDone, showToast }) {
@@ -42,7 +41,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   const seg = segmentFor(toINR(lab.mrr || 0, lab.region));
 
   const [type, setType] = useState("Visit");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => todayISO());
   const [time, setTime] = useState(() => new Date().toTimeString().slice(0, 5));
   const [duration, setDuration] = useState("30");
   const [location, setLocation] = useState("");
@@ -217,7 +216,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
                   className="btn"
                   style={{
                     flex: "1 1 100px", border: `1.5px solid ${type === t.key ? "var(--accent)" : "var(--border)"}`,
-                    background: type === t.key ? "var(--accent-dim)" : "#fff", color: type === t.key ? "var(--accent)" : "var(--text)",
+                    background: type === t.key ? "var(--accent-dim)" : "var(--surface)", color: type === t.key ? "var(--accent)" : "var(--text)",
                     borderRadius: 9, padding: "10px 8px", fontSize: 12.5, fontWeight: 600,
                   }}
                 >
@@ -237,7 +236,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
               <div className="tmpl-field" style={{ flex: "1 1 100px" }}><label>Duration (min)</label><input type="number" min="0" style={fieldStyle} value={duration} onChange={(e) => setDuration(e.target.value)} /></div>
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <div className="tmpl-field" style={{ flex: "1 1 160px" }}><label>Logged By</label><input readOnly style={{ ...fieldStyle, background: "#f4f6f9", color: "var(--text-dim)" }} value={currentCSM} /></div>
+              <div className="tmpl-field" style={{ flex: "1 1 160px" }}><label>Logged By</label><input readOnly style={{ ...fieldStyle, background: "var(--bg)", color: "var(--text-dim)" }} value={currentCSM} /></div>
               <div className="tmpl-field" style={{ flex: "1 1 160px" }}><label>Location</label><input style={fieldStyle} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Lab site, phone, video call" /></div>
             </div>
           </div>
@@ -303,7 +302,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
                   className="btn"
                   style={{
                     flex: 1, border: `1.5px solid ${sentiment === s.key ? s.color : "var(--border)"}`,
-                    background: sentiment === s.key ? s.color : "#fff", color: sentiment === s.key ? "#fff" : "var(--text)",
+                    background: sentiment === s.key ? s.color : "var(--surface)", color: sentiment === s.key ? "#fff" : "var(--text)",
                     borderRadius: 9, padding: "9px 8px", fontSize: 12.5, fontWeight: 600,
                   }}
                 >
@@ -357,8 +356,8 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
           <div className="side-card">
             <h4>Adoption</h4>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div className="ring" style={{ background: `conic-gradient(${ringColor} ${scores.overallPct * 3.6}deg, #eef0f3 0deg)` }}>
-                <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>
+              <div className="ring" style={{ background: `conic-gradient(${ringColor} ${scores.overallPct * 3.6}deg, var(--surface-3) 0deg)` }}>
+                <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>
                   {Math.round(scores.overallPct)}%
                 </div>
               </div>

@@ -15,6 +15,8 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
   const [saving, setSaving] = useState(false);
 
   const isAdded = toStatus === "Added";
+  // Amounts are stored in the lab's own currency — ROW labs bill in USD, Domestic in INR.
+  const sym = target.region === "ROW" ? "$" : "₹";
 
   async function handleConfirm() {
     let parsed = 0;
@@ -53,7 +55,7 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
           </div>
           {!trial && (
             <div className="tmpl-field" style={{ marginBottom: 12 }}>
-              <label>Added Monthly Cost (₹)</label>
+              <label>Added Monthly Cost ({sym})</label>
               <input type="number" min="0" placeholder="e.g. 5000" value={amount} onChange={(e) => { setAmount(e.target.value); setError(false); }} style={fieldStyle} />
             </div>
           )}

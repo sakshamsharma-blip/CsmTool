@@ -75,6 +75,10 @@ Two things are worth knowing before you flip the switch:
        the "Partially Adopted" adoption status (existing rows move to "In Progress").
    19. `migrations/0019_rebalance_template_weights.sql` — scales the Adoption Template's module and parameter
        weights to total exactly 100% (keeping every ratio).
+   20. `migrations/0020_fix_invoice_due_dates.sql` — moves invoice due dates that were saved one day early
+       (time-zone bug) forward by one day.
+   21. `migrations/0021_protect_profiles_and_functions.sql` — only Leads/Admins can edit the roster and only
+       the Admin can change roles; removes logged-out access to internal database functions.
 3. **Settings → API**: copy the **Project URL** and the **`anon` public** key — you'll need both in step 3.
 4. **Authentication → Providers**: enable **Email**. Password is the right choice here (not magic link) —
    the login page now has a working "Forgot your password?" link that needs password auth to make sense.
