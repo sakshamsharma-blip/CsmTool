@@ -165,7 +165,9 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
             <div className={`module-body${isOpen ? " open" : ""}`}>
               {params.map((r) => {
                 const latest = latestByParam[r.key];
-                const c = r.purchased ? charge(mod.key, r.def.name) : null;
+                // A feature lost after purchase is over: no rollout to track and nothing to charge for.
+                const lost = r.pitch === "Lost after Purchase";
+                const c = r.purchased && !lost ? charge(mod.key, r.def.name) : null;
                 return (
                   <div key={r.key} className="param-block">
                     <div className="param-row">
@@ -180,7 +182,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
                         <button type="button" className={!r.inPlan ? "active exp" : ""} onClick={() => askInPlan(r, false)}>Not in plan</button>
                       </span>
                       <span className={`cat-tag cat-${r.category}`}>{r.category}</span>
-                      {(r.inPlan || r.purchased) ? (
+                      {(r.inPlan || r.purchased) && !lost ? (
                         <select className="status-select" value={r.status} onChange={(e) => askStatus(r, e.target.value)} title="Rollout status">
                           {STATUS_ORDER.map((st) => <option key={st} value={st}>{st}</option>)}
                         </select>
@@ -193,6 +195,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
                       {!r.inPlan && !r.purchased && (
                         <button type="button" className="mark-purchased" onClick={() => askPitch(r, "Added", mod)}>Mark purchased</button>
                       )}
+                      {lost && <span className="cat-tag cat-Warn" title="Change the stage back if this was a mistake">Lost after purchase</span>}
                       {c && (c.isTrial ? (
                         <span className="cat-tag cat-Warn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                           Trial <button type="button" className="mark-purchased" style={{ fontSize: 10.5 }} onClick={() => setChargeItem(c)}>Add charges</button>

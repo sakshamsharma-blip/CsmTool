@@ -26,6 +26,7 @@ import InfoTip from "../components/InfoTip";
 import Sparkline from "../components/Sparkline";
 import SearchSelect from "../components/SearchSelect";
 import LabAdoptionTab from "../components/LabAdoptionTab";
+import { fetchLabPitchStatus } from "../lib/pitch";
 import Paginated from "../components/Pager";
 import LabContactsCard from "../components/LabContactsCard";
 import LabDocumentsTab from "../components/LabDocumentsTab";
@@ -77,6 +78,16 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   const [collError, setCollError] = useState(null);
   const [collManualInputs, setCollManualInputs] = useState({});
   const [convertItem, setConvertItem] = useState(null);
+  // This lab's pitch stages — only used to stop offering "Add Charges" on a trial whose feature was lost.
+  const [pitchMap, setPitchMap] = useState({});
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) return undefined;
+    let cancelled = false;
+    fetchLabPitchStatus(lab.id).then((m) => { if (!cancelled) setPitchMap(m); }).catch((err) => console.error(err));
+    return () => { cancelled = true; };
+  }, [lab.id]);
+  const isLostAfterPurchase = (item) =>
+    !!item.moduleKey && pitchMap[item.paramName ? `param:${item.moduleKey}|${item.paramName}` : `mod:${item.moduleKey}`] === "Lost after Purchase";
   // Edit forms for an existing invoice / Collections item: { …the record, form fields as strings }
   const [editInv, setEditInv] = useState(null);
   const [editItem, setEditItem] = useState(null);
@@ -1420,7 +1431,11 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           key={lab.id}
           lab={lab} modules={modules} plans={plans} idByName={idByName} currentCSM={currentCSM}
           showToast={showToast} onPatchLab={onPatchLab}
-          onChanged={() => { fetchLabActivity(lab.id).then(setActivity).catch((err) => console.error(err)); loadCollections(); }}
+          onChanged={() => {
+            fetchLabActivity(lab.id).then(setActivity).catch((err) => console.error(err));
+            loadCollections();
+            fetchLabPitchStatus(lab.id).then(setPitchMap).catch((err) => console.error(err));
+          }}
         />
       )}
 
@@ -1537,7 +1552,9 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                       <td className="mrr-cell">{item.isTrial ? "—" : fmtMoney(item.amount, lab.region)}</td>
                       <td>
                         {item.isTrial ? (
-                          <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => openConvertToChargeable(item)}>Add Charges</button>
+                          isLostAfterPurchase(item)
+                            ? <span className="cat-tag cat-Warn">Lost after purchase</span>
+                            : <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => openConvertToChargeable(item)}>Add Charges</button>
                         ) : (
                           <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                             <span style={{ display: "flex", gap: 6, alignItems: "center" }}>

@@ -213,12 +213,13 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
                             <div className="param-row" style={{ color: "var(--text-faint)", fontSize: 12 }}>Everything in this module is in {lab.name}'s plan — nothing to pitch. Rollout is tracked on the lab's Adoption tab.</div>
                           ) : addOns.map((r) => {
                             const p = r.def;
-                            const charge = r.purchased ? collItems.find((i) => i.labId === lab.id && i.moduleKey === mod.key && i.paramName === p.name) : null;
+                            const lost = r.pitch === "Lost after Purchase";
+                            const charge = r.purchased && !lost ? collItems.find((i) => i.labId === lab.id && i.moduleKey === mod.key && i.paramName === p.name) : null;
                             return (
                               <div key={p.name} className="param-row">
                                 <span className={`param-type ${p.type}`}>{p.type === "M" ? "Mandatory" : "Optional"}</span>
                                 <span className="pname">{p.name}</span>
-                                <span className={`status-chip st-${r.status.replace(/ /g, "")}`} style={{ cursor: "default" }}>{r.purchased ? r.status : "Not purchased"}</span>
+                                <span className={`status-chip st-${r.status.replace(/ /g, "")}`} style={{ cursor: "default" }}>{lost ? "Lost after purchase" : r.purchased ? r.status : "Not purchased"}</span>
                                 {charge && (charge.isTrial
                                   ? <span className="cat-tag cat-Warn" title="Add charges from this lab's Adoption or Collections tab">Trial</span>
                                   : <span className="cat-tag cat-Adoption">Priced {fmtMoney(charge.amount, lab.region)}/mo</span>)}
