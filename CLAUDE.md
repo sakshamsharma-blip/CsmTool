@@ -160,7 +160,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership, Support & Tickets, Feedback &
   NPS, KPI Management, Automation (all still "Planned" and greyed out in the sidebar).
-- Latest migration: `0027_drop_notification_prefs.sql` — **written, run it in the SQL Editor**; 0001–0026 are applied (Oct 2026). Applied
+- Latest migration: `0027_drop_notification_prefs.sql`; **0001–0027 are all applied** (Oct 2026). Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).
 - Leaked-password protection is NOT on — it needs Supabase's Pro plan.
@@ -170,7 +170,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Reassign CSM** is Lead/Admin only (UI hides it for CSMs; DB trigger in 0024).
 - **Reminders live in the app only** (decision, Oct 2026): Tasks, Dashboard "Tasks for Today" and Pitch
   Reminders. No email or Slack sending — the earlier Email/Slack reminder feature was removed from the code, and
-  its `notification_prefs` table is dropped by migration 0027.
+  its `notification_prefs` table was dropped by migration 0027 (applied).
 - **Filters & paging**: Tasks (lab/type/status), Collections (lab/aging), Expansion (lab/status), Visits
   (lab) and Lab History (type) have filters; long lists page 25 at a time (`components/Pager.jsx`).
 - **Tests**: `npm run test:e2e` runs the Playwright smoke tests in `tests/` against demo mode (no database).
