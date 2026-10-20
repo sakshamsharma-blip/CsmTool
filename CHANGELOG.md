@@ -2,6 +2,10 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 2026 — Support & Tickets → Flow
+- The sidebar's "Support & Tickets" (previously greyed out as Planned) now opens Flow
+  (https://creliohealthflow.vercel.app/) in a new tab.
+
 ## Oct 2026 — engagement, time spent, module links, billing periods
 - **Invoice upload reading** is more tolerant ("Invoice#" / "Invoice No.", dd-mm-yyyy / "15-Oct-2026" dates, "Rs."
   amounts) and always says WHY a PDF couldn't be read (password-protected, damaged, scanned/no text, which fields

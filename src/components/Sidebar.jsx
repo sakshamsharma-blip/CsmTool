@@ -22,12 +22,14 @@ const LIVE_NAV = [
   { key: "visits", icon: "📅", label: "Visits & Meetings" },
   { key: "adoption-template", icon: "📈", label: "Adoption Template" },
   { key: "reports", icon: "📑", label: "Financial Reports" },
+  // Support & Tickets lives in a separate tool (Flow, CrelioHealth's CS ↔ Product escalation tracker) — this item
+  // opens it in a new tab rather than a screen inside the console.
+  { key: "__support", icon: "🎫", label: "Support & Tickets", href: "https://creliohealthflow.vercel.app/" },
 ];
 // "Manage Users" (the old "CSM Setup") moved to the top bar, matching the reference
 // tool — it's Admin/Lead-only, not a regular nav item everyone sees in the sidebar.
 
 const PLANNED_NAV = [
-  { icon: "🎫", label: "Support & Tickets" },
   { icon: "💬", label: "Feedback & NPS" },
   { icon: "🎯", label: "KPI Management" },
   { icon: "⚙️", label: "Automation" },
@@ -96,7 +98,21 @@ export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAd
       </div>
       <div className="nav">
         <div className="nav-group-label">Live Now — Module 1</div>
-        {LIVE_NAV.map((item) => (
+        {LIVE_NAV.map((item) => item.href ? (
+          <a
+            key={item.key}
+            className="nav-item"
+            href={item.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={collapsed ? `${item.label} (opens Flow in a new tab)` : "Opens Flow in a new tab"}
+            style={{ textDecoration: "none" }}
+          >
+            <span className="ico">{item.icon}</span>
+            <span className="lbl">{item.label}</span>
+            {!collapsed && <span className="nav-caret" aria-hidden="true">↗</span>}
+          </a>
+        ) : (
           <div key={item.key}>
             <div
               className={`nav-item${(view === item.key || (item.children && item.children.some((c) => c.key === view))) ? " active" : ""}`}

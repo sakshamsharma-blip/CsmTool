@@ -196,8 +196,9 @@ with the same context and follows the same rules. Read it fully before making ch
   respects billing mode, Average MRR card), Dashboard, Tasks, Visits & Meetings, Expansion (deal
   tracking with Onboarding/Pipeline/Lost/Live MRR + Live ARR tiles), editable Lab Name and Lab ID.
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
-  manual), full Plan CRUD beyond toggling module/param membership, Support & Tickets, Feedback &
-  NPS, KPI Management, Automation (all still "Planned" and greyed out in the sidebar).
+  manual), full Plan CRUD beyond toggling module/param membership, Feedback & NPS, KPI Management,
+  Automation (still "Planned" and greyed out in the sidebar). **Support & Tickets** is a sidebar link that opens
+  Flow (https://creliohealthflow.vercel.app/, the CS ↔ Product escalation tracker) in a new tab.
 - Latest migration: `0037_invoice_billing_periods.sql`; **0001–0037 are all applied** (Oct 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row

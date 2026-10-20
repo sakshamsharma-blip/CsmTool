@@ -128,3 +128,9 @@ test("Lab Adoption tab: every parameter is In plan / Not in plan and changes nee
   await expect(dialog.getByText("A comment is required.")).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel" }).click();
 });
+
+test("Support & Tickets opens Flow in a new tab", async ({ page }) => {
+  const link = page.locator(".sidebar a.nav-item", { hasText: "Support & Tickets" });
+  await expect(link).toHaveAttribute("href", "https://creliohealthflow.vercel.app/");
+  await expect(link).toHaveAttribute("target", "_blank");
+});
