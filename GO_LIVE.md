@@ -79,6 +79,14 @@ Two things are worth knowing before you flip the switch:
        (time-zone bug) forward by one day.
    21. `migrations/0021_protect_profiles_and_functions.sql` — only Leads/Admins can edit the roster and only
        the Admin can change roles; removes logged-out access to internal database functions.
+   22. `migrations/0022_foreign_key_indexes.sql` — performance indexes.
+   23. `migrations/0023_rebalance_weights_to_exactly_100.sql` — every Adoption Template weight group to exactly 100%.
+   24. `migrations/0024_template_and_reassign_lead_admin_only.sql` — template editing and reassigning labs are
+       Lead/Admin only.
+   25. `migrations/0025_reminder_preferences.sql` — (superseded: its table is dropped by 0027).
+   26. `migrations/0026_record_migration_history.sql` — records applied migrations in
+       `supabase_migrations.schema_migrations`.
+   27. `migrations/0027_drop_notification_prefs.sql` — removes the unused reminder-preferences table.
 3. **Settings → API**: copy the **Project URL** and the **`anon` public** key — you'll need both in step 3.
 4. **Authentication → Providers**: enable **Email**. Password is the right choice here (not magic link) —
    the login page now has a working "Forgot your password?" link that needs password auth to make sense.

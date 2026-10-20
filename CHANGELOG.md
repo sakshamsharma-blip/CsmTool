@@ -2,6 +2,11 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 2026 — reminders kept in-app only
+- Removed the Email/Slack reminder feature (Reminder Settings in the top bar, the sender function, its data
+  layer). Reminders stay inside the tool: Tasks, Dashboard and Pitch Reminders. Migration
+  `0027_drop_notification_prefs.sql` removes its now-unused database table.
+
 ## Oct 2026 — suggestions round (purchases, MRR, permissions, reminders, filters, tests)
 
 **Database (all applied):** `0022_foreign_key_indexes`, `0023_rebalance_weights_to_exactly_100`,
@@ -17,8 +22,6 @@ Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks 
 - **Adoption Template**: every weight group must total exactly 100% — red warning + one-click "Rescale to 100%";
   Branding Solutions rescaled to 100 (0023). Editing is CSM Lead / Admin only (view-only for CSMs).
 - **Reassign CSM** is CSM Lead / Admin only.
-- **Reminders**: Reminder Settings (top bar) for a daily Email and/or Slack digest of overdue tasks and payments.
-  Sender built (`supabase/functions/send-reminders`); switched on once email/Slack credentials are added.
 - **Filters & paging**: Tasks (lab, type, open/done), Collections (lab, aging), Expansion (lab, status),
   Visits (lab), Lab History (activity type); long lists show 25 per page.
 - **Login expiry** now returns to the sign-in screen instead of leaving a workspace whose saves fail.

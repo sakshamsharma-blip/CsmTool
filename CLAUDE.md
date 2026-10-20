@@ -160,7 +160,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership, Support & Tickets, Feedback &
   NPS, KPI Management, Automation (all still "Planned" and greyed out in the sidebar).
-- Latest migration: `0026_record_migration_history.sql`; **0001–0026 are all applied** (Oct 2026). Applied
+- Latest migration: `0027_drop_notification_prefs.sql` — **written, run it in the SQL Editor**; 0001–0026 are applied (Oct 2026). Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).
 - Leaked-password protection is NOT on — it needs Supabase's Pro plan.
@@ -168,9 +168,9 @@ with the same context and follows the same rules. Read it fully before making ch
 - Template weights: 0019 scaled the over-100 groups to 100; 0023 scales any remaining group (Branding
   Solutions, 55%) to exactly 100. Weights are stored with 2 decimals (e.g. 8.47).
 - **Reassign CSM** is Lead/Admin only (UI hides it for CSMs; DB trigger in 0024).
-- **Reminders**: per-person Email/Slack daily digest (top bar → Reminder Settings, table `notification_prefs`,
-  Edge Function `supabase/functions/send-reminders`). Off until the Admin sets the secrets and schedules
-  it — steps at the bottom of migration 0025.
+- **Reminders live in the app only** (decision, Oct 2026): Tasks, Dashboard "Tasks for Today" and Pitch
+  Reminders. No email or Slack sending — the earlier Email/Slack reminder feature was removed from the code, and
+  its `notification_prefs` table is dropped by migration 0027.
 - **Filters & paging**: Tasks (lab/type/status), Collections (lab/aging), Expansion (lab/status), Visits
   (lab) and Lab History (type) have filters; long lists page 25 at a time (`components/Pager.jsx`).
 - **Tests**: `npm run test:e2e` runs the Playwright smoke tests in `tests/` against demo mode (no database).
