@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtMoney, toINR, segmentFor } from "../lib/format";
 import { fetchLabAdoption, computeSavedLabScores } from "../lib/adoption";
+import { fetchLabPitchStatus } from "../lib/pitch";
 import { fetchLabActivity, ACTIVITY_ICONS } from "../lib/activity";
 import { fetchAllVisits, addVisit } from "../lib/visits";
 import { addTask } from "../lib/tasks";
@@ -26,9 +27,12 @@ const SENTIMENTS = [
   { key: "At Risk", color: "var(--bad)" },
 ];
 
-function snapshotStatus(pct) {
-  if (pct >= 91) return "Adopted";
-  if (pct > 0) return "In Progress";
+// A module's rollout at a glance, from its parameters (adoption model v2): every counted parameter adopted →
+// Adopted; anything rolled out or under way → In Progress; otherwise Not Started.
+function snapshotStatus(params) {
+  const counted = params.filter((r) => r.score != null);
+  if (counted.length && counted.every((r) => (r.inPlan || r.purchased) && r.status === "Adopted")) return "Adopted";
+  if (counted.some((r) => r.status !== "Not Started" || ["Pitching", "In Progress"].includes(r.pitch))) return "In Progress";
   return "Not Started";
 }
 function statusChipClass(label) { return "st-" + label.replace(/ /g, ""); }
@@ -54,7 +58,12 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   const [saveAsPoc, setSaveAsPoc] = useState(true);
   const [topics, setTopics] = useState([]);
   const [notes, setNotes] = useState("");
+  // Adoption Snapshot "Discussed" marks (decision, Oct 2026): which modules — and optionally which parameters
+  // inside them — were points of discussion in this check-in. Saved on the visit for lab-wise reporting. They no
+  // longer create follow-up tasks.
   const [flagged, setFlagged] = useState([]);
+  const [discussedParams, setDiscussedParams] = useState([]); // "moduleKey|paramName"
+  const [openSnapshot, setOpenSnapshot] = useState({});
   const [sentiment, setSentiment] = useState("Neutral");
   const [actionItems, setActionItems] = useState([]);
   const [nextFollowup, setNextFollowup] = useState("");
@@ -62,6 +71,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   const [saving, setSaving] = useState(false);
 
   const [adoption, setAdoption] = useState(null);
+  const [pitch, setPitch] = useState({});
   const [sidebarVisits, setSidebarVisits] = useState([]);
   const [sidebarActivity, setSidebarActivity] = useState([]);
   const [loadingSide, setLoadingSide] = useState(SUPABASE_CONFIGURED);
@@ -72,10 +82,11 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
     setLoadingSide(true);
     // Contacts are optional extras — a missing table (migration 0032 not run) must not block the check-in.
     fetchLabContacts(lab.id).then((rows) => { if (!cancelled) setContacts(rows); }).catch(() => {});
-    Promise.all([fetchLabAdoption(lab.id), fetchAllVisits(), fetchLabActivity(lab.id)])
-      .then(([a, visits, activity]) => {
+    Promise.all([fetchLabAdoption(lab.id), fetchAllVisits(), fetchLabActivity(lab.id), fetchLabPitchStatus(lab.id)])
+      .then(([a, visits, activity, p]) => {
         if (cancelled) return;
         setAdoption(a);
+        setPitch(p);
         setSidebarVisits(visits.filter((v) => v.labId === lab.id));
         setSidebarActivity(activity);
       })
@@ -85,13 +96,19 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lab.id]);
 
-  const scores = computeSavedLabScores(modules, plan, adoption);
+  const scores = computeSavedLabScores(modules, plan, adoption, pitch);
 
   function toggleTopic(t) {
     setTopics((ts) => (ts.includes(t) ? ts.filter((x) => x !== t) : [...ts, t]));
   }
   function toggleFlag(moduleKey) {
     setFlagged((fs) => (fs.includes(moduleKey) ? fs.filter((k) => k !== moduleKey) : [...fs, moduleKey]));
+  }
+  // Ticking a parameter also marks its module as discussed.
+  function toggleDiscussedParam(moduleKey, paramName) {
+    const key = `${moduleKey}|${paramName}`;
+    setDiscussedParams((ps) => (ps.includes(key) ? ps.filter((k) => k !== key) : [...ps, key]));
+    setFlagged((fs) => (fs.includes(moduleKey) ? fs : [...fs, moduleKey]));
   }
   function addActionItem() {
     setActionItems((items) => [...items, { text: "", dueDate: plusDays(7) }]);
@@ -133,6 +150,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
         discussionTopics: topics,
         sentiment,
         flaggedModules: flagged,
+        discussedParams,
         actionItems: actionItems.filter((it) => it.text.trim()).map((it) => ({ text: it.text.trim(), dueDate: it.dueDate || null })),
       });
 
@@ -174,26 +192,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
         })));
       }
 
-      // Flagging a module for follow-up during a check-in auto-creates a training follow-up task,
-      // so it doesn't just sit silently in the snapshot — someone owns chasing it.
-      if (flagged.length) {
-        const dueDate = nextFollowup || plusDays(7);
-        await Promise.all(flagged.map((moduleKey) => {
-          const mod = modules.find((m) => m.key === moduleKey);
-          return addTask({
-            labId: lab.id,
-            desc: `Training follow-up — ${mod ? mod.name : moduleKey} (${lab.name})`,
-            owners: [currentCSM],
-            type: "follow-up",
-            repeat: "none",
-            due: dueDate,
-            idByName,
-            assignedByName: currentCSM,
-          });
-        }));
-      }
-
-      const taskCount = cleanItems.length + (nextFollowup ? 1 : 0) + flagged.length;
+      const taskCount = cleanItems.length + (nextFollowup ? 1 : 0);
       showToast(taskCount ? `Check-in logged — ${taskCount} task${taskCount > 1 ? "s" : ""} added to Tasks.` : "Check-in logged.");
       onDone("history");
     } catch (err) {
@@ -301,22 +300,37 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
           {/* 5. Adoption snapshot */}
           <div className="table-card" style={{ padding: "16px 18px", marginBottom: 14 }}>
             <h3 style={{ fontSize: 13, margin: "0 0 4px" }}>5. Adoption Snapshot</h3>
-            <p style={{ fontSize: 11.5, color: "var(--text-dim)", margin: "0 0 10px" }}>Live from this lab's real adoption data. Flag a module if it needs a training follow-up — that creates a task automatically.</p>
+            <p style={{ fontSize: 11.5, color: "var(--text-dim)", margin: "0 0 10px" }}>Live from this lab's adoption data. Optional: tick what was discussed — a whole module, or open it (▸) and tick specific parameters. Saved with this check-in for reporting.</p>
             {loadingSide ? (
               <div style={{ padding: 12, color: "var(--text-faint)", fontSize: 12 }}>Loading…</div>
             ) : (
               <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Module</th><th>Overall %</th><th>Status</th><th>Flag</th></tr></thead>
-                <tbody>{scores.moduleResults.filter((m) => m.inScope).map(({ mod, overallPct }) => {
-                  const pct = Math.round(overallPct || 0);
-                  const label = snapshotStatus(pct);
+                <thead><tr><th>Module</th><th>Score</th><th>Status</th><th>Discussed</th></tr></thead>
+                <tbody>{scores.moduleResults.map(({ mod, overallPct, params }) => {
+                  const pct = overallPct == null ? null : Math.round(overallPct);
+                  const label = snapshotStatus(params);
+                  const open = !!openSnapshot[mod.key];
+                  const ticked = params.filter((r) => discussedParams.includes(`${mod.key}|${r.def.name}`)).length;
                   return (
-                    <tr key={mod.key}>
-                      <td>{mod.icon} {mod.name}</td>
-                      <td className="mrr-cell">{pct}%</td>
-                      <td><span className={`status-chip ${statusChipClass(label)}`} style={{ cursor: "default" }}>{label}</span></td>
-                      <td><input type="checkbox" checked={flagged.includes(mod.key)} onChange={() => toggleFlag(mod.key)} /></td>
-                    </tr>
+                    <Fragment key={mod.key}>
+                      <tr>
+                        <td style={{ cursor: "pointer" }} onClick={() => setOpenSnapshot((o) => ({ ...o, [mod.key]: !o[mod.key] }))}>
+                          <span style={{ display: "inline-block", width: 14, color: "var(--text-dim)" }}>{open ? "▾" : "▸"}</span>{mod.icon} {mod.name}
+                          {ticked > 0 && <span className="cat-tag cat-Indigo" style={{ marginLeft: 6 }}>{ticked} param{ticked > 1 ? "s" : ""}</span>}
+                        </td>
+                        <td className="mrr-cell">{pct == null ? "—" : `${pct}%`}</td>
+                        <td><span className={`status-chip ${statusChipClass(label)}`} style={{ cursor: "default" }}>{label}</span></td>
+                        <td><input type="checkbox" checked={flagged.includes(mod.key)} onChange={() => toggleFlag(mod.key)} title="Discussed" /></td>
+                      </tr>
+                      {open && params.map((r) => (
+                        <tr key={r.key} className="child-row">
+                          <td style={{ paddingLeft: 30, fontSize: 12 }}>{r.def.name} <span style={{ color: "var(--text-faint)", fontSize: 11 }}>· {r.inPlan ? "In plan" : r.purchased ? "Purchased" : "Not in plan"}</span></td>
+                          <td className="mrr-cell" style={{ fontSize: 12 }}>{r.score == null ? "n/a" : r.score}</td>
+                          <td style={{ fontSize: 11.5, color: "var(--text-dim)" }}>{r.inPlan || r.purchased ? r.status : r.pitch}</td>
+                          <td><input type="checkbox" checked={discussedParams.includes(r.key)} onChange={() => toggleDiscussedParam(mod.key, r.def.name)} title="Discussed" /></td>
+                        </tr>
+                      ))}
+                    </Fragment>
                   );
                 })}</tbody>
               </table></div>

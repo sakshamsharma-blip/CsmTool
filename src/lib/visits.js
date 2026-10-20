@@ -4,7 +4,7 @@ import { logActivity } from "./activity";
 export async function fetchAllVisits() {
   const { data, error } = await supabase
     .from("visits")
-    .select("id,lab_id,csm_id,visit_type,visit_date,notes,next_followup_date,next_followup_reason,duration_minutes,location,person_name,person_designation,discussion_topics,sentiment,flagged_modules,action_items,created_at")
+    .select("id,lab_id,csm_id,visit_type,visit_date,notes,next_followup_date,next_followup_reason,duration_minutes,location,person_name,person_designation,discussion_topics,sentiment,flagged_modules,discussed_params,action_items,created_at")
     .order("visit_date", { ascending: false });
   if (error) throw error;
   return (data || []).map((r) => ({
@@ -23,6 +23,7 @@ export async function fetchAllVisits() {
     discussionTopics: r.discussion_topics || [],
     sentiment: r.sentiment || null,
     flaggedModules: r.flagged_modules || [],
+    discussedParams: r.discussed_params || [],
     actionItems: r.action_items || [],
     createdAt: r.created_at,
   }));
@@ -31,7 +32,7 @@ export async function fetchAllVisits() {
 export async function fetchVisitById(id) {
   const { data, error } = await supabase
     .from("visits")
-    .select("id,lab_id,csm_id,visit_type,visit_date,notes,next_followup_date,next_followup_reason,duration_minutes,location,person_name,person_designation,discussion_topics,sentiment,flagged_modules,action_items,created_at")
+    .select("id,lab_id,csm_id,visit_type,visit_date,notes,next_followup_date,next_followup_reason,duration_minutes,location,person_name,person_designation,discussion_topics,sentiment,flagged_modules,discussed_params,action_items,created_at")
     .eq("id", id)
     .single();
   if (error) throw error;
@@ -40,7 +41,7 @@ export async function fetchVisitById(id) {
     notes: data.notes || "", nextFollowupDate: data.next_followup_date, nextFollowupReason: data.next_followup_reason || "",
     durationMinutes: data.duration_minutes, location: data.location || "", personName: data.person_name || "",
     personDesignation: data.person_designation || "", discussionTopics: data.discussion_topics || [],
-    sentiment: data.sentiment || null, flaggedModules: data.flagged_modules || [], actionItems: data.action_items || [],
+    sentiment: data.sentiment || null, flaggedModules: data.flagged_modules || [], discussedParams: data.discussed_params || [], actionItems: data.action_items || [],
     createdAt: data.created_at,
   };
 }
@@ -54,7 +55,7 @@ function visitSummary({ notes, sentiment, discussionTopics, actionItems, flagged
   if (sentiment) parts.push(`Sentiment: ${sentiment}`);
   if (discussionTopics && discussionTopics.length) parts.push(`Topics: ${discussionTopics.join(", ")}`);
   if (actionItems && actionItems.length) parts.push(`${actionItems.length} action item${actionItems.length > 1 ? "s" : ""}`);
-  if (flaggedModules && flaggedModules.length) parts.push(`${flaggedModules.length} module${flaggedModules.length > 1 ? "s" : ""} flagged`);
+  if (flaggedModules && flaggedModules.length) parts.push(`${flaggedModules.length} module${flaggedModules.length > 1 ? "s" : ""} discussed`);
   if (nextFollowupDate) parts.push(`Next follow-up ${nextFollowupDate}${nextFollowupReason ? " — " + nextFollowupReason : ""}`);
   return parts.length ? parts.join(" · ") : null;
 }
@@ -67,7 +68,7 @@ function visitSummary({ notes, sentiment, discussionTopics, actionItems, flagged
 export async function addVisit({
   labId, csmId, type, visitDate, notes, nextFollowupDate, nextFollowupReason,
   durationMinutes, location, personName, personDesignation, discussionTopics,
-  sentiment, flaggedModules, actionItems,
+  sentiment, flaggedModules, discussedParams, actionItems,
 }) {
   const isCheckin = !!(personName || (discussionTopics && discussionTopics.length) || sentiment || (flaggedModules && flaggedModules.length));
   const { data, error } = await supabase.from("visits").insert({
@@ -85,6 +86,7 @@ export async function addVisit({
     discussion_topics: discussionTopics && discussionTopics.length ? discussionTopics : null,
     sentiment: sentiment || null,
     flagged_modules: flaggedModules && flaggedModules.length ? flaggedModules : null,
+    ...(discussedParams && discussedParams.length ? { discussed_params: discussedParams } : {}),
     action_items: actionItems && actionItems.length ? actionItems : null,
   }).select("id").single();
   if (error) throw error;
@@ -97,7 +99,7 @@ export async function addVisit({
     source: isCheckin ? "checkin" : "system",
     // visitId is always included (not just for check-ins) — it's what lets Lab History's
     // Activity Timeline open this specific visit's detail/edit view later.
-    details: { visitId, ...(isCheckin ? { personName, personDesignation, durationMinutes, location, discussionTopics, sentiment, flaggedModules, actionItems } : {}) },
+    details: { visitId, ...(isCheckin ? { personName, personDesignation, durationMinutes, location, discussionTopics, sentiment, flaggedModules, discussedParams, actionItems } : {}) },
   }).catch((err) => console.error(err));
   return visitId;
 }

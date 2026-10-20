@@ -36,7 +36,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - The same Supabase org also has two unrelated projects (`CSxProduct`, `iiet-staging`) — don't
   mix them up when picking a project ID.
 - RLS is the real security boundary (tightened in migration 0012) — per-CSM visibility enforced
-  via `is_lead_or_admin()` / `current_profile_id()` in policies, not just a UI-level role check.
+  via `private.is_lead_or_admin()` / `private.current_profile_id()` in policies (moved out of `public` by 0035), not just a UI-level role check.
   Any new table needs its own RLS policy written in that same tightened shape.
 - If Supabase MCP tools are available in the session, use them to inspect the live schema/data —
   far safer than guessing at what live data looks like. Read-only inspection is fine any time;
@@ -62,6 +62,17 @@ with the same context and follows the same rules. Read it fully before making ch
   the separate, freely-editable, user-facing "Lab ID" (unique; case-sensitive at the DB level,
   checked case-insensitively in the UI) — this is what Add Lab, search, and Lab Details actually
   show and let you edit as "Lab ID."
+- **Adoption model v2 (Oct 2026) — supersedes the old "in scope" rules below where they conflict.** Every lab
+  sees the whole template (no module/parameter "In scope" switches). Per lab, per parameter: **In plan** (=
+  Adoption, tracked by rollout status) or **Not in plan** (= Expansion: pitch stages → purchased → rollout).
+  Default: In plan when the lab's Plan includes it AND its template category is Adoption (`param_states.in_plan`
+  NULL = default). Score ladder per parameter (0–100, `lib/adoption.js` ROLLOUT_SCORE / PITCH_SCORE): Not in plan
+  To Do 0 · Pitching 10 · In Progress 30; In plan or purchased: Not Started 70 · In Progress 85 · Adopted 100;
+  Not Required = 0; Lost = 0. Module = weighted avg of params; lab = weighted avg of modules. Every change
+  on a lab's Adoption tab needs a comment and saves immediately (`param_changes` audit trail; newest comment
+  shown under the parameter; click the name for the history). The Adoption tab lives in
+  `components/LabAdoptionTab.jsx`. Log Check-in's Adoption Snapshot marks modules and/or parameters as
+  *discussed* (`visits.flagged_modules` / `visits.discussed_params`) — it no longer creates follow-up tasks.
 - **Adoption vs Expansion**: Adoption = base-plan features, always in scope, tracked only on
   rollout status, never pitched/sold. Expansion = paid add-ons, pitched/sold through a 7-stage
   vocabulary (To Do → Pitching → In Progress → Added → Not Required, plus the two terminal
@@ -176,7 +187,8 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership, Support & Tickets, Feedback &
   NPS, KPI Management, Automation (all still "Planned" and greyed out in the sidebar).
-- Latest migration: `0033_lab_documents.sql`; **0001–0033 are all applied** (Oct 2026). Applied
+- Latest migration: `0035_fix_supabase_advisor_warnings.sql`; **0001–0035 are all applied** (Oct 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+  `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).
 - Leaked-password protection is NOT on — it needs Supabase's Pro plan.

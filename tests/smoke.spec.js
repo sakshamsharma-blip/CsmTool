@@ -111,3 +111,20 @@ test("Total Labs: city filter narrows the list", async ({ page }) => {
   await expect(city).toBeVisible();
   await expect(page.getByPlaceholder("All Countries")).toBeVisible();
 });
+
+test("Lab Adoption tab: every parameter is In plan / Not in plan and changes need a comment", async ({ page }) => {
+  await page.getByText("iGenetic Diagnostics", { exact: true }).click();
+  await page.getByRole("button", { name: "Adoption" }).click();
+  await expect(page.getByText("Adoption score")).toBeVisible();
+  await page.locator(".module-head").first().click();
+  const firstParam = page.locator(".param-block").first();
+  await expect(firstParam.getByRole("button", { name: "In plan", exact: true })).toBeVisible();
+  await expect(firstParam.getByRole("button", { name: "Not in plan" })).toBeVisible();
+  // Flip it — a comment is required before anything is saved.
+  const target = (await firstParam.getByRole("button", { name: "In plan", exact: true }).getAttribute("class"))?.includes("active") ? "Not in plan" : "In plan";
+  await firstParam.getByRole("button", { name: target, exact: true }).click();
+  const dialog = page.locator(".modal-box.show");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog.getByText("A comment is required.")).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+});

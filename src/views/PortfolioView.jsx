@@ -4,7 +4,7 @@ import { fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
 import { fetchAllLabsAdoption, computeSavedLabScores } from "../lib/adoption";
 import {
-  fetchAllPitchStatus, getModulePitchStatus, getParamPitchStatus, applyPitchStageChange, PITCH_STATUSES, PITCH_ACTIVE_STATUSES,
+  fetchAllPitchStatus, applyPitchStageChange, PITCH_STATUSES, PITCH_ACTIVE_STATUSES,
 } from "../lib/pitch";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask } from "../lib/tasks";
 import { fetchAllCollectionsItems } from "../lib/collections";
@@ -70,52 +70,23 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
   labs.forEach((l) => { labsById[l.id] = l; });
 
   function planOf(lab) { return plans.find((p) => p.id === lab.plan) || plans[0]; }
-  function isModuleInScope(lab, moduleKey) {
-    const a = adoptionByLab[lab.id];
-    if (a && Object.prototype.hasOwnProperty.call(a.scope, moduleKey)) return a.scope[moduleKey];
-    return planOf(lab).modules.includes(moduleKey);
-  }
-  function isParamInScope(lab, moduleKey, paramName) {
-    const a = adoptionByLab[lab.id];
-    const key = `${moduleKey}|${paramName}`;
-    if (a && Object.prototype.hasOwnProperty.call(a.paramScope, key)) return a.paramScope[key];
-    const plan = planOf(lab);
-    if (!plan.modules.includes(moduleKey)) return false;
-    const excluded = plan.excludedParams && plan.excludedParams[moduleKey];
-    return !(excluded && excluded.includes(paramName));
-  }
-  function paramState(lab, moduleKey, paramName) {
-    const a = adoptionByLab[lab.id];
-    const key = `${moduleKey}|${paramName}`;
-    return (a && a.paramState[key]) || { included: false, status: "Not Started", expValue: null, expStage: null };
-  }
+  // One score per lab under the v2 adoption model (lib/adoption.js) — every parameter resolved as In plan / Not
+  // in plan (+ purchased, rollout status, pitch stage). Computed once here and reused below.
+  const scoresByLab = {};
+  rows.forEach((lab) => { scoresByLab[lab.id] = computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id], pitchByLab[lab.id]); });
+  const allParamsOf = (lab) => scoresByLab[lab.id].moduleResults.flatMap((m) => m.params);
 
-  // Pitch Pipeline — every Expansion feature (or whole out-of-scope module) in this portfolio, bucketed
-  // by pitch status.
+  // Pitch Pipeline — every Not-in-plan parameter in this portfolio, bucketed by its stage (purchased = Added).
   const pitchCounts = { "To Do": 0, Pitching: 0, "In Progress": 0, Added: 0, "Not Required": 0, "Lost in Expansion": 0, "Lost after Purchase": 0 };
   rows.forEach((lab) => {
-    modules.forEach((mod) => {
-      const pf = pitchByLab[lab.id];
-      if (!isModuleInScope(lab, mod.key)) {
-        pitchCounts[getModulePitchStatus(pf, mod.key)]++;
-        return;
-      }
-      mod.params.forEach((p) => {
-        if (p.category !== "Expansion" || !isParamInScope(lab, mod.key, p.name)) return;
-        pitchCounts[getParamPitchStatus(pf, mod.key, p.name, paramState(lab, mod.key, p.name).included)]++;
-      });
-    });
+    allParamsOf(lab).forEach((r) => { if (!r.inPlan && pitchCounts[r.pitch] != null) pitchCounts[r.pitch]++; });
   });
 
   const moduleAvgs = modules.map((mod) => {
-    const inScopeRows = rows.filter((lab) => isModuleInScope(lab, mod.key));
-    if (!inScopeRows.length) return null;
-    const avg = Math.round(inScopeRows.reduce((s, lab) => {
-      const scores = computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id]);
-      const mr = scores.moduleResults.find((m) => m.mod.key === mod.key);
-      return s + (mr ? mr.overallPct || 0 : 0);
-    }, 0) / inScopeRows.length);
-    return { label: mod.name, value: avg, color: avg >= 75 ? "var(--ok)" : avg >= 40 ? "var(--warn)" : "var(--bad)" };
+    const vals = rows.map((lab) => scoresByLab[lab.id].moduleResults.find((m) => m.mod.key === mod.key)?.overallPct).filter((v) => v != null);
+    if (!vals.length) return null;
+    const avg = Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
+    return { label: mod.name, value: avg, color: avg >= 85 ? "var(--ok)" : avg >= 70 ? "var(--accent)" : avg >= 30 ? "var(--warn)" : "var(--bad)" };
   }).filter(Boolean).sort((a, b) => a.value - b.value);
 
   async function handleToggleDone(task) {
@@ -183,24 +154,16 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
 
       <h3 style={{ fontSize: 14, margin: "0 0 8px", display: "flex", alignItems: "center" }}>
         Labs
-        <InfoTip>Modules already in scope break down by <b>Expansion</b>-category feature only — set a pitch status from its dropdown (To Do → Pitching → In Progress → Added → Not Required, or Lost). Every stage change asks for an optional comment and is logged to Lab History. Picking <b>Added</b> also asks for the added cost (or trial/free), then moves the feature onto the Adoption tab and creates a Collections entry automatically. <b>Lost in Expansion</b> and <b>Lost after Purchase</b> only record the outcome; they do not change the lab's scope or MRR. A module not yet in scope is pitched as a whole — picking Added there adds it to scope. To pull a module <i>out</i> of scope, use this lab's Adoption tab.</InfoTip>
+        <InfoTip>Each module lists this lab's add-ons — the parameters marked <b>Not in plan</b> on its Adoption tab. Move them through the pitch stages (To Do → Pitching → In Progress → Added → Not Required, or Lost); every change needs a comment and is logged to Lab History. <b>Added</b> asks Priced or Trial and creates a Collections entry. <b>Lost after Purchase</b> lowers MRR by the feature's charge. The adoption % uses the same 0–100 ladder as the lab's Adoption tab.</InfoTip>
       </h3>
       {!rows.length ? (
         <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>No labs assigned to {scopeLabel} yet.</div>
       ) : rows.map((lab) => {
         const seg = segmentFor(toINR(lab.mrr, lab.region));
-        const scores = computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id]);
+        const scores = scoresByLab[lab.id];
         const isOpen = expandedLab === lab.id;
-        const ringColor = scores.overallPct >= 75 ? "var(--ok)" : scores.overallPct >= 40 ? "var(--warn)" : "var(--bad)";
-        const toPitchCount = modules.reduce((sum, mod) => {
-          const pf = pitchByLab[lab.id];
-          if (!isModuleInScope(lab, mod.key)) return sum + (PITCH_ACTIVE_STATUSES.includes(getModulePitchStatus(pf, mod.key)) ? 1 : 0);
-          return sum + mod.params.reduce((s2, p) => {
-            if (p.category !== "Expansion" || !isParamInScope(lab, mod.key, p.name)) return s2;
-            const st = getParamPitchStatus(pf, mod.key, p.name, paramState(lab, mod.key, p.name).included);
-            return s2 + (PITCH_ACTIVE_STATUSES.includes(st) ? 1 : 0);
-          }, 0);
-        }, 0);
+        const ringColor = scores.overallPct >= 85 ? "var(--ok)" : scores.overallPct >= 70 ? "var(--accent)" : scores.overallPct >= 30 ? "var(--warn)" : "var(--bad)";
+        const toPitchCount = allParamsOf(lab).filter((r) => !r.inPlan && !r.purchased && PITCH_ACTIVE_STATUSES.includes(r.pitch)).length;
 
         return (
           <div key={lab.id} className="table-card" style={{ marginBottom: 12 }}>
@@ -227,81 +190,42 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
             {isOpen && (
               <>
                 <div style={{ borderTop: "1px solid var(--border)" }}>
-                  {scores.moduleResults.map(({ mod, overallPct, inScope }) => {
-                    const pf = pitchByLab[lab.id];
-                    if (!inScope) {
-                      const modStatus = getModulePitchStatus(pf, mod.key);
-                      return (
-                        <div key={mod.key} className="module-row out-of-scope">
-                          <div className="module-head" style={{ cursor: "default" }}>
-                            <span className="mtoggle"></span>
-                            <span>{mod.icon}</span>
-                            <span className="mname">{mod.name}</span>
-                            <span className="out-of-scope-tag">Not in scope — pitch as a new module</span>
-                            <div className="bar-track"></div>
-                            <select className="status-select" onClick={(e) => e.stopPropagation()}
-                              value={modStatus}
-                              onChange={(e) => handlePitchStatusChange(e.target.value, { labId: lab.id, moduleKey: mod.key, level: "module", label: mod.name, fromStatus: modStatus })}>
-                              {PITCH_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                          </div>
-                        </div>
-                      );
-                    }
+                  {scores.moduleResults.map(({ mod, overallPct, params }) => {
                     const isModOpen = expandedModule === mod.key;
-                    const pct = Math.round(overallPct || 0);
-                    const barColor = pct >= 76 ? "var(--ok)" : pct >= 51 ? "var(--accent)" : pct >= 26 ? "var(--warn)" : "var(--bad)";
-                    const expansionParams = mod.params.filter((p) => p.category === "Expansion");
-                    const modToPitch = expansionParams.filter((p) => {
-                      if (!isParamInScope(lab, mod.key, p.name)) return false;
-                      return PITCH_ACTIVE_STATUSES.includes(getParamPitchStatus(pf, mod.key, p.name, paramState(lab, mod.key, p.name).included));
-                    }).length;
+                    const pct = overallPct == null ? null : Math.round(overallPct);
+                    const barColor = pct == null ? "var(--surface-3)" : pct >= 85 ? "var(--ok)" : pct >= 70 ? "var(--accent)" : pct >= 30 ? "var(--warn)" : "var(--bad)";
+                    // This lab's add-ons in this module = its Not-in-plan parameters.
+                    const addOns = params.filter((r) => !r.inPlan);
+                    const modToPitch = addOns.filter((r) => !r.purchased && PITCH_ACTIVE_STATUSES.includes(r.pitch)).length;
                     return (
                       <div key={mod.key} className="module-row">
                         <div className="module-head" onClick={() => setExpandedModule(isModOpen ? null : mod.key)}>
                           <span className="mtoggle">{isModOpen ? "▾" : "▸"}</span>
                           <span>{mod.icon}</span>
                           <span className="mname">{mod.name}</span>
-                          <span className="mtag">{pct}% adopted</span>
-                          <div className="bar-track"><div className="bar-fill" style={{ width: `${pct}%`, background: barColor }}></div></div>
-                          <span className="mpct">{pct}%</span>
+                          <span className="mtag">{params.length - addOns.length}/{params.length} in plan</span>
+                          <div className="bar-track"><div className="bar-fill" style={{ width: `${pct || 0}%`, background: barColor }}></div></div>
+                          <span className="mpct">{pct == null ? "—" : `${pct}%`}</span>
                           {modToPitch > 0 && <span className="pitch-count-badge">{modToPitch} to pitch</span>}
-                          <label className="scope-toggle" onClick={(e) => e.stopPropagation()}>
-                            <input type="checkbox" checked readOnly /> In scope
-                          </label>
                         </div>
                         <div className={`module-body${isModOpen ? " open" : ""}`}>
-                          {!expansionParams.length ? (
-                            <div className="param-row" style={{ color: "var(--text-faint)", fontSize: 12 }}>No Expansion features in this module to pitch — everything here is base-plan Adoption, tracked on the Adoption tab.</div>
-                          ) : expansionParams.map((p) => {
-                            if (!isParamInScope(lab, mod.key, p.name)) {
-                              return (
-                                <div key={p.name} className="param-row" style={{ opacity: 0.55 }}>
-                                  <span className={`param-type ${p.type}`}>{p.type === "M" ? "Mandatory" : "Optional"}</span>
-                                  <span className="pname">{p.name}</span>
-                                  <span className="out-of-scope-tag">Not applicable to this lab</span>
-                                </div>
-                              );
-                            }
-                            const st = paramState(lab, mod.key, p.name);
-                            const pStatus = getParamPitchStatus(pf, mod.key, p.name, st.included);
+                          {!addOns.length ? (
+                            <div className="param-row" style={{ color: "var(--text-faint)", fontSize: 12 }}>Everything in this module is in {lab.name}'s plan — nothing to pitch. Rollout is tracked on the lab's Adoption tab.</div>
+                          ) : addOns.map((r) => {
+                            const p = r.def;
+                            const charge = r.purchased ? collItems.find((i) => i.labId === lab.id && i.moduleKey === mod.key && i.paramName === p.name) : null;
                             return (
                               <div key={p.name} className="param-row">
                                 <span className={`param-type ${p.type}`}>{p.type === "M" ? "Mandatory" : "Optional"}</span>
                                 <span className="pname">{p.name}</span>
-                                <span className={`status-chip st-${st.status.replace(/ /g, "")}`} style={{ cursor: "default" }}>{st.included ? st.status : "Not purchased"}</span>
-                                {(() => {
-                                  // Newest Collections entry for this feature = how it was bought (stays visible).
-                                  const charge = collItems.find((i) => i.labId === lab.id && i.moduleKey === mod.key && i.paramName === p.name);
-                                  if (!charge) return null;
-                                  return charge.isTrial
-                                    ? <span className="cat-tag cat-Warn" title="Add charges from this lab's Adoption or Collections tab">Trial</span>
-                                    : <span className="cat-tag cat-Adoption">Priced {fmtMoney(charge.amount, lab.region)}/mo</span>;
-                                })()}
+                                <span className={`status-chip st-${r.status.replace(/ /g, "")}`} style={{ cursor: "default" }}>{r.purchased ? r.status : "Not purchased"}</span>
+                                {charge && (charge.isTrial
+                                  ? <span className="cat-tag cat-Warn" title="Add charges from this lab's Adoption or Collections tab">Trial</span>
+                                  : <span className="cat-tag cat-Adoption">Priced {fmtMoney(charge.amount, lab.region)}/mo</span>)}
                                 <select className="status-select" onClick={(e) => e.stopPropagation()}
-                                  value={pStatus}
-                                  onChange={(e) => handlePitchStatusChange(e.target.value, { labId: lab.id, moduleKey: mod.key, paramName: p.name, level: "param", label: p.name, existingParamState: st, fromStatus: pStatus })}>
-                                  {PITCH_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                                  value={r.pitch}
+                                  onChange={(e) => handlePitchStatusChange(e.target.value, { labId: lab.id, moduleKey: mod.key, paramName: p.name, level: "param", label: p.name, existingParamState: r.state, fromStatus: r.pitch })}>
+                                  {PITCH_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
                                 </select>
                               </div>
                             );

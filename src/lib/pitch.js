@@ -1,8 +1,7 @@
 import { supabase } from "../supabaseClient";
-import { markParamIncluded, markModuleInScope } from "./adoption";
+import { markParamIncluded, markModuleInScope, resolveParam, recordParamChange } from "./adoption";
 import { addCollectionsItem } from "./collections";
 import { logActivity } from "./activity";
-import { planIncludesModule, planIncludesParam } from "./plans";
 import { updateLabMRR } from "./labs";
 import { logChurn } from "./churn";
 import { todayISO } from "./dates";
@@ -71,6 +70,10 @@ async function upsertPitchStatus(labId, moduleKey, paramName, status) {
 function logPitchChange(labId, { moduleKey, paramName, label, from, to, comment, csmId, kind = "Pitch Updated", title }) {
   const what = label || paramName || moduleKey;
   const trimmed = (comment || "").trim();
+  // Also part of the parameter's own audit trail (Adoption tab → click the parameter).
+  if (paramName && trimmed) {
+    recordParamChange(labId, moduleKey, paramName, `Stage: ${from || "—"} → ${to}`, trimmed, csmId).catch((err) => console.error(err));
+  }
   return logActivity(labId, {
     kind,
     title: title || `Pitch stage changed: ${from || "—"} → ${to}`,
@@ -91,63 +94,25 @@ export async function setParamPitchStatus(labId, moduleKey, paramName, status, c
   logPitchChange(labId, { moduleKey, paramName, label, from, to: status, comment, csmId });
 }
 
-// Every Expansion-category pitch item across a set of labs that's still active (To Do / Pitching /
-// In Progress) — a read-only summary for the all-tasks page's "Pitch Reminders" section. My Portfolio
-// stays the one place pitch status actually gets changed; this just surfaces what's still open there
-// so it isn't easy to lose track of alongside regular tasks. Mirrors the exact in-scope logic each
-// lab's own Adoption tab and My Portfolio use (saved per-lab overrides first, falling back to the
-// assigned Plan's defaults).
+// Every open pitch across a set of labs — a read-only summary for Tasks → Pitch Reminders. Under the v2
+// adoption model that's every parameter that is Not in plan, not purchased yet, and still at To Do / Pitching /
+// In Progress (see resolveParam in lib/adoption.js — the same logic each lab's Adoption tab uses).
 export function buildActivePitchRows({ labs, modules, plans, adoptionByLab, pitchByLab }) {
-  function isModuleInScope(lab, moduleKey, plan) {
-    const a = adoptionByLab[lab.id];
-    if (a && Object.prototype.hasOwnProperty.call(a.scope, moduleKey)) return a.scope[moduleKey];
-    return planIncludesModule(plan, moduleKey);
-  }
-  function isParamInScope(lab, moduleKey, paramName, plan) {
-    const a = adoptionByLab[lab.id];
-    const key = `${moduleKey}|${paramName}`;
-    if (a && Object.prototype.hasOwnProperty.call(a.paramScope, key)) return a.paramScope[key];
-    return planIncludesParam(plan, moduleKey, paramName);
-  }
-  function paramIncluded(lab, moduleKey, paramName) {
-    const a = adoptionByLab[lab.id];
-    const key = `${moduleKey}|${paramName}`;
-    return !!(a && a.paramState[key] && a.paramState[key].included);
-  }
-  function paramStateOf(lab, moduleKey, paramName) {
-    const a = adoptionByLab[lab.id];
-    const key = `${moduleKey}|${paramName}`;
-    return (a && a.paramState[key]) || { included: false, status: "Not Started", expValue: null, expStage: null };
-  }
-
   const rows = [];
   labs.forEach((lab) => {
     const plan = plans.find((p) => p.id === lab.plan) || plans[0];
     if (!plan) return;
     const pf = pitchByLab[lab.id];
     modules.forEach((mod) => {
-      if (!isModuleInScope(lab, mod.key, plan)) {
-        const status = getModulePitchStatus(pf, mod.key);
-        if (PITCH_ACTIVE_STATUSES.includes(status)) {
-          rows.push({
-            labId: lab.id, labName: lab.name, csm: lab.csm,
-            level: "module", moduleKey: mod.key, paramName: null,
-            label: `Pitch ${mod.name} (new module)`, status,
-          });
-        }
-        return;
-      }
       mod.params.forEach((p) => {
-        if (p.category !== "Expansion" || !isParamInScope(lab, mod.key, p.name, plan)) return;
-        const status = getParamPitchStatus(pf, mod.key, p.name, paramIncluded(lab, mod.key, p.name));
-        if (PITCH_ACTIVE_STATUSES.includes(status)) {
-          rows.push({
-            labId: lab.id, labName: lab.name, csm: lab.csm,
-            level: "param", moduleKey: mod.key, paramName: p.name,
-            label: `Pitch ${p.name} (${mod.name})`, status,
-            existingParamState: paramStateOf(lab, mod.key, p.name),
-          });
-        }
+        const r = resolveParam(plan, mod, p, adoptionByLab[lab.id], pf);
+        if (r.inPlan || r.purchased || !PITCH_ACTIVE_STATUSES.includes(r.pitch)) return;
+        rows.push({
+          labId: lab.id, labName: lab.name, csm: lab.csm,
+          level: "param", moduleKey: mod.key, paramName: p.name,
+          label: `Pitch ${p.name} (${mod.name})`, status: r.pitch,
+          existingParamState: r.state,
+        });
       });
     });
   });
@@ -167,6 +132,11 @@ export async function markFeatureAdded(target, amount, isTrial, csmId, comment) 
   await addCollectionsItem({ labId, moduleKey, paramName: level === "param" ? paramName : null, label, amount: isTrial ? 0 : amount, isTrial, csmId });
   const trimmed = (comment || "").trim();
   const sym = target.region === "ROW" ? "$" : "₹";
+  if (level === "param" && trimmed) {
+    await recordParamChange(labId, moduleKey, paramName,
+      `Stage: ${fromStatus || "—"} → Added (${isTrial ? "trial" : `${sym}${amount.toLocaleString("en-IN")}/mo`})`, trimmed, csmId)
+      .catch((err) => console.error(err));
+  }
   await logActivity(labId, {
     kind: "Expansion Converted",
     title: `Pitch stage changed: ${fromStatus || "—"} → Added`,

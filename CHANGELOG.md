@@ -2,6 +2,22 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 2026 — batch 4, phase 2: adoption model v2
+**Database (both applied):** `0034_in_plan_audit_trail_discussed_params.sql`; `0035_fix_supabase_advisor_warnings.sql`
+(moves the RLS helper functions to a private schema, tidies policies — access verified unchanged for a CSM and a Lead).
+- Each lab sees the whole Adoption Template; every parameter is **In plan** (Adoption) or **Not in plan**
+  (Expansion), reversible. Default comes from the lab's Plan + the template category. The "In scope" switches,
+  "Save Changes" bar, plan-deviation banner and "Reset to Plan Defaults" are gone from the lab Adoption tab.
+- New score ladder (0–100 per parameter; module and lab are weighted averages): Not in plan To Do 0 / Pitching
+  10 / In Progress 30; In plan or purchased Not Started 70 / In Progress 85 / Adopted 100; Not Required and
+  Lost = 0. Used on the lab's Adoption tab, My Portfolio, Dashboard and Log Check-in.
+- Every parameter change needs a comment and saves at once; the newest comment shows under the parameter and
+  clicking the parameter opens its full history (incl. pitch-stage changes).
+- My Portfolio lists each lab's Not-in-plan parameters per module for pitching.
+- Log Check-in → Adoption Snapshot: tick modules and/or individual parameters as *discussed*; no more automatic
+  training follow-up tasks.
+- Lint now also catches undefined variables (`no-undef`); smoke tests: 9.
+
 ## Oct 2026 — batch 4, phase 1
 **Database (all applied):** 0028 module order, 0029 due date = last day to pay, 0030 yearly
 visits required, 0031 GMeet check-in type, 0032 lab contacts, 0033 lab documents.

@@ -585,3 +585,18 @@
   .tmpl-list-row .reorder-btns button{border:none; background:transparent; color:var(--text-faint); font-size:8.5px; line-height:1; padding:1px 3px; cursor:pointer;}
   .tmpl-list-row .reorder-btns button:hover:not(:disabled){color:var(--accent);}
   .tmpl-list-row .reorder-btns button:disabled{opacity:.3; cursor:default;}
+
+  /* ---------- Lab Adoption tab (adoption model v2) ---------- */
+  .param-block{border-top:1px solid var(--border);}
+  .param-block:first-child{border-top:none;}
+  .param-block .param-row{border-top:none;}
+  .param-link{cursor:pointer; border-bottom:1px dotted var(--text-faint);}
+  .param-link:hover{color:var(--accent); border-bottom-color:var(--accent);}
+  .param-latest{font-size:11.5px; color:var(--text-dim); padding:0 0 9px 108px; cursor:pointer; font-style:italic;}
+  .param-latest:hover{color:var(--accent);}
+  .param-score{flex:none; min-width:34px; text-align:right; font-size:11.5px; font-weight:700; color:var(--text-dim); font-variant-numeric:tabular-nums;}
+  .plan-toggle{display:inline-flex; flex:none; border:1px solid var(--border); border-radius:7px; overflow:hidden;}
+  .plan-toggle button{border:none; background:var(--surface); color:var(--text-dim); font:inherit; font-size:11px; font-weight:600; padding:4px 9px; cursor:pointer;}
+  .plan-toggle button + button{border-left:1px solid var(--border);}
+  .plan-toggle button.active{background:var(--indigo-bg); color:var(--indigo-text);}
+  .plan-toggle button.active.exp{background:var(--purple-bg); color:var(--purple-text);}

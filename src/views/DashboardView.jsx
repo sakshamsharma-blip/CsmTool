@@ -3,6 +3,7 @@ import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
 import { fetchAllLabsAdoption, computeSavedLabScores } from "../lib/adoption";
+import { fetchAllPitchStatus } from "../lib/pitch";
 import { fetchAllCollectionsItems, labCollectionsSummary, isItemOpen, itemBalance, AGING_COLORS } from "../lib/collections";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask, getOpenTasksFor } from "../lib/tasks";
 import { fetchAllVisits } from "../lib/visits";
@@ -18,6 +19,7 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
   const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
 
   const [adoptionByLab, setAdoptionByLab] = useState({});
+  const [pitchByLab, setPitchByLab] = useState({}); // pitch stages feed the adoption score (lib/adoption.js)
   const [collectionsItems, setCollectionsItems] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [visits, setVisits] = useState([]);
@@ -31,10 +33,11 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
     setLoading(true);
     setError(null);
     try {
-      const [adoption, items, tk, vs] = await Promise.all([
-        fetchAllLabsAdoption(), fetchAllCollectionsItems(), fetchAllTasks(invert(idByName)), fetchAllVisits(),
+      const [adoption, items, tk, vs, pitch] = await Promise.all([
+        fetchAllLabsAdoption(), fetchAllCollectionsItems(), fetchAllTasks(invert(idByName)), fetchAllVisits(), fetchAllPitchStatus(),
       ]);
       setAdoptionByLab(adoption);
+      setPitchByLab(pitch);
       setCollectionsItems(items);
       setTasks(tk);
       setVisits(vs);
@@ -58,7 +61,7 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
   const rows = scopeCsm ? allRows.filter((r) => r.csm === scopeCsm || r.children.some((c) => c.csm === scopeCsm)) : allRows;
 
   function planOf(lab) { return plans.find((p) => p.id === lab.plan) || plans[0]; }
-  function scoreOf(lab) { return computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id]); }
+  function scoreOf(lab) { return computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id], pitchByLab[lab.id]); }
 
   const visitsByLab = {};
   visits.forEach((v) => { (visitsByLab[v.labId] = visitsByLab[v.labId] || []).push(v); });
