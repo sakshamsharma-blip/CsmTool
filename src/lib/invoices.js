@@ -2,7 +2,49 @@ import { supabase } from "../supabaseClient";
 import { logActivity } from "./activity";
 import { updateLabMRR } from "./labs";
 import { nativeCurrency } from "./format";
-import { dueDateFor } from "./dates";
+import { dueDateFor, addDaysISO } from "./dates";
+
+// ---- billing periods (Oct 2026) ----
+// Recurring invoices can cover 1, 3, 6 or 12 months. MRR from a recurring invoice = sub total ÷ its months, and it
+// covers that many months from its invoice date. ProRata is a one-off top-up (no period; added to MRR).
+export const INVOICE_TYPES = [
+  { value: "Monthly", label: "Monthly", months: 1 },
+  { value: "Quarterly", label: "Quarterly (3 months)", months: 3 },
+  { value: "HalfYearly", label: "Half-yearly (6 months)", months: 6 },
+  { value: "Annual", label: "Annual (12 months)", months: 12 },
+  { value: "ProRata", label: "Pro-Rata (one-off top-up)", months: null },
+];
+export function invoiceMonths(type) {
+  return INVOICE_TYPES.find((t) => t.value === type)?.months ?? null;
+}
+export function isRecurringInvoice(type) {
+  return invoiceMonths(type) != null;
+}
+export function invoiceTypeLabel(type) {
+  return { Monthly: "Monthly", Quarterly: "Quarterly", HalfYearly: "Half-yearly", Annual: "Annual", ProRata: "Pro-Rata" }[type] || type;
+}
+// What a recurring invoice is worth per month (2 decimals). ProRata → null.
+export function monthlyEquivalent(type, subTotal) {
+  const m = invoiceMonths(type);
+  return m ? Math.round(((Number(subTotal) || 0) / m) * 100) / 100 : null;
+}
+// Last day a recurring invoice covers: invoice date + its months − 1 day (Oct 1, half-yearly → Mar 31).
+export function coveredUntil(type, invoiceDate) {
+  const m = invoiceMonths(type);
+  if (!m || !invoiceDate) return null;
+  // Same day-of-month m months later (clamped to that month's last day, so Jan 31 + 1 month = Feb 28), minus a day.
+  const [y, mo, day] = invoiceDate.split("-").map(Number);
+  const targetMonthIndex = mo - 1 + m;                       // 0-based, may run past December
+  const ty = y + Math.floor(targetMonthIndex / 12);
+  const tm = (targetMonthIndex % 12) + 1;
+  const lastDay = new Date(ty, tm, 0).getDate();
+  const iso = `${ty}-${String(tm).padStart(2, "0")}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
+  return addDaysISO(iso, -1);
+}
+// The lab's billing cycle (Lab Details → Payment Cycle) → the matching recurring invoice type.
+export function invoiceTypeForCycle(paymentCycle) {
+  return { Monthly: "Monthly", Quarterly: "Quarterly", "Half Yearly": "HalfYearly", Annual: "Annual" }[paymentCycle] || "Monthly";
+}
 
 export async function fetchInvoicesForLab(labId) {
   const { data, error } = await supabase
@@ -55,9 +97,10 @@ export function invoiceStatusLabel(inv) {
 
 // Saves a confirmed invoice. `lab` is the full lab record (creditDays for the due date, region for the
 // currency, mrr for the Pro-Rata step). MRR rule (Oct 2026):
-//  - Monthly  → the lab's MRR is SET to the invoice's sub_total (the real billed run-rate);
+//  - Recurring (Monthly / Quarterly / Half-yearly / Annual) → MRR is SET to sub total ÷ its months
+//    (a ₹60,000 half-yearly invoice → MRR ₹10,000), and it covers that many months;
 //  - Pro-Rata → its sub_total is ADDED to the current MRR (e.g. an add-on billed mid-cycle), until the next
-//               Monthly invoice sets MRR again.
+//    recurring invoice sets MRR again.
 // Returns { id, newMrr }.
 export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate, subTotal, total, extractedOk, sourceFilename, csmId }) {
   const creditDays = lab.creditDays;
@@ -83,16 +126,19 @@ export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate
     .single();
   if (error) throw error;
 
-  if (invoiceType === "Monthly") {
+  if (isRecurringInvoice(invoiceType)) {
     const previousMrr = Number(lab.mrr) || 0;
-    await updateLabMRR(lab.id, subTotal, lab.region);
+    const months = invoiceMonths(invoiceType);
+    const newMrr = monthlyEquivalent(invoiceType, subTotal);
+    const s$ = currency === "USD" ? "$" : "₹";
+    await updateLabMRR(lab.id, newMrr, lab.region);
     await logActivity(lab.id, {
       kind: "Invoice Uploaded",
-      title: `Monthly invoice ${invoiceNumber} — MRR updated`,
-      meta: `MRR set to ${currency === "USD" ? "$" : "₹"}${subTotal.toLocaleString("en-IN")} (was ${currency === "USD" ? "$" : "₹"}${previousMrr.toLocaleString("en-IN")}), due ${dueDate}`,
+      title: `${invoiceTypeLabel(invoiceType)} invoice ${invoiceNumber} — MRR updated`,
+      meta: `MRR set to ${s$}${newMrr.toLocaleString("en-IN")}${months > 1 ? ` (${s$}${subTotal.toLocaleString("en-IN")} ÷ ${months} months)` : ""} (was ${s$}${previousMrr.toLocaleString("en-IN")}); covers ${invoiceDate} to ${coveredUntil(invoiceType, invoiceDate)}; due ${dueDate}`,
       csmId,
     }).catch((err) => console.error(err));
-    return { id: data.id, newMrr: subTotal };
+    return { id: data.id, newMrr };
   }
 
   const sym = currency === "USD" ? "$" : "₹";
@@ -102,7 +148,7 @@ export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate
   await logActivity(lab.id, {
     kind: "Invoice Uploaded",
     title: `Pro-Rata invoice ${invoiceNumber} — MRR increased`,
-    meta: `MRR ${sym}${previousMrr.toLocaleString("en-IN")} → ${sym}${newMrr.toLocaleString("en-IN")} (+${sym}${subTotal.toLocaleString("en-IN")}), ${sym}${total.toLocaleString("en-IN")} due ${dueDate}. The next Monthly invoice sets MRR again.`,
+    meta: `MRR ${sym}${previousMrr.toLocaleString("en-IN")} → ${sym}${newMrr.toLocaleString("en-IN")} (+${sym}${subTotal.toLocaleString("en-IN")}), ${sym}${total.toLocaleString("en-IN")} due ${dueDate}. The next recurring invoice sets MRR again.`,
     csmId,
   }).catch((err) => console.error(err));
   return { id: data.id, newMrr };
@@ -133,15 +179,15 @@ export async function updateInvoiceCollected(invoiceId, manualAmount, totalOwed,
 
 // ---- editing / deleting an invoice ----
 //
-// What the invoices imply MRR should be: the newest Monthly invoice's sub_total plus every Pro-Rata
-// sub_total dated after it (or, with no Monthly invoice yet, all Pro-Rata sub_totals). Used only as a
+// What the invoices imply MRR should be: the newest recurring invoice's monthly equivalent (sub total ÷ months) plus
+// every Pro-Rata sub_total dated after it (or, with no recurring invoice yet, all Pro-Rata sub_totals). Used only as a
 // before/after DIFFERENCE when an invoice is edited or deleted, so the lab's MRR moves by exactly what the
 // change implies — a manual MRR edit or a Lost-after-Purchase reduction made since is kept, not wiped.
 export function invoiceImpliedMrr(invoices) {
   const byDate = invoices.slice().sort((a, b) => (a.invoiceDate || "").localeCompare(b.invoiceDate || ""));
   let lastMonthlyIdx = -1;
-  byDate.forEach((iv, i) => { if (iv.invoiceType === "Monthly") lastMonthlyIdx = i; });
-  const base = lastMonthlyIdx >= 0 ? byDate[lastMonthlyIdx].subTotal : 0;
+  byDate.forEach((iv, i) => { if (isRecurringInvoice(iv.invoiceType)) lastMonthlyIdx = i; });
+  const base = lastMonthlyIdx >= 0 ? monthlyEquivalent(byDate[lastMonthlyIdx].invoiceType, byDate[lastMonthlyIdx].subTotal) : 0;
   return base + byDate.slice(lastMonthlyIdx + 1).filter((iv) => iv.invoiceType === "ProRata").reduce((s, iv) => s + iv.subTotal, 0);
 }
 
@@ -177,7 +223,7 @@ export async function updateInvoice(inv, { invoiceNumber, invoiceType, invoiceDa
   await logActivity(lab.id, {
     kind: "Invoice Uploaded",
     title: `Invoice ${invoiceNumber} edited`,
-    meta: `${invoiceType === "Monthly" ? "Monthly" : "Pro-Rata"}, ${invoiceDate}, sub total ${sym}${subTotal.toLocaleString("en-IN")}, total ${sym}${total.toLocaleString("en-IN")}, due ${dueDate}`,
+    meta: `${invoiceTypeLabel(invoiceType)}, ${invoiceDate}, sub total ${sym}${subTotal.toLocaleString("en-IN")}, total ${sym}${total.toLocaleString("en-IN")}, due ${dueDate}`,
     csmId,
   }).catch((err) => console.error(err));
   const newMrr = await applyInvoiceMrrDelta(lab, before, after, csmId, `invoice ${invoiceNumber} edited`);
@@ -194,7 +240,7 @@ export async function deleteInvoice(inv, lab, labInvoices, csmId) {
   await logActivity(lab.id, {
     kind: "Invoice Uploaded",
     title: `Invoice ${inv.invoiceNumber} deleted`,
-    meta: `${inv.invoiceType === "Monthly" ? "Monthly" : "Pro-Rata"} invoice dated ${inv.invoiceDate}${inv.collectedManual ? ` (had ${inv.collectedManual} collected against it)` : ""}`,
+    meta: `${invoiceTypeLabel(inv.invoiceType)} invoice dated ${inv.invoiceDate}${inv.collectedManual ? ` (had ${inv.collectedManual} collected against it)` : ""}`,
     csmId,
   }).catch((err) => console.error(err));
   const newMrr = await applyInvoiceMrrDelta(lab, before, after, csmId, `invoice ${inv.invoiceNumber} deleted`);

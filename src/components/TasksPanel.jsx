@@ -1,5 +1,7 @@
 import { Fragment, useState } from "react";
 import AddTaskModal from "./AddTaskModal";
+import SearchSelect from "./SearchSelect";
+import { labSelectOptions } from "../lib/selectOptions";
 import {
   TASK_SECTIONS, isTaskDoneToday, taskDisplayBucket, repeatLabel, taskTypeLabel, getTasksForPanel,
 } from "../lib/tasks";
@@ -8,17 +10,24 @@ import {
 // scope" (a Lead's Team View with no CSM filter); otherwise only that CSM's tasks show.
 export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, onOpenLab, isHead, currentCSM, csmNames, labOptions, labsById }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const display = getTasksForPanel(tasks, scopeCsm);
+  const [fLab, setFLab] = useState(""); // lab-wise filter
+  const display = getTasksForPanel(tasks, scopeCsm).filter((t) => !fLab || t.labId === fLab);
 
   const addBtn = (
-    <button className="btn btn-ghost" style={{ fontSize: 11, padding: "5px 10px" }} onClick={() => setModalOpen(true)}>+ Add Task</button>
+    <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <span style={{ minWidth: 200 }}>
+        <SearchSelect value={fLab} onChange={setFLab} options={labSelectOptions(labOptions || [])} emptyLabel="All labs" placeholder="All labs"
+          inputStyle={{ border: "1px solid var(--border)", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontFamily: "inherit", background: "var(--surface)", color: "var(--text)" }} />
+      </span>
+      <button className="btn btn-ghost" style={{ fontSize: 11, padding: "5px 10px" }} onClick={() => setModalOpen(true)}>+ Add Task</button>
+    </span>
   );
 
   return (
     <>
       {!display.length ? (
         <div className="table-card" style={{ padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, color: "var(--text-faint)", fontSize: 12.5 }}>
-          <span>No tasks{scopeCsm ? ` for ${scopeCsm}` : ""} right now — everything's caught up.</span>
+          <span>{fLab ? "No tasks for this lab right now." : `No tasks${scopeCsm ? ` for ${scopeCsm}` : ""} right now — everything's caught up.`}</span>
           {addBtn}
         </div>
       ) : (

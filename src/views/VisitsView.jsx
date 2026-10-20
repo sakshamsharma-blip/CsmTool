@@ -37,6 +37,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
   const [logFollowup, setLogFollowup] = useState("");
   const [logFollowupReason, setLogFollowupReason] = useState("");
   const [logSentiment, setLogSentiment] = useState("");
+  const [logEngagement, setLogEngagement] = useState(""); // Proactive / Reactive — required
   const [logFromTask, setLogFromTask] = useState(null); // a planned-visit task being completed by this log
   const [logError, setLogError] = useState(false);
 
@@ -111,7 +112,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
 
   function resetLogForm() {
     setLogLabId(""); setLogDate(todayISO()); setLogNotes(""); setLogFollowup(""); setLogFollowupReason("");
-    setLogSentiment(""); setLogFromTask(null); setLogError(false);
+    setLogSentiment(""); setLogEngagement(""); setLogFromTask(null); setLogError(false);
   }
   function openLog() { resetLogForm(); setLogOpen(true); }
   // "Log this visit" on a planned visit: opens the log form with the lab and date filled in; saving it
@@ -125,13 +126,15 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
   }
 
   async function handleLogVisit() {
-    if (!logLabId) { setLogError(true); return; }
+    if (!logLabId) { setLogError("Pick a lab first."); return; }
+    if (!logEngagement) { setLogError("Choose Proactive or Reactive."); return; }
     try {
       const lab = labsById[logLabId];
       const newVisitId = await addVisit({
         labId: logLabId, csmId: idByName[lab?.csm], type: VISIT_TYPE, visitDate: logDate,
         notes: logNotes, nextFollowupDate: logFollowup || null, nextFollowupReason: logFollowupReason,
         sentiment: logSentiment || null,
+        engagement: logEngagement,
       });
 
       // The next visit date becomes a planned visit — it shows under Upcoming Planned Visits here and in Tasks
@@ -334,6 +337,17 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
           <SearchSelect value={logLabId} onChange={setLogLabId} options={labOptions} placeholder="Search a lab…" inputStyle={fieldStyle} disabled={!!logFromTask} />
         </div>
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>Proactive or Reactive? <span style={{ color: "var(--bad)" }}>*</span></label>
+          <div style={{ display: "flex", gap: 8 }}>
+            {["Proactive", "Reactive"].map((k) => (
+              <button key={k} type="button" className="btn" onClick={() => { setLogEngagement(k); setLogError(false); }}
+                style={{ flex: 1, border: `1.5px solid ${logEngagement === k ? "var(--accent)" : "var(--border)"}`, background: logEngagement === k ? "var(--accent-dim)" : "var(--surface)", color: logEngagement === k ? "var(--accent)" : "var(--text)", borderRadius: 8, padding: "7px 8px", fontSize: 12.5, fontWeight: 600 }}>
+                {k}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
           <label>Visit Date</label>
           <input type="date" style={fieldStyle} value={logDate} max={todayISO()} onChange={(e) => setLogDate(e.target.value)} />
         </div>
@@ -360,7 +374,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
             <input style={fieldStyle} value={logFollowupReason} onChange={(e) => setLogFollowupReason(e.target.value)} placeholder="e.g. QBR, training" />
           </div>
         </div>
-        {logError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>Pick a lab first.</div>}
+        {logError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>{logError}</div>}
         <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 10 }}>Saved to this lab's Lab History{logFromTask ? ", and the planned visit is marked done" : ""}. A next visit date is added to Upcoming Planned Visits.</div>
       </Modal>
 

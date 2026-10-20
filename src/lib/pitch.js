@@ -198,7 +198,7 @@ export async function markLostAfterPurchase(target, { labMrr, region, csmId, com
   await logActivity(labId, {
     kind: "MRR Updated",
     title: `MRR set to ${sym}${newMrr.toLocaleString("en-IN")}`,
-    meta: `−${sym}${lostAmount.toLocaleString("en-IN")} — ${label} lost after purchase (the next Monthly invoice resets MRR)`,
+    meta: `−${sym}${lostAmount.toLocaleString("en-IN")} — ${label} lost after purchase (the next recurring invoice resets MRR)`,
     csmId,
   }).catch((err) => console.error(err));
   return { newMrr, lostAmount };

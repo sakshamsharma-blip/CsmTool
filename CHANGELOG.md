@@ -2,6 +2,18 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 2026 — engagement, time spent, module links, billing periods
+**Database (both applied):** `0036_engagement_type_and_module_resources.sql`; `0037_invoice_billing_periods.sql`.
+- **Billing periods:** invoices can be Monthly, Quarterly, Half-yearly or Annual (or one-off Pro-Rata). MRR = sub
+  total ÷ months covered; each invoice shows the period it covers and the lab shows "Billed up to". Upload defaults to
+  the lab's Payment Cycle. Average MRR uses each invoice's per-month value.
+- Log Check-in and Log Visit require **Proactive / Reactive**; editable on the visit detail.
+- Lab page: **Time Spent** (sum of check-in durations) in the header; Lab History shows time spent (all / 30 days /
+  this year) and Proactive / Reactive counts.
+- "Tasks for Today" panel (Dashboard, My Portfolio) gets a lab filter (the Tasks page already had one).
+- **Docs & training-video links per module**, shared across all labs — add/edit from the Adoption Template or any
+  lab's Adoption tab (📚 badge on the module).
+
 ## Oct 2026 — fix: lost-after-purchase trials
 - A feature marked "Lost after Purchase" no longer offers "Add charges" (Adoption tab, Collections tab) or a
   rollout status; it shows a "Lost after purchase" tag instead (also on My Portfolio).

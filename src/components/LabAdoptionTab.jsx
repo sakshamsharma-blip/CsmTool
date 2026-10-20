@@ -9,6 +9,8 @@ import { fetchAllCollectionsItems, convertItemToChargeable } from "../lib/collec
 import Modal from "./Modal";
 import InfoTip from "./InfoTip";
 import PitchStageModal from "./PitchStageModal";
+import ModuleResources from "./ModuleResources";
+import { fetchModuleResources } from "../lib/moduleResources";
 
 const field = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
 const pct = (v) => (v == null ? "—" : `${Math.round(v)}%`);
@@ -19,7 +21,7 @@ const barColor = (v) => (v == null ? "var(--surface-3)" : v >= 85 ? "var(--ok)" 
 // parameters move through the rollout statuses, Not-in-plan ones through the pitch stages until purchased.
 // EVERY change asks for a comment and saves immediately; the newest comment shows under the parameter and
 // clicking the parameter name opens its full audit trail.
-export default function LabAdoptionTab({ lab, modules, plans, idByName, currentCSM, showToast, onPatchLab, onChanged }) {
+export default function LabAdoptionTab({ lab, modules, plans, idByName, currentCSM, myProfileId, isHead, showToast, onPatchLab, onChanged }) {
   const plan = plans.find((p) => p.id === lab.plan) || plans[0];
   const csmId = idByName?.[currentCSM] || idByName?.[lab.csm];
   const nameById = useMemo(() => Object.fromEntries(Object.entries(idByName || {}).map(([n, id]) => [id, n])), [idByName]);
@@ -28,6 +30,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
   const [pitch, setPitch] = useState({});
   const [changes, setChanges] = useState([]);
   const [collItems, setCollItems] = useState([]);
+  const [resources, setResources] = useState([]); // shared docs / training links per module
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
   const [openModules, setOpenModules] = useState({});
@@ -55,8 +58,9 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
       fetchLabPitchStatus(lab.id),
       fetchParamChanges(lab.id).catch(() => []),
       fetchAllCollectionsItems().then((all) => all.filter((i) => i.labId === lab.id)),
+      fetchModuleResources().catch(() => []), // table may not exist before migration 0036
     ])
-      .then(([a, p, ch, items]) => { if (!cancelled) { setAdoption(a); setPitch(p); setChanges(ch); setCollItems(items); } })
+      .then(([a, p, ch, items, res]) => { if (!cancelled) { setAdoption(a); setPitch(p); setChanges(ch); setCollItems(items); setResources(res); } })
       .catch((err) => { if (!cancelled) setError(err.message || "Failed to load adoption data."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -159,10 +163,17 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
               <span>{mod.icon}</span>
               <span className="mname">{mod.name}{mod.description ? <InfoTip label={`About ${mod.name}`}>{mod.description}</InfoTip> : null}</span>
               <span className="mtag">{inPlanCount}/{params.length} in plan</span>
+              {resources.some((r) => r.moduleKey === mod.key) && <span className="mres-badge" title="Docs & training videos">📚 {resources.filter((r) => r.moduleKey === mod.key).length}</span>}
               <div className="bar-track"><div className="bar-fill" style={{ width: `${overallPct || 0}%`, background: barColor(overallPct) }}></div></div>
               <span className="mpct">{pct(overallPct)}</span>
             </div>
             <div className={`module-body${isOpen ? " open" : ""}`}>
+              {SUPABASE_CONFIGURED && (
+                <div style={{ padding: "0 14px" }}>
+                  <ModuleResources moduleKey={mod.key} moduleName={mod.name} resources={resources} myProfileId={myProfileId} isHead={isHead}
+                    showToast={showToast} onChanged={async () => setResources(await fetchModuleResources())} />
+                </div>
+              )}
               {params.map((r) => {
                 const latest = latestByParam[r.key];
                 // A feature lost after purchase is over: no rollout to track and nothing to charge for.

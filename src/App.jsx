@@ -528,6 +528,9 @@ export default function App() {
               onToggleParam={handleToggleParam}
               onReorderModules={handleReorderModules}
               canEdit={viewer.isHead}
+              myProfileId={idByName[myName]}
+              isHead={viewer.isHead}
+              showToast={showToast}
             />
           )}
           {view === "csm-setup" && canManageUsers && (

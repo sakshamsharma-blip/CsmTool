@@ -600,3 +600,15 @@
   .plan-toggle button + button{border-left:1px solid var(--border);}
   .plan-toggle button.active{background:var(--indigo-bg); color:var(--indigo-text);}
   .plan-toggle button.active.exp{background:var(--purple-bg); color:var(--purple-text);}
+
+  /* ---------- Module docs & training-video links (components/ModuleResources.jsx) ---------- */
+  .module-resources{background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:9px 12px; margin:8px 0 10px;}
+  .module-resources .mr-head{display:flex; justify-content:space-between; align-items:center; font-size:12px; font-weight:700; color:var(--text-dim);}
+  .module-resources .mr-empty{font-size:11.5px; color:var(--text-faint); padding-top:4px;}
+  .module-resources .mr-row{display:flex; align-items:center; gap:8px; padding:5px 0; font-size:12.5px; border-top:1px solid var(--border);}
+  .module-resources .mr-row:first-of-type{border-top:none;}
+  .module-resources .mr-row a{font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .module-resources .mr-kind{font-size:10.5px; color:var(--text-faint); flex:none;}
+  .module-resources .mr-actions{margin-left:auto; display:flex; gap:6px; flex:none;}
+  .module-resources .mr-form{display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding-top:8px;}
+  .mres-badge{font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:20px; background:var(--accent-dim); color:var(--accent); flex:none;}

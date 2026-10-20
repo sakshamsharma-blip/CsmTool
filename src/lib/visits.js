@@ -4,7 +4,7 @@ import { logActivity } from "./activity";
 export async function fetchAllVisits() {
   const { data, error } = await supabase
     .from("visits")
-    .select("id,lab_id,csm_id,visit_type,visit_date,notes,next_followup_date,next_followup_reason,duration_minutes,location,person_name,person_designation,discussion_topics,sentiment,flagged_modules,discussed_params,action_items,created_at")
+    .select("id,lab_id,csm_id,visit_type,visit_date,notes,next_followup_date,next_followup_reason,duration_minutes,location,person_name,person_designation,discussion_topics,sentiment,engagement,flagged_modules,discussed_params,action_items,created_at")
     .order("visit_date", { ascending: false });
   if (error) throw error;
   return (data || []).map((r) => ({
@@ -22,6 +22,7 @@ export async function fetchAllVisits() {
     personDesignation: r.person_designation || "",
     discussionTopics: r.discussion_topics || [],
     sentiment: r.sentiment || null,
+    engagement: r.engagement || null,
     flaggedModules: r.flagged_modules || [],
     discussedParams: r.discussed_params || [],
     actionItems: r.action_items || [],
@@ -32,7 +33,7 @@ export async function fetchAllVisits() {
 export async function fetchVisitById(id) {
   const { data, error } = await supabase
     .from("visits")
-    .select("id,lab_id,csm_id,visit_type,visit_date,notes,next_followup_date,next_followup_reason,duration_minutes,location,person_name,person_designation,discussion_topics,sentiment,flagged_modules,discussed_params,action_items,created_at")
+    .select("id,lab_id,csm_id,visit_type,visit_date,notes,next_followup_date,next_followup_reason,duration_minutes,location,person_name,person_designation,discussion_topics,sentiment,engagement,flagged_modules,discussed_params,action_items,created_at")
     .eq("id", id)
     .single();
   if (error) throw error;
@@ -41,7 +42,7 @@ export async function fetchVisitById(id) {
     notes: data.notes || "", nextFollowupDate: data.next_followup_date, nextFollowupReason: data.next_followup_reason || "",
     durationMinutes: data.duration_minutes, location: data.location || "", personName: data.person_name || "",
     personDesignation: data.person_designation || "", discussionTopics: data.discussion_topics || [],
-    sentiment: data.sentiment || null, flaggedModules: data.flagged_modules || [], discussedParams: data.discussed_params || [], actionItems: data.action_items || [],
+    sentiment: data.sentiment || null, engagement: data.engagement || null, flaggedModules: data.flagged_modules || [], discussedParams: data.discussed_params || [], actionItems: data.action_items || [],
     createdAt: data.created_at,
   };
 }
@@ -49,8 +50,9 @@ export async function fetchVisitById(id) {
 // One-line summary shown in Lab History next to a logged visit/check-in, so the timeline row tells the
 // story without opening it: notes, then sentiment, topics, how many action items / flagged modules, and
 // the next follow-up. (The full record is behind the row's "View" link.)
-function visitSummary({ notes, sentiment, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason }) {
+function visitSummary({ notes, sentiment, engagement, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason }) {
   const parts = [];
+  if (engagement) parts.push(engagement);
   if (notes) parts.push(notes);
   if (sentiment) parts.push(`Sentiment: ${sentiment}`);
   if (discussionTopics && discussionTopics.length) parts.push(`Topics: ${discussionTopics.join(", ")}`);
@@ -68,7 +70,7 @@ function visitSummary({ notes, sentiment, discussionTopics, actionItems, flagged
 export async function addVisit({
   labId, csmId, type, visitDate, notes, nextFollowupDate, nextFollowupReason,
   durationMinutes, location, personName, personDesignation, discussionTopics,
-  sentiment, flaggedModules, discussedParams, actionItems,
+  sentiment, flaggedModules, discussedParams, actionItems, engagement,
 }) {
   const isCheckin = !!(personName || (discussionTopics && discussionTopics.length) || sentiment || (flaggedModules && flaggedModules.length));
   const { data, error } = await supabase.from("visits").insert({
@@ -85,6 +87,7 @@ export async function addVisit({
     person_designation: personDesignation || null,
     discussion_topics: discussionTopics && discussionTopics.length ? discussionTopics : null,
     sentiment: sentiment || null,
+    engagement: engagement || null,
     flagged_modules: flaggedModules && flaggedModules.length ? flaggedModules : null,
     ...(discussedParams && discussedParams.length ? { discussed_params: discussedParams } : {}),
     action_items: actionItems && actionItems.length ? actionItems : null,
@@ -94,7 +97,7 @@ export async function addVisit({
   logActivity(labId, {
     kind: type,
     title: isCheckin ? `${type} check-in logged` : `${type} logged`,
-    meta: visitSummary({ notes, sentiment, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason }),
+    meta: visitSummary({ notes, sentiment, engagement, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason }),
     csmId,
     source: isCheckin ? "checkin" : "system",
     // visitId is always included (not just for check-ins) — it's what lets Lab History's
@@ -110,7 +113,7 @@ export async function addVisit({
 // summary text so the list doesn't go stale next to the corrected record.
 export async function updateVisit(id, {
   type, visitDate, notes, nextFollowupDate, nextFollowupReason, sentiment,
-  durationMinutes, location, personName, personDesignation, discussionTopics, flaggedModules, actionItems,
+  durationMinutes, location, personName, personDesignation, discussionTopics, flaggedModules, actionItems, engagement,
 }) {
   const patch = {
     visit_type: type,
@@ -127,6 +130,7 @@ export async function updateVisit(id, {
   if (discussionTopics !== undefined) patch.discussion_topics = discussionTopics && discussionTopics.length ? discussionTopics : null;
   if (flaggedModules !== undefined) patch.flagged_modules = flaggedModules && flaggedModules.length ? flaggedModules : null;
   if (actionItems !== undefined) patch.action_items = actionItems && actionItems.length ? actionItems : null;
+  if (engagement !== undefined) patch.engagement = engagement || null;
 
   const { error } = await supabase.from("visits").update(patch).eq("id", id);
   if (error) throw error;
@@ -135,7 +139,7 @@ export async function updateVisit(id, {
   supabase.from("activity_log")
     .update({
       title: isCheckin ? `${type} check-in logged` : `${type} logged`,
-      meta: visitSummary({ notes, sentiment, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason }),
+      meta: visitSummary({ notes, sentiment, engagement, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason }),
     })
     .filter("details->>visitId", "eq", id)
     .then(({ error: e2 }) => { if (e2) console.error(e2); });

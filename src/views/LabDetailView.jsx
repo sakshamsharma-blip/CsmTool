@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
-import { fmtMoney, toINR, nativeCurrency, segmentFor } from "../lib/format";
+import { fmtMoney, toINR, nativeCurrency, segmentFor, fmtDuration } from "../lib/format";
+import { labEngagementStats } from "../lib/labEngagement";
 import { fetchLabActivity, logActivity, ACTIVITY_ICONS } from "../lib/activity";
 import {
   fetchAllCollectionsItems, addCollectionsItem, updateItemCollected, convertItemToChargeable,
@@ -9,6 +10,7 @@ import {
 } from "../lib/collections";
 import {
   fetchInvoicesForLab, saveInvoice, updateInvoiceCollected, updateInvoice, deleteInvoice,
+  INVOICE_TYPES, isRecurringInvoice, invoiceTypeLabel, monthlyEquivalent, coveredUntil, invoiceTypeForCycle,
   invoiceBalance, isInvoiceOpen, invoiceStatusLabel,
 } from "../lib/invoices";
 import { updateLabStatus, updateLabStageTags, updateLabTestimonial, updateLabDetails, updateLabBillingMode, updateLabMRR, fetchMrrHistory } from "../lib/labs";
@@ -247,6 +249,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   const [vTopics, setVTopics] = useState([]);
   const [vNotes, setVNotes] = useState("");
   const [vSentiment, setVSentiment] = useState("");
+  const [vEngagement, setVEngagement] = useState("");
   const [vFlagged, setVFlagged] = useState([]);
   const [vActionItems, setVActionItems] = useState([]);
   const [vFollowup, setVFollowup] = useState("");
@@ -285,6 +288,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setVTopics(v.discussionTopics || []);
     setVNotes(v.notes || "");
     setVSentiment(v.sentiment || "");
+    setVEngagement(v.engagement || "");
     setVFlagged(v.flaggedModules || []);
     setVActionItems(v.actionItems || []);
     setVFollowup(v.nextFollowupDate || "");
@@ -320,6 +324,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
         type: vType, visitDate: vDate, notes: vNotes,
         nextFollowupDate: vFollowup || null, nextFollowupReason: vFollowupReason,
         sentiment: vSentiment || null,
+        engagement: vEngagement || null,
         durationMinutes: vDuration ? Number(vDuration) : null,
         location: vLocation,
         personName: vPersonName,
@@ -401,7 +406,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     try {
       const csmId = idByName?.[lab.csm];
       // Adding charges records what the lab now owes; MRR itself moves with invoices (a Pro-Rata invoice adds
-      // to it, the next Monthly invoice sets it), so it's deliberately not bumped here.
+      // to it, the next recurring invoice sets it), so it's deliberately not bumped here.
       await convertItemToChargeable(convertItem.id, amount, lab.id, csmId, convertItem.label, lab.region);
       await loadCollections();
       setConvertItem(null);
@@ -455,14 +460,16 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       // Loaded on demand: the PDF reader is most of the app's download size and only this step needs it.
       const { extractInvoiceFromFile } = await import("../lib/invoiceParse");
       const extracted = await extractInvoiceFromFile(file);
-      setUploadForm(extracted);
+      // If the PDF didn't clearly say the billing period, start from the lab's Payment Cycle (Monthly / Quarterly /
+      // Half Yearly / Annual) — the CSM can still change it before saving.
+      setUploadForm(extracted.typeDetected ? extracted : { ...extracted, invoiceType: invoiceTypeForCycle(lab.paymentCycle) });
       setUploadStage("confirm");
       if (!extracted.extractedOk) showToast("Couldn't auto-read every field — please check the numbers below before saving.");
     } catch (err) {
       console.error(err);
       // Auto-extraction failing is not fatal — drop straight into the confirm form empty so the
       // CSM can still type everything in by hand rather than being blocked.
-      setUploadForm({ invoiceNumber: "", invoiceDate: "", invoiceType: "Monthly", subTotal: null, total: null, extractedOk: false });
+      setUploadForm({ invoiceNumber: "", invoiceDate: "", invoiceType: invoiceTypeForCycle(lab.paymentCycle), subTotal: null, total: null, extractedOk: false });
       setUploadStage("confirm");
       showToast("Couldn't read this PDF automatically — please fill the details in by hand.");
     }
@@ -483,8 +490,8 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       onInvoiceMrrUpdate?.(lab.id, saved.newMrr);
       setUploadOpen(false);
       await loadInvoices();
-      showToast(f.invoiceType === "Monthly"
-        ? `Invoice saved — MRR set to ${fmtMoney(saved.newMrr, lab.region)}.`
+      showToast(isRecurringInvoice(f.invoiceType)
+        ? `${invoiceTypeLabel(f.invoiceType)} invoice saved — MRR set to ${fmtMoney(saved.newMrr, lab.region)}, covered until ${new Date(coveredUntil(f.invoiceType, f.invoiceDate) + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}.`
         : `Pro-Rata invoice saved — MRR now ${fmtMoney(saved.newMrr, lab.region)}.`);
     } catch (err) {
       showToast(`⚠ ${err.message}`);
@@ -604,7 +611,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     if (lab.type === "Parent") {
       const kids = labs.filter((l) => l.type === "Child" && l.parent === lab.id);
       if (kids.length && lab.billingMode === "Consolidated") {
-        return "Consolidated — this is the group's MRR (normally set by the group's Monthly invoice). ARR = MRR × 12.";
+        return "Consolidated — this is the group's MRR (normally set by the group's recurring invoice). ARR = MRR × 12.";
       }
       if (kids.length) {
         return `Per-Branch — the group's MRR is the sum of each child lab's MRR (${fmtMoney(effectiveMRR(lab), lab.region)} right now), so this parent's own MRR is kept but not counted.`;
@@ -922,6 +929,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           <div className="m"><div>Current MRR</div><div>{fmtMoney(effectiveMRR(lab), lab.region)}</div></div>
           <div className="m"><div>Current ARR</div><div>{fmtMoney(effectiveMRR(lab) * 12, lab.region)}</div></div>
           <div className="m"><div>City, State</div><div>{lab.city ? lab.city + ", " : ""}{lab.state}</div></div>
+          <div className="m" title="Total of the Duration entered on this lab's check-ins"><div>Time Spent</div><div>{fmtDuration(labEngagementStats(labVisits).totalMinutes)}</div></div>
         </div>
         <div style={{ display: "flex", gap: 8, flex: "none" }}>
           {SUPABASE_CONFIGURED && onLogCheckin && (
@@ -1195,7 +1203,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
                 <div className="tmpl-field" style={{ flex: 1 }}><label>Type</label>
                   <select style={fs} value={editInv.f.invoiceType} onChange={(e) => setF("invoiceType", e.target.value)}>
-                    <option value="Monthly">Monthly</option><option value="ProRata">Pro-Rata</option>
+                    {INVOICE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div className="tmpl-field" style={{ flex: 1 }}><label>Invoice Date</label><input type="date" style={fs} value={editInv.f.invoiceDate} onChange={(e) => setF("invoiceDate", e.target.value)} /></div>
@@ -1205,7 +1213,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                 <div className="tmpl-field" style={{ flex: 1 }}><label>Total ({sym})</label><input type="number" min="0" step="0.01" style={fs} value={editInv.f.total} onChange={(e) => setF("total", e.target.value)} /></div>
               </div>
               <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 10 }}>
-                Due date is recalculated from the invoice date + Credit Days. If this invoice is the one setting MRR (latest Monthly, or a later Pro-Rata), MRR moves by the difference.
+                Due date is recalculated from the invoice date + Credit Days. If this invoice is the one setting MRR (latest recurring invoice, or a later Pro-Rata), MRR moves by the difference.
               </div>
             </>
           );
@@ -1257,7 +1265,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           />
           <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 6 }}>
             Moves this trial to priced and records the amount owed. {lab.name}'s MRR updates when the invoice comes in
-            (a Pro-Rata invoice adds to it; the next Monthly invoice sets it).
+            (a Pro-Rata invoice adds to it; the next recurring invoice sets it).
           </div>
         </div>
       </Modal>
@@ -1433,6 +1441,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
         <LabAdoptionTab
           key={lab.id}
           lab={lab} modules={modules} plans={plans} idByName={idByName} currentCSM={currentCSM}
+          myProfileId={idByName?.[viewer.myName]} isHead={viewer.isHead}
           showToast={showToast} onPatchLab={onPatchLab}
           onChanged={() => {
             fetchLabActivity(lab.id).then(setActivity).catch((err) => console.error(err));
@@ -1453,7 +1462,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           <div className="table-card" style={{ padding: "6px 20px 20px", overflow: "visible" }}>
             <div style={{ display: "flex", alignItems: "center", fontSize: 11.5, color: "var(--text-faint)", padding: "10px 0 4px" }}>
               How invoices work
-              <InfoTip>Upload an invoice below — its date, amount and type are read automatically and you confirm before saving. A Monthly invoice sets this lab's MRR to its Sub Total; a Pro-Rata invoice adds its Sub Total to the current MRR (until the next Monthly invoice sets it again). Due date is the last day to pay — invoice date + this lab's Credit Days ({lab.creditDays || "30"}) − 1 — so it's overdue from the next day.</InfoTip>
+              <InfoTip>Upload an invoice below — its date, amount and type are read automatically and you confirm before saving. A recurring invoice (Monthly / Quarterly / Half-yearly / Annual) sets this lab's MRR to its Sub Total ÷ the months it covers — e.g. a ₹60,000 half-yearly invoice → MRR ₹10,000 — and the lab is billed up to the end of that period. A Pro-Rata invoice adds its Sub Total to the current MRR until the next recurring invoice. Due date is the last day to pay — invoice date + this lab's Credit Days ({lab.creditDays || "30"}) − 1 — so it's overdue from the next day.</InfoTip>
             </div>
 
             {(() => {
@@ -1466,11 +1475,13 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               const daysOverdue = Math.max(itemSummary.daysOverdue, invOldestDays > 0 ? invOldestDays : 0);
               const bucket = openCount ? (daysOverdue >= 45 ? "Critical" : daysOverdue >= 30 ? "Overdue" : daysOverdue >= 15 ? "Due Soon" : "Current") : "Current";
               const lastPayment = [itemSummary.lastPayment, ...invoices.map((iv) => iv.collectedAt)].filter(Boolean).sort((a, b) => new Date(b) - new Date(a))[0] || null;
-              // Average MRR = average "Total" across this lab's Monthly invoices only — a Pro-Rata
-              // invoice is a one-off top-up (see the InfoTip above) and would skew an MRR-labeled
-              // average, so it's excluded the same way it's excluded from touching lab.mrr itself.
-              const mrrInvoices = invoices.filter((iv) => iv.invoiceType === "Monthly");
-              const avgMrr = mrrInvoices.length ? mrrInvoices.reduce((s, iv) => s + (iv.total || 0), 0) / mrrInvoices.length : null;
+              // Average MRR = average per-month "Total" across this lab's recurring invoices (a quarterly invoice
+              // counts as its total ÷ 3, half-yearly ÷ 6, annual ÷ 12). Pro-Rata invoices are one-off top-ups and
+              // would skew an MRR-labeled average, so they're left out.
+              const mrrInvoices = invoices.filter((iv) => isRecurringInvoice(iv.invoiceType));
+              const avgMrr = mrrInvoices.length ? mrrInvoices.reduce((s, iv) => s + (monthlyEquivalent(iv.invoiceType, iv.total) || 0), 0) / mrrInvoices.length : null;
+              // "Paid up to" = the latest end date any recurring invoice covers.
+              const paidUpTo = mrrInvoices.map((iv) => coveredUntil(iv.invoiceType, iv.invoiceDate)).filter(Boolean).sort().pop() || null;
               return (
                 <div className="summary-grid" style={{ margin: "12px 0" }}>
                   <div className="stile"><div className="sval">{fmtMoney(outstanding, lab.region)}</div><div className="slabel">Outstanding</div></div>
@@ -1478,6 +1489,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                   <div className="stile"><div className="sval" style={{ color: AGING_COLORS[bucket] }}>{bucket}</div><div className="slabel">Status</div></div>
                   <div className="stile"><div className="sval" style={{ fontSize: 12.5 }}>{lastPayment ? new Date(lastPayment).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "—"}</div><div className="slabel">Last Payment</div></div>
                   <div className="stile"><div className="sval">{avgMrr != null ? fmtMoney(avgMrr, lab.region) : "—"}</div><div className="slabel">Average MRR</div></div>
+                  <div className="stile" title="Latest date covered by a Monthly / Quarterly / Half-yearly / Annual invoice"><div className="sval" style={{ fontSize: 12.5 }}>{paidUpTo ? new Date(paidUpTo + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—"}</div><div className="slabel">Billed up to</div></div>
                 </div>
               );
             })()}
@@ -1490,14 +1502,19 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               <div style={{ color: "var(--text-faint)", fontSize: 12, padding: "10px 0" }}>No invoices uploaded yet for {lab.name}.</div>
             ) : (
               <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Invoice #</th><th>Type</th><th>Invoice Date</th><th>Due Date</th><th>Sub Total</th><th>Total</th><th>Collected</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Invoice #</th><th>Type</th><th>Invoice Date</th><th>Covers</th><th>Due Date</th><th>Sub Total</th><th>Total</th><th>Collected</th><th>Status</th><th></th></tr></thead>
                 <tbody>{invoices.map((inv) => {
                   const bal = invoiceBalance(inv);
                   return (
                     <tr key={inv.id}>
                       <td>{inv.invoiceNumber}{!inv.extractedOk && <span className="cat-tag cat-Warn" title="Auto-extraction couldn't read every field — check this row's numbers"> ⚠ check</span>}</td>
-                      <td><span className={`cat-tag cat-${inv.invoiceType === "Monthly" ? "Adoption" : "Expansion"}`}>{inv.invoiceType === "Monthly" ? "Monthly" : "Pro-Rata"}</span></td>
+                      <td><span className={`cat-tag cat-${isRecurringInvoice(inv.invoiceType) ? "Adoption" : "Expansion"}`}>{invoiceTypeLabel(inv.invoiceType)}</span></td>
                       <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{new Date(inv.invoiceDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" })}</td>
+                      <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }} title={isRecurringInvoice(inv.invoiceType) ? `MRR ${fmtMoney(monthlyEquivalent(inv.invoiceType, inv.subTotal), lab.region)}/month` : "One-off top-up"}>
+                        {isRecurringInvoice(inv.invoiceType)
+                          ? `till ${new Date(coveredUntil(inv.invoiceType, inv.invoiceDate) + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" })}`
+                          : "—"}
+                      </td>
                       <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{new Date(inv.dueDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" })}</td>
                       <td className="mrr-cell">{fmtMoney(inv.subTotal, lab.region)}</td>
                       <td className="mrr-cell">{fmtMoney(inv.total, lab.region)}</td>
@@ -1617,7 +1634,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               )}
               {uploadStage === "confirm" && uploadForm && (
                 <>
-                  {uploadForm.invoiceType === "Monthly" && (() => {
+                  {isRecurringInvoice(uploadForm.invoiceType) && (() => {
                     // A Monthly invoice updates THIS lab's own mrr field — but whether that field
                     // is actually what shows up in the group's reported MRR depends on Billing
                     // Mode. Catching a mismatch here is the "doesn't mix the logics" check: it's
@@ -1651,9 +1668,9 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                       <input value={uploadForm.invoiceNumber} onChange={(e) => setUploadForm((f) => ({ ...f, invoiceNumber: e.target.value }))} /></div>
                     <div className="field"><label>Invoice Type</label>
                       <select value={uploadForm.invoiceType} onChange={(e) => setUploadForm((f) => ({ ...f, invoiceType: e.target.value }))}>
-                        <option value="Monthly">Monthly (updates MRR)</option>
-                        <option value="ProRata">Pro-Rata add-on (adds to MRR until the next Monthly invoice)</option>
+                        {INVOICE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                       </select>
+                      <div className="hint">{lab.name}'s Payment Cycle: {lab.paymentCycle || "Monthly"}.</div>
                     </div>
                   </div>
                   <div className="frow">
@@ -1665,7 +1682,9 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                     </div>
                   </div>
                   <div className="frow">
-                    <div className="field"><label>Sub Total ({nativeCurrency(lab.region) === "USD" ? "$" : "₹"}) {uploadForm.invoiceType === "Monthly" ? <span className="hint" style={{ fontWeight: 400 }}>— becomes this lab's MRR</span> : <span className="hint" style={{ fontWeight: 400 }}>— added to this lab's MRR</span>}</label>
+                    <div className="field"><label>Sub Total ({nativeCurrency(lab.region) === "USD" ? "$" : "₹"}) {isRecurringInvoice(uploadForm.invoiceType)
+                      ? <span className="hint" style={{ fontWeight: 400 }}>— {uploadForm.invoiceType === "Monthly" ? "becomes this lab's MRR" : `÷ ${INVOICE_TYPES.find((t) => t.value === uploadForm.invoiceType).months} = this lab's MRR${uploadForm.subTotal ? ` (${fmtMoney(monthlyEquivalent(uploadForm.invoiceType, uploadForm.subTotal), lab.region)})` : ""}`}</span>
+                      : <span className="hint" style={{ fontWeight: 400 }}>— added to this lab's MRR</span>}</label>
                       <input type="number" min="0" value={uploadForm.subTotal ?? ""} onChange={(e) => setUploadForm((f) => ({ ...f, subTotal: e.target.value === "" ? null : parseFloat(e.target.value) }))} /></div>
                     <div className="field"><label>Total, incl. tax ({nativeCurrency(lab.region) === "USD" ? "$" : "₹"})</label>
                       <input type="number" min="0" value={uploadForm.total ?? ""} onChange={(e) => setUploadForm((f) => ({ ...f, total: e.target.value === "" ? null : parseFloat(e.target.value) }))} /></div>
@@ -1751,6 +1770,11 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                     );
                     return (
                       <>
+                        {row("Proactive / Reactive", visitDetail.engagement || "—",
+                          <select value={vEngagement} onChange={(e) => setVEngagement(e.target.value)} style={inputStyle}>
+                            <option value="">Not set</option><option>Proactive</option><option>Reactive</option>
+                          </select>
+                        )}
                         {row("Type", visitDetail.type,
                           <select value={vType} onChange={(e) => setVType(e.target.value)} style={inputStyle}>
                             {VISIT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -1850,6 +1874,20 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               <div className="stile"><div className="sval" style={{ fontSize: 12.5 }}>{activity.length ? new Date(activity[0].created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—"}</div><div className="slabel">Last Updated On</div></div>
               <div className="stile"><div className="sval" style={{ fontSize: 12.5 }}>{activity.length ? (nameById[activity[0].csm_id] || "System") : "—"}</div><div className="slabel">Last Updated By</div></div>
             </div>
+            {(() => {
+              // Engagement from this lab's check-ins: time spent = sum of each check-in's Duration.
+              const e = labEngagementStats(labVisits);
+              return (
+                <div className="summary-grid" style={{ paddingTop: 0 }}>
+                  <div className="stile"><div className="sval">{fmtDuration(e.totalMinutes)}</div><div className="slabel">Time spent (all)</div></div>
+                  <div className="stile"><div className="sval">{fmtDuration(e.last30Minutes)}</div><div className="slabel">Time spent (30 days)</div></div>
+                  <div className="stile"><div className="sval">{fmtDuration(e.yearMinutes)}</div><div className="slabel">Time spent (this year)</div></div>
+                  <div className="stile"><div className="sval" style={{ color: "var(--ok)" }}>{e.proactive}</div><div className="slabel">Proactive check-ins</div></div>
+                  <div className="stile"><div className="sval" style={{ color: "var(--warn)" }}>{e.reactive}</div><div className="slabel">Reactive check-ins</div></div>
+                  <div className="stile"><div className="sval">{e.count - e.proactive - e.reactive}</div><div className="slabel">Not marked (older)</div></div>
+                </div>
+              );
+            })()}
 
             {(() => {
               const kinds = [...new Set(activity.map((e) => e.kind).filter(Boolean))].sort();

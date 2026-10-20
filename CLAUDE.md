@@ -53,8 +53,12 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Parent/Child billing mode**: "Consolidated" = the parent's own `mrr` is the real number,
   children's are ignored. "Per-Branch" (default) = children's `mrr` summed, parent's own ignored.
   This governs whether a lab's MRR should even be directly editable.
-- **Invoices & MRR** (Oct 2026): a `Monthly` invoice SETS the lab's MRR to its sub total; a `ProRata`
-  invoice ADDS its sub total to the current MRR (until the next Monthly invoice sets it again). Editing or
+- **Invoices & MRR** (Oct 2026): invoices are recurring — `Monthly` (1), `Quarterly` (3), `HalfYearly` (6),
+  `Annual` (12 months) — or a one-off `ProRata`. A recurring invoice SETS the lab's MRR to sub total ÷ its months
+  (₹60,000 half-yearly → MRR ₹10,000) and covers that many months from its invoice date (`coveredUntil`; shown as
+  "Covers … till" and "Billed up to"). A `ProRata` invoice ADDS its sub total to the current MRR until the next
+  recurring invoice. Upload defaults the type from the lab's Payment Cycle unless the PDF's "Invoice For …" line
+  says otherwise. Helpers: `INVOICE_TYPES`, `monthlyEquivalent`, `coveredUntil` in `lib/invoices.js`. Editing or
   deleting an invoice moves MRR only by the difference that change implies (`invoiceImpliedMrr` in
   `lib/invoices.js`), so manual MRR edits / Lost-after-Purchase drops made since are kept.
 - **Lab identity, split on purpose**: `labs.id` is the internal primary key, set once at creation,
@@ -73,6 +77,13 @@ with the same context and follows the same rules. Read it fully before making ch
   shown under the parameter; click the name for the history). The Adoption tab lives in
   `components/LabAdoptionTab.jsx`. Log Check-in's Adoption Snapshot marks modules and/or parameters as
   *discussed* (`visits.flagged_modules` / `visits.discussed_params`) — it no longer creates follow-up tasks.
+- **Engagement** (Oct 2026): every check-in / logged visit must be marked **Proactive** or **Reactive**
+  (`visits.engagement`; older rows NULL). **Time spent on a lab** = sum of its check-ins' Duration
+  (`lib/labEngagement.js`), shown on the lab page header and Lab History tiles with the Proactive/Reactive split.
+- **Module docs & training links** (`module_resources`, `components/ModuleResources.jsx`): per MODULE, shared by
+  all labs; anyone can add from the Adoption Template or a lab's Adoption tab; the adder or a Lead/Admin can
+  edit/remove (DB-enforced).
+- "Tasks for Today" (Dashboard / My Portfolio) and the Tasks page both have a lab filter.
 - **Adoption vs Expansion**: Adoption = base-plan features, always in scope, tracked only on
   rollout status, never pitched/sold. Expansion = paid add-ons, pitched/sold through a 7-stage
   vocabulary (To Do → Pitching → In Progress → Added → Not Required, plus the two terminal
@@ -187,7 +198,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership, Support & Tickets, Feedback &
   NPS, KPI Management, Automation (all still "Planned" and greyed out in the sidebar).
-- Latest migration: `0035_fix_supabase_advisor_warnings.sql`; **0001–0035 are all applied** (Oct 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+- Latest migration: `0037_invoice_billing_periods.sql`; **0001–0037 are all applied** (Oct 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).

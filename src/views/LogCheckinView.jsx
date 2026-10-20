@@ -47,6 +47,9 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   const seg = segmentFor(toINR(lab.mrr || 0, lab.region));
 
   const [type, setType] = useState("Visit");
+  // Required on every check-in (decision, Oct 2026): did the CSM reach out (Proactive) or respond to the lab (Reactive)?
+  const [engagement, setEngagement] = useState("");
+  const [engagementError, setEngagementError] = useState(false);
   const [date, setDate] = useState(() => todayISO());
   const [time, setTime] = useState(() => new Date().toTimeString().slice(0, 5));
   const [duration, setDuration] = useState("30");
@@ -128,6 +131,12 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   }
 
   async function handleSubmit() {
+    if (!engagement) {
+      setEngagementError(true);
+      showToast("Choose Proactive or Reactive before logging the check-in.");
+      window.scrollTo?.({ top: 0, behavior: "smooth" });
+      return;
+    }
     setSaving(true);
     try {
       const csmId = idByName?.[currentCSM];
@@ -151,6 +160,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
         sentiment,
         flaggedModules: flagged,
         discussedParams,
+        engagement,
         actionItems: actionItems.filter((it) => it.text.trim()).map((it) => ({ text: it.text.trim(), dueDate: it.dueDate || null })),
       });
 
@@ -242,6 +252,30 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* 1b. Proactive / Reactive — required */}
+          <div className="table-card" style={{ padding: "16px 18px", marginBottom: 14, ...(engagementError ? { borderColor: "var(--bad)" } : {}) }}>
+            <h3 style={{ fontSize: 13, margin: "0 0 4px" }}>Proactive or Reactive? <span style={{ color: "var(--bad)" }}>*</span></h3>
+            <p style={{ fontSize: 11.5, color: "var(--text-dim)", margin: "0 0 10px" }}>Proactive = you reached out. Reactive = the lab reached out, or you're responding to an issue.</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              {["Proactive", "Reactive"].map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => { setEngagement(k); setEngagementError(false); }}
+                  className="btn"
+                  style={{
+                    flex: 1, border: `1.5px solid ${engagement === k ? "var(--accent)" : "var(--border)"}`,
+                    background: engagement === k ? "var(--accent-dim)" : "var(--surface)", color: engagement === k ? "var(--accent)" : "var(--text)",
+                    borderRadius: 9, padding: "9px 8px", fontSize: 12.5, fontWeight: 600,
+                  }}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+            {engagementError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>Required — choose one.</div>}
           </div>
 
           {/* 2. Meeting details */}

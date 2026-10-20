@@ -45,3 +45,12 @@ export function fmtMoney(amount, region) {
   if (region === "ROW") return `${fmtUSD(amount)} (${fmtINR(toINR(amount, region))})`;
   return `${fmtINR(amount)} (${fmtUSD(toUSD(amount, region))})`;
 }
+
+// 200 → "3h 20m", 45 → "45m", 0/null → "0m". Used for time spent on a lab (sum of check-in durations).
+export function fmtDuration(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (!h) return `${r}m`;
+  return r ? `${h}h ${r}m` : `${h}h`;
+}

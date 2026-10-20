@@ -50,11 +50,20 @@ export async function extractInvoiceFromFile(file) {
   const total = parseAmount(firstMatch(cleaned, /(?<!Sub )Total\s*[₹$]?\s*([\d,]+\.\d{2})/i));
 
   const isProRata = /Pro-Rated Invoice/i.test(flat) || /Invoice Period\s*-/i.test(flat);
-  const isMonthly = /Invoice For One Month/i.test(flat);
-  const invoiceType = isProRata ? "ProRata" : isMonthly ? "Monthly" : "Monthly"; // default to Monthly when ambiguous — CSM confirms/corrects either way
+  // Billing period, when the invoice says it. Otherwise typeDetected=false and the upload form starts from the lab's
+  // own Payment Cycle — the CSM confirms or corrects it either way.
+  // Only the invoice's own "Invoice For …" line counts (words like "annual" can appear anywhere else on a PDF).
+  const period =
+    /Invoice\s*For\s*((Twelve|12)\s*Months|One\s*Year)/i.test(flat) ? "Annual"
+    : /Invoice\s*For\s*((Six|6)\s*Months|Half[\s-]*Year)/i.test(flat) ? "HalfYearly"
+    : /Invoice\s*For\s*((Three|3)\s*Months|(One\s*)?Quarter)/i.test(flat) ? "Quarterly"
+    : /Invoice\s*For\s*One\s*Month/i.test(flat) ? "Monthly"
+    : null;
+  const invoiceType = isProRata ? "ProRata" : period || "Monthly";
+  const typeDetected = isProRata || !!period;
 
   const invoiceDate = invoiceDateRaw ? toIsoDate(invoiceDateRaw) : "";
   const extractedOk = !!(invoiceNumber && invoiceDate && subTotal != null && total != null);
 
-  return { invoiceNumber: invoiceNumber || "", invoiceDate, subTotal, total, invoiceType, extractedOk };
+  return { invoiceNumber: invoiceNumber || "", invoiceDate, subTotal, total, invoiceType, typeDetected, extractedOk };
 }

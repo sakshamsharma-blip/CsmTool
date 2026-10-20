@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { slugifyModuleKey, scaleWeightsTo100, weightTotal } from "../lib/catalog";
 import { planIncludesModule, planIncludesParam } from "../lib/plans";
+import { SUPABASE_CONFIGURED } from "../supabaseClient";
+import { fetchModuleResources } from "../lib/moduleResources";
+import ModuleResources from "../components/ModuleResources";
 
 const TYPE_OPTIONS = [
   { value: "M", label: "Mandatory" },
@@ -19,7 +22,16 @@ export default function AdoptionTemplateView({
   onAddModuleParam, onUpdateModuleParam, onDeleteModuleParam,
   onToggleModule, onToggleParam, onReorderModules,
   canEdit = true,
+  myProfileId, isHead, showToast,
 }) {
+  // Shared docs / training links per module — anyone can add one here (even in view-only mode), see ModuleResources.
+  const [resources, setResources] = useState([]);
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) return undefined;
+    let cancelled = false;
+    fetchModuleResources().then((r) => { if (!cancelled) setResources(r); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [selectedKey, setSelectedKey] = useState(modules[0]?.key || null);
   const selectedModule = modules.find((m) => m.key === selectedKey) || null;
 
@@ -325,6 +337,10 @@ export default function AdoptionTemplateView({
             <div className="info-banner" style={{ marginBottom: 12 }}>
               View only — only a CSM Lead or Admin can edit the Adoption Template.
             </div>
+          )}
+          {draft && SUPABASE_CONFIGURED && (
+            <ModuleResources moduleKey={draft.key} moduleName={draft.name} resources={resources} myProfileId={myProfileId} isHead={isHead}
+              showToast={showToast} onChanged={async () => setResources(await fetchModuleResources())} />
           )}
           <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           {!draft ? (

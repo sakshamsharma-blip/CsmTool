@@ -127,7 +127,7 @@ export default function CollectionsView({ labs, viewer, idByName, onOpenLab, sho
     <div>
       <h1 className="page-title">
         Collections
-        <InfoTip>Upload a lab's invoice on its own Collections tab — the invoice date, amount and type (Monthly vs. one-off Pro-Rata) are read automatically and you confirm before saving. A Monthly invoice updates that lab's MRR; either type tracks what's still owed here. Due date is the last day to pay (invoice date + that lab's Credit Days − 1); Days Overdue counts from the next day — e.g. invoice Oct 1 with 7 credit days is due Oct 7 and 1 day overdue on Oct 8.</InfoTip>
+        <InfoTip>Upload a lab's invoice on its own Collections tab — the invoice date, amount and type (Monthly / Quarterly / Half-yearly / Annual, or a one-off Pro-Rata) are read automatically and you confirm before saving. A recurring invoice sets that lab's MRR to its sub total ÷ the months it covers; either type tracks what's still owed here. Due date is the last day to pay (invoice date + that lab's Credit Days − 1); Days Overdue counts from the next day — e.g. invoice Oct 1 with 7 credit days is due Oct 7 and 1 day overdue on Oct 8.</InfoTip>
       </h1>
       <p className="page-sub">Outstanding dues for labs assigned to <b>{scopeLabel}</b>.</p>
 

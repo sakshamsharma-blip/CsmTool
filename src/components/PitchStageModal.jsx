@@ -81,7 +81,7 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
       {isLostAfterPurchase && (
         <div className="warn-banner" style={{ marginTop: 12 }}>
           The lab's MRR drops by this feature's monthly charge (from its Collections entry) and the loss is logged as a
-          Contraction in Reports. The next Monthly invoice sets MRR to the billed figure again. A trial feature has no
+          Contraction in Reports. The next recurring invoice sets MRR to the billed figure again. A trial feature has no
           charge, so only the stage is recorded.
         </div>
       )}
