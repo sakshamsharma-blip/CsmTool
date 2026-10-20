@@ -25,7 +25,7 @@ export default function ChangePasswordModal({ open, onClose, showToast }) {
     const { error: updateError } = await supabase.auth.updateUser({ password });
     setBusy(false);
     if (updateError) { setError(updateError.message || "Couldn't update password — try again."); return; }
-    showToast && showToast("Password updated.");
+    showToast?.("Password updated.");
     handleClose();
   }
 

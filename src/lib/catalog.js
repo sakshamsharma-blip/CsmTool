@@ -73,3 +73,26 @@ export async function deleteModuleParam(moduleKey, name) {
   const { error } = await supabase.from("module_params").delete().eq("module_key", moduleKey).eq("name", name);
   if (error) throw error;
 }
+
+// ---- weights: every group (all modules, or one module's parameters) must total exactly 100 ----
+
+// Sum rounded to 2 decimals, so 33.33 + 33.33 + 33.34 reads as exactly 100 (no floating-point dust).
+export function weightTotal(items) {
+  return Math.round(items.reduce((s, it) => s + (Number(it.weight) || 0), 0) * 100) / 100;
+}
+
+// Scales a list of weights by one factor so they total exactly 100.00, keeping every ratio. Rounds to
+// hundredths and hands the leftover hundredths to the largest remainders (same method as migration 0019).
+// Returns null when there's nothing to scale (empty list or all zero).
+export function scaleWeightsTo100(weights) {
+  const nums = weights.map((w) => Math.max(0, Number(w) || 0));
+  const total = nums.reduce((s, w) => s + w, 0);
+  if (!nums.length || total <= 0) return null;
+  const raw = nums.map((w) => (w * 10000) / total); // in hundredths of a percent
+  const base = raw.map(Math.floor);
+  let leftover = 10000 - base.reduce((s, b) => s + b, 0);
+  raw.map((r, i) => ({ i, frac: r - base[i] }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i)
+    .forEach(({ i }) => { if (leftover > 0) { base[i] += 1; leftover -= 1; } });
+  return base.map((b) => b / 100);
+}

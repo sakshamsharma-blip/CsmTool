@@ -4,10 +4,10 @@ import { fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
 import { fetchAllLabsAdoption, computeSavedLabScores } from "../lib/adoption";
 import {
-  fetchAllPitchStatus, getModulePitchStatus, getParamPitchStatus, markFeatureAdded,
-  setModulePitchStatus, setParamPitchStatus, PITCH_STATUSES, PITCH_ACTIVE_STATUSES,
+  fetchAllPitchStatus, getModulePitchStatus, getParamPitchStatus, applyPitchStageChange, PITCH_STATUSES, PITCH_ACTIVE_STATUSES,
 } from "../lib/pitch";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask } from "../lib/tasks";
+import { fetchAllCollectionsItems } from "../lib/collections";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import BarChart from "../components/BarChart";
@@ -17,13 +17,14 @@ import InfoTip from "../components/InfoTip";
 
 const SEG_LABELS = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 
-export default function PortfolioView({ labs, modules, plans, viewer, idByName, onOpenLab, showToast }) {
+export default function PortfolioView({ labs, modules, plans, viewer, idByName, onOpenLab, onPatchLab, showToast }) {
   const { currentCSM } = viewer;
   const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
 
   const [adoptionByLab, setAdoptionByLab] = useState({});
   const [pitchByLab, setPitchByLab] = useState({});
   const [tasks, setTasks] = useState([]);
+  const [collItems, setCollItems] = useState([]); // for each purchased feature's Priced / Trial tag
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
 
@@ -38,9 +39,10 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
     setLoading(true);
     setError(null);
     try {
-      const [adoption, pitch, tk] = await Promise.all([
-        fetchAllLabsAdoption(), fetchAllPitchStatus(), fetchAllTasks({ ...invert(idByName) }),
+      const [adoption, pitch, tk, items] = await Promise.all([
+        fetchAllLabsAdoption(), fetchAllPitchStatus(), fetchAllTasks({ ...invert(idByName) }), fetchAllCollectionsItems(),
       ]);
+      setCollItems(items);
       setAdoptionByLab(adoption);
       setPitchByLab(pitch);
       setTasks(tk);
@@ -134,17 +136,11 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
   async function confirmStageChange({ comment, amount, isTrial }) {
     const { target: t, from, to } = pending;
     try {
-      const csmId = idByName[labsById[t.labId]?.csm];
-      if (to === "Added") {
-        await markFeatureAdded({ ...t, fromStatus: from }, amount, isTrial, csmId, comment);
-        showToast(`${t.label} marked Added.`);
-      } else {
-        const opts = { comment, from, label: t.label };
-        if (t.level === "module") await setModulePitchStatus(t.labId, t.moduleKey, to, csmId, opts);
-        else await setParamPitchStatus(t.labId, t.moduleKey, t.paramName, to, csmId, opts);
-        showToast(`${t.label}: ${from} → ${to}.`);
-      }
+      const lab = labsById[t.labId];
+      const res = await applyPitchStageChange(t, { from, to, comment, amount, isTrial, csmId: idByName[lab?.csm], labMrr: lab?.mrr });
+      if (res.newMrr != null) onPatchLab?.(t.labId, { mrr: res.newMrr });
       setPending(null);
+      showToast(res.message);
       await loadAll();
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
@@ -294,6 +290,14 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
                                 <span className={`param-type ${p.type}`}>{p.type === "M" ? "Mandatory" : "Optional"}</span>
                                 <span className="pname">{p.name}</span>
                                 <span className={`status-chip st-${st.status.replace(/ /g, "")}`} style={{ cursor: "default" }}>{st.included ? st.status : "Not purchased"}</span>
+                                {(() => {
+                                  // Newest Collections entry for this feature = how it was bought (stays visible).
+                                  const charge = collItems.find((i) => i.labId === lab.id && i.moduleKey === mod.key && i.paramName === p.name);
+                                  if (!charge) return null;
+                                  return charge.isTrial
+                                    ? <span className="cat-tag cat-Warn" title="Add charges from this lab's Adoption or Collections tab">Trial</span>
+                                    : <span className="cat-tag cat-Adoption">Priced {fmtMoney(charge.amount, lab.region)}/mo</span>;
+                                })()}
                                 <select className="status-select" onClick={(e) => e.stopPropagation()}
                                   value={pStatus}
                                   onChange={(e) => handlePitchStatusChange(e.target.value, { labId: lab.id, moduleKey: mod.key, paramName: p.name, level: "param", label: p.name, existingParamState: st, fromStatus: pStatus })}>

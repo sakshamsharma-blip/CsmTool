@@ -9,13 +9,13 @@ import {
 import { fetchLabActivity, logActivity, ACTIVITY_ICONS } from "../lib/activity";
 import {
   fetchAllCollectionsItems, addCollectionsItem, updateItemCollected, convertItemToChargeable,
+  updateCollectionsItem, deleteCollectionsItem,
   logCollectionsReminder, labCollectionsSummary, itemBalance, itemStatusLabel, AGING_COLORS,
 } from "../lib/collections";
 import {
-  fetchInvoicesForLab, saveInvoice, updateInvoiceCollected,
+  fetchInvoicesForLab, saveInvoice, updateInvoiceCollected, updateInvoice, deleteInvoice,
   invoiceBalance, isInvoiceOpen, invoiceStatusLabel,
 } from "../lib/invoices";
-import { extractInvoiceFromFile } from "../lib/invoiceParse";
 import { updateLabStatus, updateLabStageTags, updateLabTestimonial, updateLabDetails, updateLabBillingMode, updateLabMRR, fetchMrrHistory } from "../lib/labs";
 import { HEALTH_STATUSES, isHealthyStatus, logLabPulse } from "../lib/pulse";
 import { fetchAllVisits, fetchVisitById, updateVisit } from "../lib/visits";
@@ -31,9 +31,10 @@ import InfoTip from "../components/InfoTip";
 import Sparkline from "../components/Sparkline";
 import SearchSelect from "../components/SearchSelect";
 import PitchStageModal from "../components/PitchStageModal";
+import Paginated from "../components/Pager";
 import {
   fetchLabPitchStatus, getModulePitchStatus, getParamPitchStatus, PITCH_STATUSES,
-  setModulePitchStatus, setParamPitchStatus, markFeatureAdded,
+  applyPitchStageChange,
 } from "../lib/pitch";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
@@ -86,12 +87,17 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   const [activity, setActivity] = useState([]);
   const [loadingActivity, setLoadingActivity] = useState(SUPABASE_CONFIGURED);
   const [activityError, setActivityError] = useState(null);
+  const [activityKind, setActivityKind] = useState(""); // Lab History filter by entry type
 
   const [collItems, setCollItems] = useState([]);
   const [loadingColl, setLoadingColl] = useState(SUPABASE_CONFIGURED);
   const [collError, setCollError] = useState(null);
   const [collManualInputs, setCollManualInputs] = useState({});
   const [convertItem, setConvertItem] = useState(null);
+  // Edit forms for an existing invoice / Collections item: { …the record, form fields as strings }
+  const [editInv, setEditInv] = useState(null);
+  const [editItem, setEditItem] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [convertAmount, setConvertAmount] = useState("");
   const [savingConvert, setSavingConvert] = useState(false);
   const [addItemOpen, setAddItemOpen] = useState(false);
@@ -424,17 +430,12 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setSavingConvert(true);
     try {
       const csmId = idByName?.[lab.csm];
-      await convertItemToChargeable(convertItem.id, amount, lab.id, csmId, convertItem.label);
-      const newMrr = (lab.mrr || 0) + amount;
-      await updateLabMRR(lab.id, newMrr, lab.region, "manual");
-      onPatchLab && onPatchLab(lab.id, { mrr: newMrr });
-      logActivity(lab.id, {
-        kind: "MRR Updated", title: `MRR set to ${fmtMoney(newMrr, lab.region)}`, csmId,
-        meta: `+${amount} from converting ${convertItem.label} to chargeable`,
-      }).catch((err) => console.error(err));
+      // Adding charges records what the lab now owes; MRR itself moves with invoices (a Pro-Rata invoice adds
+      // to it, the next Monthly invoice sets it), so it's deliberately not bumped here.
+      await convertItemToChargeable(convertItem.id, amount, lab.id, csmId, convertItem.label, lab.region);
       await loadCollections();
       setConvertItem(null);
-      showToast(`${convertItem.label} converted to chargeable — MRR updated.`);
+      showToast(`Charges added for ${convertItem.label} — MRR will update from the next invoice.`);
     } catch (err) {
       showToast(`⚠ ${err.message}`);
     } finally {
@@ -481,6 +482,8 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setUploadStage("extracting");
     setUploadError("");
     try {
+      // Loaded on demand: the PDF reader is most of the app's download size and only this step needs it.
+      const { extractInvoiceFromFile } = await import("../lib/invoiceParse");
       const extracted = await extractInvoiceFromFile(file);
       setUploadForm(extracted);
       setUploadStage("confirm");
@@ -502,20 +505,79 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     }
     setSavingInvoice(true);
     try {
-      await saveInvoice({
+      const saved = await saveInvoice({
         lab, invoiceNumber: f.invoiceNumber.trim(), invoiceType: f.invoiceType, invoiceDate: f.invoiceDate,
         subTotal: f.subTotal, total: f.total, extractedOk: f.extractedOk, sourceFilename: uploadFile?.name,
         csmId: idByName?.[lab.csm],
       });
-      if (f.invoiceType === "Monthly") onInvoiceMrrUpdate && onInvoiceMrrUpdate(lab.id, f.subTotal);
+      onInvoiceMrrUpdate?.(lab.id, saved.newMrr);
       setUploadOpen(false);
       await loadInvoices();
-      showToast(f.invoiceType === "Monthly" ? `Invoice saved — MRR updated to ${fmtMoney(f.subTotal, lab.region)}.` : "Pro-Rata invoice saved.");
+      showToast(f.invoiceType === "Monthly"
+        ? `Invoice saved — MRR set to ${fmtMoney(saved.newMrr, lab.region)}.`
+        : `Pro-Rata invoice saved — MRR now ${fmtMoney(saved.newMrr, lab.region)}.`);
     } catch (err) {
       showToast(`⚠ ${err.message}`);
     } finally {
       setSavingInvoice(false);
     }
+  }
+
+  // ---- edit / delete an invoice (MRR moves only by what the change implies — see lib/invoices.js) ----
+  function openEditInvoice(inv) {
+    setEditInv({ ...inv, f: { invoiceNumber: inv.invoiceNumber, invoiceType: inv.invoiceType, invoiceDate: inv.invoiceDate, subTotal: String(inv.subTotal), total: String(inv.total) } });
+  }
+  async function handleSaveInvoiceEdit() {
+    const f = editInv.f;
+    const subTotal = parseFloat(f.subTotal), total = parseFloat(f.total);
+    if (!f.invoiceNumber.trim() || !f.invoiceDate || !Number.isFinite(subTotal) || !Number.isFinite(total) || subTotal < 0 || total < 0) {
+      showToast("Fill in the invoice number, date, sub total and total."); return;
+    }
+    setSavingEdit(true);
+    try {
+      const { newMrr } = await updateInvoice(editInv, { invoiceNumber: f.invoiceNumber.trim(), invoiceType: f.invoiceType, invoiceDate: f.invoiceDate, subTotal, total }, lab, invoices, idByName?.[lab.csm]);
+      if (newMrr !== (Number(lab.mrr) || 0)) onPatchLab?.(lab.id, { mrr: newMrr });
+      setEditInv(null);
+      await loadInvoices();
+      showToast(newMrr !== (Number(lab.mrr) || 0) ? `Invoice updated — MRR now ${fmtMoney(newMrr, lab.region)}.` : "Invoice updated.");
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+    finally { setSavingEdit(false); }
+  }
+  async function handleDeleteInvoice(inv) {
+    if (!window.confirm(`Delete invoice ${inv.invoiceNumber}?${inv.collectedManual ? " The payment recorded against it is deleted too." : ""} If it affects MRR, MRR is adjusted accordingly.`)) return;
+    try {
+      const { newMrr } = await deleteInvoice(inv, lab, invoices, idByName?.[lab.csm]);
+      if (newMrr !== (Number(lab.mrr) || 0)) onPatchLab?.(lab.id, { mrr: newMrr });
+      await loadInvoices();
+      showToast(newMrr !== (Number(lab.mrr) || 0) ? `Invoice deleted — MRR now ${fmtMoney(newMrr, lab.region)}.` : "Invoice deleted.");
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+
+  // ---- edit / delete a Collections item (never touches MRR) ----
+  function openEditItem(item) {
+    setEditItem({ ...item, f: { label: item.label, amount: String(item.amount) } });
+  }
+  async function handleSaveItemEdit() {
+    const f = editItem.f;
+    const amount = parseFloat(f.amount);
+    if (!f.label.trim()) { showToast("Give the item a description."); return; }
+    if (!editItem.isTrial && (!Number.isFinite(amount) || amount <= 0)) { showToast("Enter a valid amount owed."); return; }
+    setSavingEdit(true);
+    try {
+      await updateCollectionsItem(editItem, { label: f.label.trim(), amount }, lab.id, idByName?.[lab.csm], lab.region);
+      setEditItem(null);
+      await loadCollections();
+      showToast("Item updated.");
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+    finally { setSavingEdit(false); }
+  }
+  async function handleDeleteItem(item) {
+    if (!window.confirm(`Delete "${item.label}" from Collections?${item.collectedManual ? " The payment recorded against it is deleted too." : ""}`)) return;
+    try {
+      await deleteCollectionsItem(item, lab.id, idByName?.[lab.csm]);
+      await loadCollections();
+      showToast("Item deleted.");
+    } catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
   async function handleLogReminder() {
@@ -624,13 +686,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   function handleSetStatus(moduleKey, paramName, status) {
     updateDraftParam(`${moduleKey}|${paramName}`, { status });
   }
-  function handleToggleIncluded(moduleKey, paramName) {
-    const current = effectiveParamState(moduleKey, paramName);
-    updateDraftParam(`${moduleKey}|${paramName}`, {
-      included: !current.included,
-      status: !current.included ? "Not Started" : current.status,
-    });
-  }
+
   function handleSetExpValue(moduleKey, paramName, raw) {
     updateDraftParam(`${moduleKey}|${paramName}`, { expValue: raw === "" ? null : Number(raw) });
   }
@@ -734,22 +790,33 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   async function confirmPitchStage({ comment, amount, isTrial }) {
     const { target: t, from, to } = pendingPitch;
     try {
-      const csmId = idByName?.[lab.csm];
-      if (to === "Added") {
-        await markFeatureAdded({ ...t, labId: lab.id, fromStatus: from }, amount, isTrial, csmId, comment);
+      const res = await applyPitchStageChange({ ...t, labId: lab.id }, {
+        from, to, comment, amount, isTrial, csmId: idByName?.[lab.csm], labMrr: lab.mrr,
+      });
+      if (res.newMrr != null) onPatchLab?.(lab.id, { mrr: res.newMrr });
+      if (to === "Added" || to === "Lost after Purchase") {
         const [fresh] = await Promise.all([fetchLabAdoption(lab.id), loadCollections()]);
         setSaved(fresh);
-        showToast(`${t.label} marked Added.`);
-      } else {
-        const opts = { comment, from, label: t.label };
-        if (t.level === "module") await setModulePitchStatus(lab.id, t.moduleKey, to, csmId, opts);
-        else await setParamPitchStatus(lab.id, t.moduleKey, t.paramName, to, csmId, opts);
-        showToast(`${t.label}: ${from} → ${to}.`);
       }
       setPitch(await fetchLabPitchStatus(lab.id));
       fetchLabActivity(lab.id).then(setActivity).catch((err) => console.error(err));
       setPendingPitch(null);
+      showToast(res.message);
     } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+
+  // "Mark purchased" on a not-yet-bought Expansion feature is the same thing as moving its pitch to Added:
+  // it asks Priced or Trial (and the monthly charge if priced), creates the Collections entry, puts the
+  // feature in scope and logs it — instead of the old silent draft toggle that recorded no price at all.
+  function handleMarkPurchased(moduleKey, paramName, st) {
+    const fromStatus = getParamPitchStatus(pitch, moduleKey, paramName, st.included);
+    handlePitchStageChange("Added", { moduleKey, paramName, level: "param", label: paramName, existingParamState: st, fromStatus });
+  }
+
+  // The newest Collections entry created for a purchased feature — what the Adoption tab shows as its
+  // "Priced ₹X/mo" or "Trial" tag, and what "Add charges" converts.
+  function featureCharge(moduleKey, paramName) {
+    return collItems.find((i) => i.moduleKey === moduleKey && (i.paramName || null) === (paramName || null)) || null;
   }
 
   async function handleReassignClick() {
@@ -807,7 +874,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setSavingStatus(true);
     try {
       await updateLabStatus(lab.id, newStatus);
-      onPatchLab && onPatchLab(lab.id, { status: newStatus });
+      onPatchLab?.(lab.id, { status: newStatus });
       const csmId = idByName?.[lab.csm];
       const meta = `${lab.status} → ${newStatus}`;
       logActivity(lab.id, { kind: "Status Changed", title: "Status changed", meta, csmId }).catch((err) => console.error(err));
@@ -833,7 +900,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       await logChurn(lab.id, {
         churnType, churnMonth, mrrLost: parseFloat(churnMrrLost) || 0, dueAmount: outstandingNow, reason: churnReason,
       }, csmId);
-      if (churnType === "Churned") onPatchLab && onPatchLab(lab.id, { status: "Churned" });
+      if (churnType === "Churned") onPatchLab?.(lab.id, { status: "Churned" });
       setChurnOpen(false);
       showToast(churnType === "Churned" ? "Lab marked Churned." : "Contraction logged.");
     } catch (err) {
@@ -853,7 +920,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
         return;
       }
       await logLabPulse(lab.id, { healthStatus: pulseHealth, rating, note: pulseNote }, csmId);
-      onPatchLab && onPatchLab(lab.id, { healthStatus: pulseHealth, lastRating: rating });
+      onPatchLab?.(lab.id, { healthStatus: pulseHealth, lastRating: rating });
       setPulseOpen(false);
       showToast(`Health set to ${pulseHealth}.`);
     } catch (err) {
@@ -869,7 +936,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setSavingStageTags(true);
     try {
       await updateLabStageTags(lab.id, next);
-      onPatchLab && onPatchLab(lab.id, { stageTags: next });
+      onPatchLab?.(lab.id, { stageTags: next });
     } catch (err) {
       setStageTags(stageTags); // revert on failure
       showToast(`⚠ ${err.message}`);
@@ -887,7 +954,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     try {
       const csmId = idByName?.[lab.csm];
       await updateLabTestimonial(lab.id, { collected: testimonialCollected, videoUrl: testimonialUrl, csmId });
-      onPatchLab && onPatchLab(lab.id, {
+      onPatchLab?.(lab.id, {
         testimonialCollected, testimonialVideoUrl: testimonialUrl,
         testimonialCollectedBy: testimonialCollected ? csmId : null,
         testimonialCollectedAt: testimonialCollected ? new Date().toISOString() : null,
@@ -954,14 +1021,14 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
         billingType: editBillingType, paymentCycle: editPaymentCycle, creditDays: editCreditDays, remarks: editRemarks,
       };
       await updateLabDetails(lab.id, patch);
-      onPatchLab && onPatchLab(lab.id, patch);
+      onPatchLab?.(lab.id, patch);
       const csmId = idByName?.[lab.csm];
       logActivity(lab.id, { kind: "Details Updated", title: "Lab details updated", csmId }).catch((err) => console.error(err));
 
       const parsedMrr = parseFloat(editMrr);
       if (mrrEditable && Number.isFinite(parsedMrr) && parsedMrr !== (lab.mrr || 0)) {
         await updateLabMRR(lab.id, parsedMrr, lab.region, "manual");
-        onPatchLab && onPatchLab(lab.id, { mrr: parsedMrr });
+        onPatchLab?.(lab.id, { mrr: parsedMrr });
         logActivity(lab.id, {
           kind: "MRR Updated", title: `MRR set to ${fmtMoney(parsedMrr, lab.region)}`, csmId,
         }).catch((err) => console.error(err));
@@ -995,7 +1062,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setSavingBillingMode(true);
     try {
       await updateLabBillingMode(lab.id, next);
-      onPatchLab && onPatchLab(lab.id, { billingMode: next });
+      onPatchLab?.(lab.id, { billingMode: next });
       const csmId = idByName?.[lab.csm];
       logActivity(lab.id, { kind: "Billing Mode Changed", title: "Billing mode changed", meta: `→ ${next || "Per-Branch (default)"}`, csmId }).catch((err) => console.error(err));
       showToast(`Billing mode set to ${next || "Per-Branch"}.`);
@@ -1252,7 +1319,8 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           </div>
 
           <div style={{ display: "flex", gap: 10, marginTop: 18, paddingTop: 18, borderTop: "1px solid var(--border)", flexWrap: "wrap" }}>
-            <button className="btn btn-ghost" onClick={() => { setNewCsm(lab.csm); setReassignOpen(true); }}>Reassign CSM</button>
+            {/* Only a CSM Lead or Admin can move a lab to another CSM (also enforced in the database — migration 0024). */}
+            {viewer.isHead && <button className="btn btn-ghost" onClick={() => { setNewCsm(lab.csm); setReassignOpen(true); }}>Reassign CSM</button>}
             <button className="btn btn-ghost" onClick={() => { setNewPlan(lab.plan); setPlanReason(""); setChangePlanOpen(true); }}>Change Plan</button>
             <button className="btn btn-ghost" onClick={() => { setNewStatus(lab.status); setStatusOpen(true); }}>Change Status</button>
             <button className="btn btn-ghost" onClick={() => { setPulseHealth(lab.healthStatus || "No Risk"); setPulseRating(lab.lastRating != null ? String(lab.lastRating) : ""); setPulseNote(""); setPulseOpen(true); }}>Log Health Check</button>
@@ -1314,16 +1382,78 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       </Modal>
 
       <Modal
+        open={!!editInv}
+        title={editInv ? `Edit Invoice ${editInv.invoiceNumber}` : ""}
+        onClose={() => setEditInv(null)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setEditInv(null), disabled: savingEdit },
+          { label: savingEdit ? "Saving…" : "Save Changes", className: "btn-primary", onClick: handleSaveInvoiceEdit, disabled: savingEdit },
+        ]}
+      >
+        {editInv && (() => {
+          const fs = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
+          const setF = (k, v) => setEditInv((e) => ({ ...e, f: { ...e.f, [k]: v } }));
+          const sym = nativeCurrency(lab.region) === "USD" ? "$" : "₹";
+          return (
+            <>
+              <div className="tmpl-field" style={{ marginBottom: 10 }}><label>Invoice Number</label><input style={fs} value={editInv.f.invoiceNumber} onChange={(e) => setF("invoiceNumber", e.target.value)} /></div>
+              <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                <div className="tmpl-field" style={{ flex: 1 }}><label>Type</label>
+                  <select style={fs} value={editInv.f.invoiceType} onChange={(e) => setF("invoiceType", e.target.value)}>
+                    <option value="Monthly">Monthly</option><option value="ProRata">Pro-Rata</option>
+                  </select>
+                </div>
+                <div className="tmpl-field" style={{ flex: 1 }}><label>Invoice Date</label><input type="date" style={fs} value={editInv.f.invoiceDate} onChange={(e) => setF("invoiceDate", e.target.value)} /></div>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <div className="tmpl-field" style={{ flex: 1 }}><label>Sub Total ({sym})</label><input type="number" min="0" step="0.01" style={fs} value={editInv.f.subTotal} onChange={(e) => setF("subTotal", e.target.value)} /></div>
+                <div className="tmpl-field" style={{ flex: 1 }}><label>Total ({sym})</label><input type="number" min="0" step="0.01" style={fs} value={editInv.f.total} onChange={(e) => setF("total", e.target.value)} /></div>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 10 }}>
+                Due date is recalculated from the invoice date + Credit Days. If this invoice is the one setting MRR (latest Monthly, or a later Pro-Rata), MRR moves by the difference.
+              </div>
+            </>
+          );
+        })()}
+      </Modal>
+
+      <Modal
+        open={!!editItem}
+        title="Edit Collections Item"
+        onClose={() => setEditItem(null)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setEditItem(null), disabled: savingEdit },
+          { label: savingEdit ? "Saving…" : "Save Changes", className: "btn-primary", onClick: handleSaveItemEdit, disabled: savingEdit },
+        ]}
+      >
+        {editItem && (() => {
+          const fs = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
+          return (
+            <>
+              <div className="tmpl-field" style={{ marginBottom: 10 }}><label>Feature / Description</label>
+                <input style={fs} value={editItem.f.label} onChange={(e) => setEditItem((x) => ({ ...x, f: { ...x.f, label: e.target.value } }))} /></div>
+              {editItem.isTrial ? (
+                <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>This is a trial item — use “Add Charges” to put a price on it.</div>
+              ) : (
+                <div className="tmpl-field"><label>Amount Owed ({nativeCurrency(lab.region) === "USD" ? "$" : "₹"})</label>
+                  <input type="number" min="0" step="0.01" style={fs} value={editItem.f.amount} onChange={(e) => setEditItem((x) => ({ ...x, f: { ...x.f, amount: e.target.value } }))} /></div>
+              )}
+            </>
+          );
+        })()}
+      </Modal>
+
+      <Modal
         open={!!convertItem}
-        title="Convert to Chargeable"
+        title="Add Charges"
         onClose={() => setConvertItem(null)}
         actions={[
           { label: "Cancel", className: "btn-ghost", onClick: () => setConvertItem(null), disabled: savingConvert },
-          { label: savingConvert ? "Converting…" : "Convert", className: "btn-primary", onClick: handleConvertToChargeable, disabled: savingConvert },
+          { label: savingConvert ? "Saving…" : "Add Charges", className: "btn-primary", onClick: handleConvertToChargeable, disabled: savingConvert },
         ]}
       >
         <div className="tmpl-field">
-          <label>{convertItem?.label} — Chargeable Amount</label>
+          <label>{convertItem?.label} — Monthly Charge ({nativeCurrency(lab.region) === "USD" ? "$" : "₹"})</label>
           <input
             type="number" min="0" step="0.01" inputMode="decimal" value={convertAmount}
             onChange={(e) => setConvertAmount(e.target.value)}
@@ -1331,7 +1461,8 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
             style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }}
           />
           <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 6 }}>
-            This marks the item as chargeable and adds this amount to {lab.name}'s MRR.
+            Moves this trial to priced and records the amount owed. {lab.name}'s MRR updates when the invoice comes in
+            (a Pro-Rata invoice adds to it; the next Monthly invoice sets it).
           </div>
         </div>
       </Modal>
@@ -1632,6 +1763,18 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                               {STATUS_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
                             </select>
                             {p.category === "Expansion" && (() => {
+                              const charge = featureCharge(mod.key, p.name);
+                              if (!charge) return null;
+                              return charge.isTrial ? (
+                                <span className="cat-tag cat-Warn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                  Trial
+                                  <button type="button" className="mark-purchased" style={{ fontSize: 10.5 }} onClick={() => openConvertToChargeable(charge)}>Add charges</button>
+                                </span>
+                              ) : (
+                                <span className="cat-tag cat-Adoption">Priced {fmtMoney(charge.amount, lab.region)}/mo</span>
+                              );
+                            })()}
+                            {p.category === "Expansion" && (() => {
                               const pStatus = getParamPitchStatus(pitch, mod.key, p.name, st.included);
                               return (
                                 <select className="status-select" title="Expansion stage" value={pStatus}
@@ -1667,7 +1810,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                               </select>
                             );
                           })()}
-                          <button className="mark-purchased" onClick={() => handleToggleIncluded(mod.key, p.name)}>Mark purchased</button>
+                          <button className="mark-purchased" onClick={() => handleMarkPurchased(mod.key, p.name, st)}>Mark purchased</button>
                           {paramScopeToggle}
                         </div>
                       );
@@ -1699,7 +1842,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           <div className="table-card" style={{ padding: "6px 20px 20px", overflow: "visible" }}>
             <div style={{ display: "flex", alignItems: "center", fontSize: 11.5, color: "var(--text-faint)", padding: "10px 0 4px" }}>
               How invoices work
-              <InfoTip>Upload an invoice below — its date, amount and type are read automatically and you confirm before saving. A Monthly invoice updates this lab's MRR; a Pro-Rata invoice is a one-off top-up that doesn't. Due date is the invoice date + this lab's Credit Days ({lab.creditDays || "30"}), not the invoice's own due date field.</InfoTip>
+              <InfoTip>Upload an invoice below — its date, amount and type are read automatically and you confirm before saving. A Monthly invoice sets this lab's MRR to its Sub Total; a Pro-Rata invoice adds its Sub Total to the current MRR (until the next Monthly invoice sets it again). Due date is the invoice date + this lab's Credit Days ({lab.creditDays || "30"}), not the invoice's own due date field.</InfoTip>
             </div>
 
             {(() => {
@@ -1736,7 +1879,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               <div style={{ color: "var(--text-faint)", fontSize: 12, padding: "10px 0" }}>No invoices uploaded yet for {lab.name}.</div>
             ) : (
               <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Invoice #</th><th>Type</th><th>Invoice Date</th><th>Due Date</th><th>Sub Total</th><th>Total</th><th>Collected</th><th>Status</th></tr></thead>
+                <thead><tr><th>Invoice #</th><th>Type</th><th>Invoice Date</th><th>Due Date</th><th>Sub Total</th><th>Total</th><th>Collected</th><th>Status</th><th></th></tr></thead>
                 <tbody>{invoices.map((inv) => {
                   const bal = invoiceBalance(inv);
                   return (
@@ -1770,6 +1913,10 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                           {invoiceStatusLabel(inv)}
                         </span>
                       </td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <span className="icon-btn" title="Edit invoice" style={{ cursor: "pointer" }} onClick={() => openEditInvoice(inv)}>✎</span>
+                        <span className="icon-btn" title="Delete invoice" style={{ cursor: "pointer", marginLeft: 6 }} onClick={() => handleDeleteInvoice(inv)}>🗑</span>
+                      </td>
                     </tr>
                   );
                 })}</tbody>
@@ -1787,7 +1934,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               <div style={{ color: "var(--text-faint)", fontSize: 12, padding: "10px 0" }}>No manually-added items for {lab.name} — items also appear here automatically when a pitch on My Portfolio is marked Added.</div>
             ) : (
               <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Feature</th><th>Added</th><th>Owed</th><th>Collected</th><th>Status</th></tr></thead>
+                <thead><tr><th>Feature</th><th>Added</th><th>Owed</th><th>Collected</th><th>Status</th><th></th></tr></thead>
                 <tbody>{collItems.map((item) => {
                   const bal = itemBalance(item);
                   return (
@@ -1797,7 +1944,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                       <td className="mrr-cell">{item.isTrial ? "—" : fmtMoney(item.amount, lab.region)}</td>
                       <td>
                         {item.isTrial ? (
-                          <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => openConvertToChargeable(item)}>Convert to Chargeable</button>
+                          <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => openConvertToChargeable(item)}>Add Charges</button>
                         ) : (
                           <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                             <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -1821,6 +1968,10 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                         <span className={`status-chip ${item.isTrial ? "st-Adopted" : bal > 0 ? (item.collectedManual > 0 ? "st-InProgress" : "st-Critical") : "st-Adopted"}`} style={{ cursor: "default" }}>
                           {itemStatusLabel(item)}
                         </span>
+                      </td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <span className="icon-btn" title="Edit item" style={{ cursor: "pointer" }} onClick={() => openEditItem(item)}>✎</span>
+                        <span className="icon-btn" title="Delete item" style={{ cursor: "pointer", marginLeft: 6 }} onClick={() => handleDeleteItem(item)}>🗑</span>
                       </td>
                     </tr>
                   );
@@ -1888,7 +2039,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                     <div className="field"><label>Invoice Type</label>
                       <select value={uploadForm.invoiceType} onChange={(e) => setUploadForm((f) => ({ ...f, invoiceType: e.target.value }))}>
                         <option value="Monthly">Monthly (updates MRR)</option>
-                        <option value="ProRata">Pro-Rata add-on (one-off, MRR unchanged)</option>
+                        <option value="ProRata">Pro-Rata add-on (adds to MRR until the next Monthly invoice)</option>
                       </select>
                     </div>
                   </div>
@@ -1901,7 +2052,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                     </div>
                   </div>
                   <div className="frow">
-                    <div className="field"><label>Sub Total ({nativeCurrency(lab.region) === "USD" ? "$" : "₹"}) {uploadForm.invoiceType === "Monthly" && <span className="hint" style={{ fontWeight: 400 }}>— becomes this lab's MRR</span>}</label>
+                    <div className="field"><label>Sub Total ({nativeCurrency(lab.region) === "USD" ? "$" : "₹"}) {uploadForm.invoiceType === "Monthly" ? <span className="hint" style={{ fontWeight: 400 }}>— becomes this lab's MRR</span> : <span className="hint" style={{ fontWeight: 400 }}>— added to this lab's MRR</span>}</label>
                       <input type="number" min="0" value={uploadForm.subTotal ?? ""} onChange={(e) => setUploadForm((f) => ({ ...f, subTotal: e.target.value === "" ? null : parseFloat(e.target.value) }))} /></div>
                     <div className="field"><label>Total, incl. tax ({nativeCurrency(lab.region) === "USD" ? "$" : "₹"})</label>
                       <input type="number" min="0" value={uploadForm.total ?? ""} onChange={(e) => setUploadForm((f) => ({ ...f, total: e.target.value === "" ? null : parseFloat(e.target.value) }))} /></div>
@@ -2086,12 +2237,25 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               <div className="stile"><div className="sval" style={{ fontSize: 12.5 }}>{activity.length ? (nameById[activity[0].csm_id] || "System") : "—"}</div><div className="slabel">Last Updated By</div></div>
             </div>
 
+            {(() => {
+              const kinds = [...new Set(activity.map((e) => e.kind).filter(Boolean))].sort();
+              const shownActivity = activity.filter((e) => !activityKind || e.kind === activityKind);
+              return (
+            <>
+            <div className="filters" style={{ margin: "4px 0 10px" }}>
+              <select value={activityKind} onChange={(e) => setActivityKind(e.target.value)}>
+                <option value="">All activity types</option>
+                {kinds.map((k) => <option key={k} value={k}>{k}</option>)}
+              </select>
+              {activityKind && <span className="clear" onClick={() => setActivityKind("")}>Clear filter</span>}
+            </div>
+            <Paginated items={shownActivity}>{(pageRows) => (
             <table className="activity-table">
               <thead><tr><th>Date &amp; Time</th><th>Activity</th><th>Details</th><th>Performed By</th></tr></thead>
               <tbody>
-                {activity.length === 0 ? (
-                  <tr><td colSpan="4" style={{ textAlign: "center", color: "var(--text-faint)", padding: "20px 0" }}>No activity logged for this lab yet.</td></tr>
-                ) : activity.map((e) => {
+                {pageRows.length === 0 ? (
+                  <tr><td colSpan="4" style={{ textAlign: "center", color: "var(--text-faint)", padding: "20px 0" }}>{activity.length ? "No activity of this type." : "No activity logged for this lab yet."}</td></tr>
+                ) : pageRows.map((e) => {
                   const d = new Date(e.created_at);
                   const visitId = e.details?.visitId;
                   return (
@@ -2105,6 +2269,10 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                 })}
               </tbody>
             </table>
+            )}</Paginated>
+            </>
+              );
+            })()}
           </div>
           )
         )

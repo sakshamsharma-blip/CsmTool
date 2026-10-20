@@ -14,3 +14,7 @@ dist-ssr
 # Scratch/dev artifacts — screenshots and sample files used while building/testing, not app code
 Claude outputs/
 _test_invoices/
+
+# Playwright output
+test-results/
+playwright-report/

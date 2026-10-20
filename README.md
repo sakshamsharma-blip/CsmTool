@@ -15,7 +15,7 @@ It is **live and in daily use** at `csm-tool-two.vercel.app`, and still being ac
 | Area | What it's for |
 | --- | --- |
 | **Customer Master (Labs)** | Every lab, with Plan, CSM owner, region, parent/child hierarchy, editable Lab Name and Lab ID |
-| **Adoption Template** | The catalog of modules/parameters; each is Adoption (base plan) or Expansion (paid add-on), Mandatory or Optional. Module weights total ≤ 100%, and so do each module's parameter weights |
+| **Adoption Template** | The catalog of modules/parameters; each is Adoption (base plan) or Expansion (paid add-on), Mandatory or Optional. Module weights total exactly 100%, and so do each module's parameter weights (one-click Rescale). Editable by CSM Leads / Admins |
 | **Plans** | LIMS Starter/Growth/Advance/Premium/Enterprise, each with a default scope |
 | **My Portfolio / Dashboard** | A CSM's own labs and KPIs; Leads/Admins can switch to Team View |
 | **Collections** | Invoices (PDF upload with auto-extraction), MRR, payments, trial→chargeable conversion |
@@ -31,7 +31,8 @@ Feedback & NPS, KPI Management, Automation (greyed out as "Planned" in the sideb
 
 ## Who can see what
 
-Roles are CSM, CS Lead and Admin. A CSM sees only their own labs; Leads and Admins see everyone.
+Roles are CSM, CS Lead and Admin. A CSM sees only their own labs; Leads and Admins see everyone. Only Leads/Admins
+can edit the Adoption Template, reassign labs and manage the team; only the Admin can change someone's role.
 This is enforced in the database with Row Level Security (migration 0012), not just in the UI. A
 person can have two login emails (@livehealth.in and @creliohealth.com) that land on one profile.
 
@@ -73,7 +74,8 @@ npm run dev
 Without env values the app starts in **demo mode** (seeded local data, no login, nothing saved).
 Never commit `.env` / `.env.local`.
 
-Checks before shipping a change: `npm run build` and `npm run lint` should both be clean.
+Checks before shipping a change: `npm run build`, `npm run lint` and `npm run test:e2e` (Playwright smoke
+tests in `tests/`, run against demo mode — first time: `npx playwright install chromium`) should all pass.
 
 ## Database changes
 
@@ -90,7 +92,9 @@ Checks before shipping a change: `npm run build` and `npm run lint` should both 
 
 - Always convert to INR before summing money across labs (Domestic = INR, ROW = USD).
 - Parent/Child billing: **Consolidated** uses the parent's MRR; **Per-Branch** sums the children's.
-- A *Monthly* invoice sets a lab's MRR; a *ProRata* invoice never does.
+- A *Monthly* invoice sets a lab's MRR; a *ProRata* invoice adds to it until the next Monthly invoice.
+- Purchasing a feature (Priced or Trial) creates a Collections entry but doesn't change MRR; "Lost after
+  Purchase" lowers MRR by that feature's charge and logs a Contraction.
 - `labs.id` is the permanent internal key; `labs.lab_code` is the editable, user-facing "Lab ID".
 - Adoption features are always in scope; Expansion features are pitched and sold.
 - `activity_log.source` accepts only `'system'` and `'checkin'`.

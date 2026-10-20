@@ -162,8 +162,12 @@ export default function App() {
     // (Supabase's redirect establishes a real session for them as part of how that link works) —
     // catch it here so recoveryMode can gate the whole app on PasswordRecoveryScreen instead of
     // silently dropping them into the workspace on their old/temp password.
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (event === "PASSWORD_RECOVERY") setRecoveryMode(true);
+      // Login expired / refresh failed / signed out in another tab: go back to the sign-in screen rather than
+      // leaving a workspace on screen whose every save would fail. Refreshed tokens just update the session.
+      if (event === "SIGNED_OUT") { setSession(null); setRecoveryMode(false); }
+      if (event === "TOKEN_REFRESHED" && newSession) setSession(newSession);
     });
     return () => sub.subscription.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -488,7 +492,7 @@ export default function App() {
     <div className="app">
       <Sidebar view={view} setView={navigateFromSidebar} viewer={viewer} setCurrentCSM={setCurrentCSM} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
       <div className="main">
-        <TopBar viewer={viewer} view={view} setView={navigate} showToast={showToast} searchQuery={globalSearchQuery} onSearchChange={handleGlobalSearch} />
+        <TopBar viewer={viewer} setView={navigate} showToast={showToast} searchQuery={globalSearchQuery} onSearchChange={handleGlobalSearch} />
         <div className="content">
           {!SUPABASE_CONFIGURED && (
             <div className="banner">
@@ -511,6 +515,7 @@ export default function App() {
               onDeleteModuleParam={handleDeleteModuleParam}
               onToggleModule={handleToggleModule}
               onToggleParam={handleToggleParam}
+              canEdit={viewer.isHead}
             />
           )}
           {view === "csm-setup" && canManageUsers && (
@@ -520,7 +525,7 @@ export default function App() {
             <DashboardView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "portfolio" && (
-            <PortfolioView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <PortfolioView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} onPatchLab={handlePatchLab} showToast={showToast} />
           )}
           {view === "collections" && (
             <CollectionsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
@@ -529,7 +534,7 @@ export default function App() {
             <ExpansionView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "tasks" && (
-            <TasksView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <TasksView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} onPatchLab={handlePatchLab} showToast={showToast} />
           )}
           {view === "visits" && (
             <VisitsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />

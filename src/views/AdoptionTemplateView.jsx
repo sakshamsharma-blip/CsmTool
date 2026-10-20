@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { slugifyModuleKey } from "../lib/catalog";
+import { slugifyModuleKey, scaleWeightsTo100, weightTotal } from "../lib/catalog";
 import { planIncludesModule, planIncludesParam } from "../lib/plans";
 
 const TYPE_OPTIONS = [
@@ -7,17 +7,18 @@ const TYPE_OPTIONS = [
   { value: "O", label: "Optional" },
 ];
 const CATEGORY_OPTIONS = ["Adoption", "Expansion"];
-// Weights are percentages of a whole: all modules together, and all parameters inside one module, may
-// each add up to at most 100%. A change that would push a total past 100 is refused. Totals that are
-// ALREADY over 100 (older data) aren't rewritten behind anyone's back — they're flagged, and a change
-// that lowers (or doesn't raise) a weight is still allowed so they can be brought back down.
-const MAX_TOTAL = 100;
+// Weights are percentages of a whole: all modules together, and all parameters inside one module, must
+// each total exactly 100%. Edits are allowed while someone is working (e.g. adding a new parameter), but any
+// total that isn't 100 is flagged in red with a one-click "Rescale to 100%" that scales every weight in that
+// group by the same factor (ratios kept). Nothing is rescaled without that click.
+const TARGET_TOTAL = 100;
 
 export default function AdoptionTemplateView({
   modules, plans,
   onAddModule, onUpdateModule, onDeleteModule,
   onAddModuleParam, onUpdateModuleParam, onDeleteModuleParam,
   onToggleModule, onToggleParam,
+  canEdit = true,
 }) {
   const [selectedKey, setSelectedKey] = useState(modules[0]?.key || null);
   const selectedModule = modules.find((m) => m.key === selectedKey) || null;
@@ -27,12 +28,10 @@ export default function AdoptionTemplateView({
   // the `modules` prop) don't fight with whatever the user is mid-typing.
   const [draft, setDraft] = useState(null);
   const [paramError, setParamError] = useState("");
-  const [moduleWeightError, setModuleWeightError] = useState("");
   const [expandedParam, setExpandedParam] = useState(null); // param name whose per-Plan chips are open
 
   useEffect(() => {
     setParamError("");
-    setModuleWeightError("");
     setExpandedParam(null);
     if (!selectedModule) { setDraft(null); return; }
     setDraft({
@@ -54,7 +53,8 @@ export default function AdoptionTemplateView({
   const [newModWeight, setNewModWeight] = useState("10");
   const [newModError, setNewModError] = useState("");
 
-  const totalModuleWeight = modules.reduce((sum, m) => sum + (Number(m.weight) || 0), 0);
+  const totalModuleWeight = weightTotal(modules);
+  const modulesOff = totalModuleWeight !== TARGET_TOTAL;
 
   function openAddModule() {
     setAddingModule(true);
@@ -69,9 +69,6 @@ export default function AdoptionTemplateView({
     if (!key) return setNewModError("Key is required.");
     if (modules.some((m) => m.key === key)) return setNewModError(`A module with key "${key}" already exists.`);
     if (!Number.isFinite(weight) || weight <= 0) return setNewModError("Weight must be a positive number.");
-    if (totalModuleWeight + weight > MAX_TOTAL) {
-      return setNewModError(`Module weights already total ${totalModuleWeight}% — adding ${weight}% would make ${totalModuleWeight + weight}%. The total can't exceed ${MAX_TOTAL}%.`);
-    }
     onAddModule({ key, name, icon: newModIcon.trim() || "🧩", weight, description: "" });
     setAddingModule(false);
     setSelectedKey(key);
@@ -95,13 +92,6 @@ export default function AdoptionTemplateView({
     const value = field === "weight" ? (Number(draft.weight) || 1) : draft[field];
     if (field === "weight") {
       const savedWeight = Number(selectedModule?.weight) || 0;
-      const othersTotal = totalModuleWeight - savedWeight;
-      if (othersTotal + value > MAX_TOTAL && value > savedWeight) {
-        setModuleWeightError(`Can't set ${draft.name} to ${value}% — the other modules already total ${othersTotal}%, so the most it can be is ${Math.max(0, MAX_TOTAL - othersTotal)}%.`);
-        setDraft((d) => ({ ...d, weight: savedWeight }));
-        return;
-      }
-      setModuleWeightError("");
       if (value !== draft.weight) setDraft((d) => ({ ...d, weight: value }));
       if (value === savedWeight) return;
     }
@@ -120,13 +110,6 @@ export default function AdoptionTemplateView({
     if (dupe) { setParamError(`"${name}" already exists on ${draft.name}.`); return; }
     setParamError("");
     const weight = Number(row.weight) || 1;
-    const prevWeight = row._isNew ? 0 : Number(row._origWeight) || 0;
-    const othersTotal = draft.params.reduce((sum, p, i) => (i === idx ? sum : sum + (Number(p.weight) || 0)), 0);
-    if (othersTotal + weight > MAX_TOTAL && weight > prevWeight) {
-      setParamError(`Can't set "${name}" to ${weight}% — the other parameters in ${draft.name} already total ${othersTotal}%, so the most it can be is ${Math.max(0, MAX_TOTAL - othersTotal)}%.`);
-      updateDraftParam(idx, { weight: prevWeight || Math.max(1, Math.min(10, MAX_TOTAL - othersTotal)) });
-      return;
-    }
     if (row._isNew) {
       onAddModuleParam({ moduleKey: draft.key, name, type: row.type, weight, category: row.category });
       updateDraftParam(idx, { name, weight, _isNew: false, _origName: name, _origWeight: weight });
@@ -137,7 +120,7 @@ export default function AdoptionTemplateView({
   }
 
   function addParamRow() {
-    setDraft((d) => ({ ...d, params: [...d.params, { name: "", type: "O", weight: Math.max(1, Math.min(10, MAX_TOTAL - paramWeightTotal)), category: "Expansion", _isNew: true }] }));
+    setDraft((d) => ({ ...d, params: [...d.params, { name: "", type: "O", weight: 10, category: "Expansion", _isNew: true }] }));
   }
 
   function deleteParamRow(idx) {
@@ -148,7 +131,34 @@ export default function AdoptionTemplateView({
     setDraft((d) => ({ ...d, params: d.params.filter((_, i) => i !== idx) }));
   }
 
-  const paramWeightTotal = draft ? draft.params.reduce((s, p) => s + (Number(p.weight) || 0), 0) : 0;
+  const paramWeightTotal = draft ? weightTotal(draft.params) : 0;
+  const savedParams = draft ? draft.params.filter((p) => !p._isNew) : [];
+  const paramsOff = savedParams.length > 0 && paramWeightTotal !== TARGET_TOTAL;
+
+  // One click: scale every module weight by the same factor so they total exactly 100 (ratios kept).
+  function rescaleModules() {
+    const next = scaleWeightsTo100(modules.map((m) => m.weight));
+    if (!next) return;
+    modules.forEach((m, i) => { if (Number(m.weight) !== next[i]) onUpdateModule(m.key, { weight: next[i] }); });
+    if (draft) {
+      const i = modules.findIndex((m) => m.key === draft.key);
+      if (i >= 0) setDraft((d) => ({ ...d, weight: next[i] }));
+    }
+  }
+  // Same for the selected module's saved parameters. Unsaved new rows (no name yet) are left out.
+  function rescaleParams() {
+    const rows = draft.params.map((p, i) => ({ p, i })).filter(({ p }) => !p._isNew);
+    const next = scaleWeightsTo100(rows.map(({ p }) => p.weight));
+    if (!next) return;
+    rows.forEach(({ p }, k) => {
+      if (Number(p.weight) !== next[k]) onUpdateModuleParam(draft.key, p._origName, { type: p.type, weight: next[k], category: p.category });
+    });
+    setDraft((d) => {
+      const params = d.params.slice();
+      rows.forEach(({ i }, k) => { params[i] = { ...params[i], weight: next[k], _origWeight: next[k] }; });
+      return { ...d, params };
+    });
+  }
   const plansWithSelectedModule = draft ? plans.filter((p) => planIncludesModule(p, draft.key)) : [];
 
   return (
@@ -166,7 +176,7 @@ export default function AdoptionTemplateView({
         <div className="tmpl-list-card">
           <div className="tmpl-list-head">
             <h3>Module Builder</h3>
-            <button className="icon-btn" title="Add module" onClick={openAddModule}>+</button>
+            {canEdit && <button className="icon-btn" title="Add module" onClick={openAddModule}>+</button>}
           </div>
           {addingModule && (
             <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
@@ -211,16 +221,27 @@ export default function AdoptionTemplateView({
           </div>
           <div className="tmpl-list-foot">
             <span>Total weightage</span>
-            <span><b style={{ color: totalModuleWeight > MAX_TOTAL ? "var(--bad)" : undefined }}>{totalModuleWeight}%</b> / {MAX_TOTAL}%</span>
+            <span><b style={{ color: modulesOff ? "var(--bad)" : undefined }}>{totalModuleWeight}%</b> / {TARGET_TOTAL}%</span>
           </div>
-          {totalModuleWeight > MAX_TOTAL && (
+          {modulesOff && (
             <div style={{ padding: "8px 14px 12px", fontSize: 11.5, color: "var(--bad)", lineHeight: 1.45 }}>
-              Module weights total {totalModuleWeight}% — {totalModuleWeight - MAX_TOTAL}% over the {MAX_TOTAL}% limit. Lower some weights to bring it to {MAX_TOTAL}% or less; raising any weight is blocked until then.
+              Module weights total {totalModuleWeight}% — they must total exactly {TARGET_TOTAL}%.
+              {canEdit && (
+                <button className="btn btn-ghost" style={{ display: "block", marginTop: 6, fontSize: 11.5, padding: "5px 10px" }} onClick={rescaleModules}>
+                  Rescale to {TARGET_TOTAL}%
+                </button>
+              )}
             </div>
           )}
         </div>
 
         <div className="tmpl-config-card">
+          {!canEdit && (
+            <div className="info-banner" style={{ marginBottom: 12 }}>
+              View only — only a CSM Lead or Admin can edit the Adoption Template.
+            </div>
+          )}
+          <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           {!draft ? (
             <div className="empty-params">No modules yet — add one on the left to get started.</div>
           ) : (
@@ -229,12 +250,14 @@ export default function AdoptionTemplateView({
                 <div>
                   <h3>Module Configuration — {draft.name}</h3>
                   <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                    {draft.params.length} parameter{draft.params.length === 1 ? "" : "s"} · {paramWeightTotal}% of {MAX_TOTAL}% allocated within this module
+                    {draft.params.length} parameter{draft.params.length === 1 ? "" : "s"} · {paramWeightTotal}% of {TARGET_TOTAL}% allocated within this module
                   </div>
                 </div>
-                <button className="btn btn-ghost" style={{ color: "var(--bad)", borderColor: "var(--bad-border)" }} onClick={handleDeleteModuleClick}>
-                  Delete Module
-                </button>
+                {canEdit && (
+                  <button className="btn btn-ghost" style={{ color: "var(--bad)", borderColor: "var(--bad-border)" }} onClick={handleDeleteModuleClick}>
+                    Delete Module
+                  </button>
+                )}
               </div>
 
               <div className="tmpl-field-row">
@@ -243,9 +266,8 @@ export default function AdoptionTemplateView({
                   <input value={draft.name} onChange={(e) => handleModuleFieldChange("name", e.target.value)} onBlur={() => handleModuleFieldBlur("name")} />
                 </div>
                 <div className="tmpl-field">
-                  <label>Weightage (% of overall score — all modules ≤ {MAX_TOTAL}%)</label>
-                  <input type="number" min="0.01" step="any" max={MAX_TOTAL} value={draft.weight} onChange={(e) => handleModuleFieldChange("weight", e.target.value)} onBlur={() => handleModuleFieldBlur("weight")} />
-                  {moduleWeightError && <div style={{ color: "var(--bad)", fontSize: 11.5, marginTop: 5 }}>{moduleWeightError}</div>}
+                  <label>Weightage (% of overall score — all modules = {TARGET_TOTAL}%)</label>
+                  <input type="number" min="0.01" step="any" max={TARGET_TOTAL} value={draft.weight} onChange={(e) => handleModuleFieldChange("weight", e.target.value)} onBlur={() => handleModuleFieldBlur("weight")} />
                 </div>
               </div>
               <div className="tmpl-field" style={{ marginBottom: 16 }}>
@@ -300,7 +322,7 @@ export default function AdoptionTemplateView({
                         type="number"
                         min="0.01"
                         step="any"
-                        max={MAX_TOTAL}
+                        max={TARGET_TOTAL}
                         value={p.weight}
                         onChange={(e) => updateDraftParam(idx, { weight: e.target.value })}
                         onBlur={() => persistParamRow(idx)}
@@ -340,16 +362,22 @@ export default function AdoptionTemplateView({
               })}
               <button className="btn btn-ghost" style={{ marginTop: 10, fontSize: 12.5 }} onClick={addParamRow}>+ Add Parameter</button>
               {paramError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>{paramError}</div>}
-              <div style={{ textAlign: "right", fontSize: 11.5, color: paramWeightTotal > MAX_TOTAL ? "var(--bad)" : "var(--text-faint)", marginTop: 6 }}>
-                Parameters total: {paramWeightTotal}% / {MAX_TOTAL}%
+              <div style={{ textAlign: "right", fontSize: 11.5, color: paramsOff ? "var(--bad)" : "var(--text-faint)", marginTop: 6 }}>
+                Parameters total: {paramWeightTotal}% / {TARGET_TOTAL}%
               </div>
-              {paramWeightTotal > MAX_TOTAL && (
+              {paramsOff && (
                 <div style={{ color: "var(--bad)", fontSize: 11.5, marginTop: 4, textAlign: "right" }}>
-                  {draft.name}'s parameters total {paramWeightTotal}% — {paramWeightTotal - MAX_TOTAL}% over the {MAX_TOTAL}% limit. Lower some weights; raising any is blocked until the total is {MAX_TOTAL}% or less.
+                  {draft.name}'s parameters total {paramWeightTotal}% — they must total exactly {TARGET_TOTAL}%.
+                  {canEdit && (
+                    <button className="btn btn-ghost" style={{ marginLeft: 8, fontSize: 11.5, padding: "4px 10px" }} onClick={rescaleParams}>
+                      Rescale to {TARGET_TOTAL}%
+                    </button>
+                  )}
                 </div>
               )}
             </>
           )}
+          </fieldset>
         </div>
 
         <div>
@@ -360,7 +388,7 @@ export default function AdoptionTemplateView({
                 Choose which Plans include {draft.name} by default. It doesn't override a lab's own Adoption tab —
                 labs still get exceptions from their own scope.
               </div>
-              <div className="rules-section">
+              <fieldset disabled={!canEdit} className="rules-section" style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
                 <div className="rlabel">Plans</div>
                 {plans.map((pl) => (
                   <label key={pl.id} className="rule-row">
@@ -368,7 +396,7 @@ export default function AdoptionTemplateView({
                     <span className="rmain">{pl.name}</span>
                   </label>
                 ))}
-              </div>
+              </fieldset>
               <div className="rules-match">
                 <span>Plans including this module</span>
                 <b>{plansWithSelectedModule.length} of {plans.length}</b>

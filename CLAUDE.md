@@ -53,8 +53,10 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Parent/Child billing mode**: "Consolidated" = the parent's own `mrr` is the real number,
   children's are ignored. "Per-Branch" (default) = children's `mrr` summed, parent's own ignored.
   This governs whether a lab's MRR should even be directly editable.
-- **Invoices**: `invoice_type = 'Monthly'` updates the lab's MRR; `'ProRata'` is a one-off top-up
-  that never touches MRR.
+- **Invoices & MRR** (Oct 2026): a `Monthly` invoice SETS the lab's MRR to its sub total; a `ProRata`
+  invoice ADDS its sub total to the current MRR (until the next Monthly invoice sets it again). Editing or
+  deleting an invoice moves MRR only by the difference that change implies (`invoiceImpliedMrr` in
+  `lib/invoices.js`), so manual MRR edits / Lost-after-Purchase drops made since are kept.
 - **Lab identity, split on purpose**: `labs.id` is the internal primary key, set once at creation,
   referenced by every other table's `lab_id` foreign key — it is never renamed. `labs.lab_code` is
   the separate, freely-editable, user-facing "Lab ID" (unique; case-sensitive at the DB level,
@@ -71,14 +73,16 @@ with the same context and follows the same rules. Read it fully before making ch
   *Mandatory Completion* score; Optional ones only count toward *Overall Adoption*. A module's
   score is the weighted % of its in-scope parameters; a lab's score is the module scores weighted
   by module weight over that lab's in-scope modules only.
-- **Weights are percentages of 100**: all module weights together, and all parameter weights
-  inside one module, may each total at most 100%. The Adoption Template refuses edits that would
-  push a total past 100 (data already over 100 is flagged in red, never silently rewritten).
+- **Weights total exactly 100%**: all module weights together, and all parameter weights inside one
+  module, must each total exactly 100%. Edits are allowed while working (e.g. adding a parameter), but any
+  group that isn't 100 shows a red warning with a one-click "Rescale to 100%" (same ratios). Nothing is
+  rescaled automatically. Only a CSM Lead / Admin can edit the template (view-only for CSMs; DB: 0024).
 - **Pitch-stage changes** (My Portfolio, Tasks → Pitch Reminders, and each lab's own Adoption tab —
-  all three edit the same `pitch_status` rows, so they must always agree) always open a confirm dialog
-  with an *optional* comment, and every change is written to Lab History as a check-in-sourced
-  entry (`activity_log.source = 'checkin'`, `details.pitch` = from/to/comment). The two Lost
-  stages only record the outcome — they never change scope, Collections or MRR.
+  all three go through `applyPitchStageChange` in `lib/pitch.js`, so they always agree) open a confirm
+  dialog with an *optional* comment, and every change is written to Lab History as a check-in-sourced
+  entry. "Lost in Expansion" only records the outcome. "Lost after Purchase" also drops the lab's MRR by
+  the feature's charge (its newest priced Collections entry) and logs a Contraction in the churn log
+  (Reports); the next Monthly invoice resets MRR.
 - **Visits & Meetings = offline visits only** (type "Visit"). A past visit is logged to Lab
   History; a future one is *planned* as a task (`tasks.type = 'planned-visit'`, due on the visit
   date, owned by the lab's CSM). Calls/emails/WhatsApp/notes are logged only via Log Check-in.
@@ -101,9 +105,10 @@ with the same context and follows the same rules. Read it fully before making ch
   default module/param scope. A lab's actual scope can deviate from its Plan's defaults, but
   deviating never renames or forks the Plan — it only produces a deviation note, logged to Lab
   History.
-- Marking an Expansion feature "Added" moves it into the lab's adopted scope, creates an itemized
-  Collections entry, and logs to Lab History — trial/free items still get logged (at ₹0 / flagged
-  trial), never skipped.
+- **Purchasing an Expansion feature** ("Added" stage, or "Mark purchased" on the Adoption tab) asks
+  **Priced or Trial** (+ monthly charge if priced), moves it into scope, creates a Collections entry and
+  logs to Lab History. The feature then shows a "Priced ₹X/mo" or "Trial" tag (Adoption tab, My
+  Portfolio); a trial has "Add charges". Neither purchasing nor adding charges changes MRR — invoices do.
 - **Lab History** (`activity_log`) is meant to capture everything that happens to a lab, whether
   logged manually (a check-in) or as a side effect of any other action anywhere in the app.
 - **CSM scoping**: every CSM sees only their own labs by default; a Lead/Admin can switch to
@@ -119,7 +124,7 @@ with the same context and follows the same rules. Read it fully before making ch
 2. **Ask before anything ambiguous or genuinely high-consequence** — schema changes touching a
    primary key, money/financial logic, anything that could corrupt real customer data. Don't ask
    for routine, clearly-scoped changes — just build them and move fast.
-3. **Verify before calling anything done.** `npm run build` and `npm run lint` should be clean —
+3. **Verify before calling anything done.** `npm run build`, `npm run lint` and `npm run test:e2e` should be clean —
    don't introduce new warnings (pre-existing ones in the codebase are fine to leave). Use a
    Playwright smoke pass for anything touching a core flow or the adoption-scoring engine.
 4. **Migrations**: one new file per schema change, `migrations/NNNN_description.sql`, sequential
@@ -155,13 +160,20 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership, Support & Tickets, Feedback &
   NPS, KPI Management, Automation (all still "Planned" and greyed out in the sidebar).
-- Latest migration: `0021_protect_profiles_and_functions.sql` — **written, NOT yet run** (only Leads/Admins
-  can edit the roster, only the Admin can change roles or touch the Admin profile). 0018–0020 are applied.
+- Latest migration: `0026_record_migration_history.sql`; **0001–0026 are all applied** (Oct 2026). Applied
+  migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
+  there (see the note at the top of 0026).
+- Leaked-password protection is NOT on — it needs Supabase's Pro plan.
 - **Roles**: only the Admin can change a team member's role (UI locks the field; DB trigger in 0021).
-- Template weights were over 100 (modules 118%; Registration/Inventory/Operations/Master Config/Branding
-  parameters 126–212%); `0019_rebalance_template_weights.sql` scaled them to exactly 100 keeping every
-  ratio (scores unchanged) — applied Oct 2026. Weights are stored as decimals (2 places), so they may
-  show as e.g. 8.47. Branding Solutions' parameters total 55 (under the limit, left as is).
+- Template weights: 0019 scaled the over-100 groups to 100; 0023 scales any remaining group (Branding
+  Solutions, 55%) to exactly 100. Weights are stored with 2 decimals (e.g. 8.47).
+- **Reassign CSM** is Lead/Admin only (UI hides it for CSMs; DB trigger in 0024).
+- **Reminders**: per-person Email/Slack daily digest (top bar → Reminder Settings, table `notification_prefs`,
+  Edge Function `supabase/functions/send-reminders`). Off until the Admin sets the secrets and schedules
+  it — steps at the bottom of migration 0025.
+- **Filters & paging**: Tasks (lab/type/status), Collections (lab/aging), Expansion (lab/status), Visits
+  (lab) and Lab History (type) have filters; long lists page 25 at a time (`components/Pager.jsx`).
+- **Tests**: `npm run test:e2e` runs the Playwright smoke tests in `tests/` against demo mode (no database).
 
 ## If you're a different Claude session reading this
 

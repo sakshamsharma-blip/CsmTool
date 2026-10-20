@@ -2,6 +2,29 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 2026 — suggestions round (purchases, MRR, permissions, reminders, filters, tests)
+
+**Database (all applied):** `0022_foreign_key_indexes`, `0023_rebalance_weights_to_exactly_100`,
+`0024_template_and_reassign_lead_admin_only`, `0025_reminder_preferences`, `0026_record_migration_history`.
+
+- **Mark purchased / Added** asks Priced or Trial (+ monthly charge). The feature keeps a "Priced ₹X/mo" or "Trial"
+  tag on the Adoption tab and My Portfolio; trials have "Add charges". Purchasing / adding charges no longer
+  changes MRR directly.
+- **MRR follows invoices**: Monthly invoice sets MRR; Pro-Rata invoice now ADDS its sub total to MRR until the
+  next Monthly invoice.
+- **Lost after Purchase** drops MRR by the feature's charge and logs a Contraction (Reports → Churn Report).
+- **Edit / delete** invoices and Collections items (Lab → Collections tab); MRR moves only by what the change implies.
+- **Adoption Template**: every weight group must total exactly 100% — red warning + one-click "Rescale to 100%";
+  Branding Solutions rescaled to 100 (0023). Editing is CSM Lead / Admin only (view-only for CSMs).
+- **Reassign CSM** is CSM Lead / Admin only.
+- **Reminders**: Reminder Settings (top bar) for a daily Email and/or Slack digest of overdue tasks and payments.
+  Sender built (`supabase/functions/send-reminders`); switched on once email/Slack credentials are added.
+- **Filters & paging**: Tasks (lab, type, open/done), Collections (lab, aging), Expansion (lab, status),
+  Visits (lab), Lab History (activity type); long lists show 25 per page.
+- **Login expiry** now returns to the sign-in screen instead of leaving a workspace whose saves fail.
+- **Faster first load**: the PDF reader loads only when an invoice is uploaded (main download 1.24 MB → 0.81 MB).
+- **Smoke tests**: `npm run test:e2e` (Playwright, demo mode). All lint warnings fixed (15 → 0).
+
 ## Oct 2026 — full-repo check (bug fixes)
 - Dates were computed in UTC, so in India "today" was yesterday: new tasks defaulted to overdue, check-in/visit
   dates and follow-ups were a day off, and invoice due dates were saved one day early. New `lib/dates.js`;

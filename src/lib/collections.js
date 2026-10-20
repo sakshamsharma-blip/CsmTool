@@ -92,11 +92,9 @@ export async function updateItemCollected(itemId, manualAmount, owedAmount, labI
   return fullyCollected ? "Collected" : "Partially Collected";
 }
 
-// Converts a trial/free Collections item to chargeable — sets the real amount and flips it back
-// into the normal owed/collected tracking (starts at 0 collected, same as any newly-added paid
-// item). MRR is NOT touched here — the caller bumps the lab's MRR separately (see labs.js's
-// updateLabMRR), since this module has no opinion on which lab record that belongs to.
-export async function convertItemToChargeable(itemId, amount, labId, csmId, label) {
+// "Add charges" on a trial/free item — sets the real monthly amount and flips it into normal owed/collected
+// tracking (starts at 0 collected). MRR is NOT touched: it moves with invoices (Pro-Rata adds, Monthly sets).
+export async function convertItemToChargeable(itemId, amount, labId, csmId, label, region) {
   const { error } = await supabase
     .from("collections_items")
     .update({ is_trial: false, amount, status: "Pending", collected_manual: 0, collected_at: null, resolution_comment: null })
@@ -104,8 +102,8 @@ export async function convertItemToChargeable(itemId, amount, labId, csmId, labe
   if (error) throw error;
   logActivity(labId, {
     kind: "Collections Update",
-    title: "Converted to chargeable",
-    meta: `${label || "Item"} now billed at ${amount}`,
+    title: "Charges added (trial → priced)",
+    meta: `${label || "Item"} now billed at ${region === "ROW" ? "$" : "₹"}${Number(amount).toLocaleString("en-IN")}/mo — MRR updates from the next invoice`,
     csmId,
   }).catch((err) => console.error(err));
 }
@@ -149,4 +147,36 @@ export function labCollectionsSummary(items) {
     lastPayment: paid[0]?.collectedAt || null,
     openCount: open.length,
   };
+}
+
+// Edits a Collections item's description and (for a priced item) the amount owed. Status follows the
+// amounts, same as everywhere else. MRR is not touched — it follows invoices.
+export async function updateCollectionsItem(item, { label, amount }, labId, csmId, region) {
+  const patch = { label };
+  if (!item.isTrial) {
+    patch.amount = amount;
+    patch.status = (item.collectedManual || 0) >= amount ? "Resolved" : "Pending";
+  }
+  const { data: updated, error } = await supabase.from("collections_items").update(patch).eq("id", item.id).select("id");
+  if (error) throw error;
+  if (!updated || !updated.length) throw new Error("The item wasn't updated — you may not have access to this lab.");
+  const sym = region === "ROW" ? "$" : "₹";
+  logActivity(labId, {
+    kind: "Collections Update",
+    title: "Collections item edited",
+    meta: `${label}${item.isTrial ? " (trial)" : ` — owed ${sym}${Number(amount).toLocaleString("en-IN")}`}`,
+    csmId,
+  }).catch((err) => console.error(err));
+}
+
+export async function deleteCollectionsItem(item, labId, csmId) {
+  const { data: deleted, error } = await supabase.from("collections_items").delete().eq("id", item.id).select("id");
+  if (error) throw error;
+  if (!deleted || !deleted.length) throw new Error("The item wasn't deleted — you may not have access to this lab.");
+  logActivity(labId, {
+    kind: "Collections Update",
+    title: "Collections item deleted",
+    meta: `${item.label}${item.collectedManual ? ` (had ${item.collectedManual} collected)` : ""}`,
+    csmId,
+  }).catch((err) => console.error(err));
 }

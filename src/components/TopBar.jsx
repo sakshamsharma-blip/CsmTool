@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
 import { roleLabel } from "../lib/roles";
 import ChangePasswordModal from "./ChangePasswordModal";
+import ReminderSettingsModal from "./ReminderSettingsModal";
 import { applyTheme, getStoredMode, saveMode, watchSystemTheme } from "../lib/theme";
 
 const THEME_OPTIONS = [
@@ -10,10 +11,11 @@ const THEME_OPTIONS = [
   { mode: "dark", icon: "☾", label: "Dark mode" },
 ];
 
-export default function TopBar({ viewer, view, setView, showToast, searchQuery, onSearchChange }) {
+export default function TopBar({ viewer, setView, showToast, searchQuery, onSearchChange }) {
   const { currentCSM, csmDirectory, myName, isHead: canManageUsers } = viewer;
   const [menuOpen, setMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [remindersOpen, setRemindersOpen] = useState(false);
   const menuRef = useRef(null);
   const [themeMode, setThemeMode] = useState(getStoredMode);
 
@@ -42,6 +44,8 @@ export default function TopBar({ viewer, view, setView, showToast, searchQuery, 
   // currently previewing as — that's the Sidebar's separate "viewing as" switcher.
   const accountName = SUPABASE_CONFIGURED ? (myName || currentCSM) : currentCSM;
   const accountRole = roleLabel(csmDirectory.find((c) => c.name === accountName)?.role);
+  // Reminder settings are always the signed-in person's own — never whoever an Admin is previewing.
+  const myProfileId = csmDirectory.find((c) => c.name === myName)?.id;
   // What Manage Users offers still follows the previewed role (viewer.isHead, aliased above),
   // same as every other Admin/Lead-only affordance in the app (e.g. Team View) — so preview
   // mode stays honest.
@@ -53,7 +57,7 @@ export default function TopBar({ viewer, view, setView, showToast, searchQuery, 
 
   function handleLogout() {
     setMenuOpen(false);
-    supabase && supabase.auth.signOut().then(() => location.reload());
+    supabase?.auth.signOut().then(() => location.reload());
   }
 
   return (
@@ -105,6 +109,11 @@ export default function TopBar({ viewer, view, setView, showToast, searchQuery, 
                 <span className="aico">👥</span> Manage Users
               </div>
             )}
+            {SUPABASE_CONFIGURED && myProfileId && (
+              <div className="account-item" onClick={() => { setMenuOpen(false); setRemindersOpen(true); }}>
+                <span className="aico">🔔</span> Reminder Settings
+              </div>
+            )}
             {SUPABASE_CONFIGURED && (
               <div className="account-item" onClick={handleChangePassword}>
                 <span className="aico">🔒</span> Change Password
@@ -117,6 +126,9 @@ export default function TopBar({ viewer, view, setView, showToast, searchQuery, 
         )}
       </div>
       <ChangePasswordModal open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} showToast={showToast} />
+      {remindersOpen && (
+        <ReminderSettingsModal open onClose={() => setRemindersOpen(false)} profileId={myProfileId} showToast={showToast} />
+      )}
     </div>
   );
 }

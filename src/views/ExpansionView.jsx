@@ -7,6 +7,7 @@ import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
 import InfoTip from "../components/InfoTip";
+import Paginated from "../components/Pager";
 import SearchSelect from "../components/SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
 
@@ -32,6 +33,8 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm());
   const [formError, setFormError] = useState("");
+  const [fLab, setFLab] = useState("");
+  const [fStatus, setFStatus] = useState("");
 
   async function loadAll() {
     if (!SUPABASE_CONFIGURED) { setLoading(false); return; }
@@ -80,6 +83,8 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
 
   const labOptions = [];
   allRows.forEach((r) => { labOptions.push(r); r.children.forEach((c) => labOptions.push(c)); });
+  // Tiles above stay whole-portfolio; the filters only narrow the table.
+  const shown = scoped.filter((i) => (!fLab || i.labId === fLab) && (!fStatus || i.status === fStatus));
 
   function openAdd() {
     setEditingId(null);
@@ -160,16 +165,24 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
         <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Live }}>{fmtINR(liveARR)}</div><div className="slabel">Live ARR</div></div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        <div className="filters" style={{ marginBottom: 0 }}>
+          <SearchSelect value={fLab} onChange={setFLab} options={labSelectOptions(labOptions.filter((l) => flatIds.has(l.id)))} emptyLabel="All labs" placeholder="All labs" />
+          <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+            <option value="">All statuses</option>
+            {EXPANSION_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+          </select>
+          {(fLab || fStatus) && <span className="clear" onClick={() => { setFLab(""); setFStatus(""); }}>Clear filters</span>}
+        </div>
         <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={openAdd}>+ Add Expansion Opportunity</button>
       </div>
 
-      {!scoped.length ? (
-        <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>No expansion opportunities for {scopeLabel} yet.</div>
+      {!shown.length ? (
+        <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>{scoped.length ? "No opportunities match these filters." : `No expansion opportunities for ${scopeLabel} yet.`}</div>
       ) : (
-        <div className="table-card"><div className="table-scroll"><table className="child-mini">
+        <div className="table-card"><Paginated items={shown}>{(pageRows) => (<div className="table-scroll"><table className="child-mini">
           <thead><tr><th>Lab</th><th>Monthly Revenue</th><th>Annual Revenue</th><th>Deal Won</th><th>Expected Live</th><th>Status</th><th>Comments</th><th></th></tr></thead>
-          <tbody>{scoped.map((item) => {
+          <tbody>{pageRows.map((item) => {
             const lab = labsById[item.labId];
             if (!lab) return null;
             return (
@@ -189,7 +202,7 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
               </tr>
             );
           })}</tbody>
-        </table></div></div>
+        </table></div>)}</Paginated></div>
       )}
 
       <Modal

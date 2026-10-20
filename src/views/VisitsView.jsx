@@ -7,6 +7,7 @@ import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
 import InfoTip from "../components/InfoTip";
+import Paginated from "../components/Pager";
 import SearchSelect from "../components/SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
 
@@ -56,6 +57,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
   const [editFollowupReason, setEditFollowupReason] = useState("");
   const [editSentiment, setEditSentiment] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  const [fLab, setFLab] = useState("");
 
   async function loadAll() {
     if (!SUPABASE_CONFIGURED) { setLoading(false); return; }
@@ -87,10 +89,10 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
   labs.forEach((l) => { labsById[l.id] = l; });
 
   // Offline visits only — everything else (calls, emails…) belongs to Log Check-in / Lab History.
-  const scoped = visits.filter((v) => flatIds.has(v.labId) && v.type === VISIT_TYPE);
+  const scoped = visits.filter((v) => flatIds.has(v.labId) && v.type === VISIT_TYPE && (!fLab || v.labId === fLab));
   const recent = scoped.slice().sort((a, b) => new Date(b.visitDate) - new Date(a.visitDate));
   const upcoming = tasks
-    .filter((t) => t.type === PLANNED_VISIT_TASK_TYPE && !t.done && t.labId && flatIds.has(t.labId))
+    .filter((t) => t.type === PLANNED_VISIT_TASK_TYPE && !t.done && t.labId && flatIds.has(t.labId) && (!fLab || t.labId === fLab))
     .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999"));
 
   // Every lab — parents AND children — searchable by name, Lab ID or city.
@@ -222,9 +224,15 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        <div className="filters" style={{ marginBottom: 0 }}>
+          <SearchSelect value={fLab} onChange={setFLab} options={labSelectOptions(flat)} emptyLabel="All labs" placeholder="All labs" />
+          {fLab && <span className="clear" onClick={() => setFLab("")}>Clear filter</span>}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
         <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={openPlan}>+ Plan a Visit</button>
         <button className="btn btn-primary" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={openLog}>+ Log Visit</button>
+        </div>
       </div>
 
       <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>Upcoming Planned Visits</h3>
@@ -259,9 +267,9 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
       {!recent.length ? (
         <div className="table-card" style={{ padding: "18px 20px", textAlign: "center", color: "var(--text-faint)", fontSize: 12.5 }}>No offline visits logged yet.</div>
       ) : (
-        <div className="table-card"><div className="table-scroll"><table className="child-mini">
+        <div className="table-card"><Paginated items={recent}>{(pageRows) => (<div className="table-scroll"><table className="child-mini">
           <thead><tr><th>Lab</th><th>Date</th><th>Notes</th><th>Sentiment</th><th></th></tr></thead>
-          <tbody>{recent.map((v) => {
+          <tbody>{pageRows.map((v) => {
             const lab = labsById[v.labId];
             const sentColor = v.sentiment === "Positive" ? "var(--ok)" : v.sentiment === "At Risk" ? "var(--bad)" : "var(--text-dim)";
             return (
@@ -274,7 +282,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
               </tr>
             );
           })}</tbody>
-        </table></div></div>
+        </table></div>)}</Paginated></div>
       )}
 
       <Modal

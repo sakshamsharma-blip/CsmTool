@@ -84,9 +84,11 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
 
   // The top bar's search box seeds this same query — keep them in sync when it changes there,
   // without fighting the user if they then edit this page's own search box directly.
-  useEffect(() => {
+  const [seenInitialQuery, setSeenInitialQuery] = useState(initialQuery);
+  if (initialQuery !== seenInitialQuery) {
+    setSeenInitialQuery(initialQuery);
     if (initialQuery !== undefined) setQuery(initialQuery);
-  }, [initialQuery]);
+  }
 
   // Ownership scoping (My Labs / Team View / previewed CSM) always applies first — same rule
   // for the table and the summary tiles above it — and the manual "All CSMs" dropdown filter

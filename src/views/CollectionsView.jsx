@@ -8,6 +8,7 @@ import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
 import InfoTip from "../components/InfoTip";
+import Paginated from "../components/Pager";
 import SearchSelect from "../components/SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
 
@@ -25,6 +26,8 @@ export default function CollectionsView({ labs, viewer, idByName, onOpenLab, sho
   const [addAmount, setAddAmount] = useState("");
   const [addTrial, setAddTrial] = useState(false);
   const [addError, setAddError] = useState(false);
+  const [fLab, setFLab] = useState("");
+  const [fBucket, setFBucket] = useState("");
 
   async function loadAll() {
     if (!SUPABASE_CONFIGURED) { setLoading(false); return; }
@@ -93,6 +96,10 @@ export default function CollectionsView({ labs, viewer, idByName, onOpenLab, sho
 
   const labOptions = [];
   allRows.forEach((r) => { labOptions.push(r); r.children.forEach((c) => labOptions.push(c)); });
+  // Tiles above stay whole-portfolio; the filters only narrow the table.
+  const shownSummaries = labSummaries
+    .filter((l) => !fLab || l.labId === fLab)
+    .filter((l) => !fBucket || (fBucket === "open" ? l.openCount > 0 : l.bucket === fBucket));
 
   async function handleAddItem() {
     if (!addLabId || !addLabel.trim()) { setAddError(true); return; }
@@ -132,16 +139,28 @@ export default function CollectionsView({ labs, viewer, idByName, onOpenLab, sho
         <div className="stile"><div className="sval" style={{ color: criticalLabs > 0 ? "var(--bad)" : "var(--text)" }}>{criticalLabs}</div><div className="slabel">Critical</div></div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        <div className="filters" style={{ marginBottom: 0 }}>
+          <SearchSelect value={fLab} onChange={setFLab} options={labSelectOptions(labOptions.filter((l) => flatIds.has(l.id)))} emptyLabel="All labs" placeholder="All labs" />
+          <select value={fBucket} onChange={(e) => setFBucket(e.target.value)}>
+            <option value="">All statuses</option>
+            <option value="open">Anything outstanding</option>
+            <option value="Current">Current</option>
+            <option value="Due Soon">Due Soon</option>
+            <option value="Overdue">Overdue</option>
+            <option value="Critical">Critical</option>
+          </select>
+          {(fLab || fBucket) && <span className="clear" onClick={() => { setFLab(""); setFBucket(""); }}>Clear filters</span>}
+        </div>
         <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={() => setAddOpen(true)}>+ Add Item</button>
       </div>
 
-      {!labSummaries.length ? (
-        <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>No collections items for {scopeLabel} yet.</div>
+      {!shownSummaries.length ? (
+        <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>{labSummaries.length ? "No labs match these filters." : `No collections items for ${scopeLabel} yet.`}</div>
       ) : (
-        <div className="table-card"><div className="table-scroll"><table className="child-mini">
+        <div className="table-card"><Paginated items={shownSummaries}>{(pageRows) => (<div className="table-scroll"><table className="child-mini">
           <thead><tr><th>Lab</th><th>Outstanding</th><th>Days Overdue</th><th>Status</th><th>Last Payment</th><th></th></tr></thead>
-          <tbody>{labSummaries.map((s) => (
+          <tbody>{pageRows.map((s) => (
             <tr key={s.labId}>
               <td className="lab-name clickable" onClick={() => onOpenLab(s.labId)}>{s.lab.name}</td>
               <td className="mrr-cell">{fmtMoney(s.outstanding, s.lab.region)}</td>
@@ -153,7 +172,7 @@ export default function CollectionsView({ labs, viewer, idByName, onOpenLab, sho
               <td><span className="mark-purchased" onClick={() => handleLogReminder(s)}>Log Reminder</span></td>
             </tr>
           ))}</tbody>
-        </table></div></div>
+        </table></div>)}</Paginated></div>
       )}
 
       <Modal

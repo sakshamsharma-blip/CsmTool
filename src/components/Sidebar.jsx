@@ -70,7 +70,7 @@ export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAd
     setView(item.key);
   }
   function handleChildClick(child) {
-    if (child.key === "__add-lab") { onOpenAddDrawer && onOpenAddDrawer(); return; }
+    if (child.key === "__add-lab") { onOpenAddDrawer?.(); return; }
     setView(child.key);
   }
 
