@@ -3,6 +3,9 @@
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
 ## Oct 2026 — engagement, time spent, module links, billing periods
+- **Invoice upload reading** is more tolerant ("Invoice#" / "Invoice No.", dd-mm-yyyy / "15-Oct-2026" dates, "Rs."
+  amounts) and always says WHY a PDF couldn't be read (password-protected, damaged, scanned/no text, which fields
+  are missing, or "the app was updated — refresh" with a Refresh button). Parsing lives in `lib/invoiceText.js`.
 **Database (both applied):** `0036_engagement_type_and_module_resources.sql`; `0037_invoice_billing_periods.sql`.
 - **Billing periods:** invoices can be Monthly, Quarterly, Half-yearly or Annual (or one-off Pro-Rata). MRR = sub
   total ÷ months covered; each invoice shows the period it covers and the lab shows "Billed up to". Upload defaults to

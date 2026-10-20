@@ -1,69 +1,52 @@
-// Client-side invoice PDF text extraction — no server function needed. CrelioHealth's own
-// invoice template (Creliant Software Pvt Ltd "TAX INVOICE") is text-native, not scanned, so
-// pdf.js's text layer is reliable here; this is not a general-purpose OCR solution.
+// Client-side invoice PDF reading — no server function needed. CrelioHealth's own invoices (Creliant Software Pvt Ltd
+// "TAX INVOICE", exported from Zoho) are text PDFs, so pdf.js's text layer is reliable here; this is not OCR. The
+// field parsing itself lives in lib/invoiceText.js.
 //
-// pdf.js emits text items in roughly drawing order, not always visual reading order (a value
-// can appear before or after unrelated blocks) — but a label and the value right next to it on
-// the invoice ("Invoice Number" / ": INV-123308") stay adjacent in the extracted stream, which
-// is all these regexes rely on. Verified against two real sample invoices (one Monthly, one
-// Pro-Rata) before wiring this in.
+// It never throws: every outcome comes back with `problem` — a plain-English reason when something couldn't be read
+// (password-protected, damaged, scanned/no text, or specific fields not found) — so the upload form can say WHY it's
+// empty instead of a generic message.
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { parseInvoiceText } from "./invoiceText";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
-function firstMatch(text, re) {
-  const m = text.match(re);
-  return m ? m[1] : null;
-}
-function parseAmount(s) {
-  if (!s) return null;
-  const n = parseFloat(s.replace(/,/g, ""));
-  return Number.isFinite(n) ? n : null;
-}
-// DD/MM/YYYY (as printed on the invoice) -> YYYY-MM-DD (what <input type="date"> and Postgres want).
-function toIsoDate(ddmmyyyy) {
-  const m = ddmmyyyy.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return "";
-  return `${m[3]}-${m[2]}-${m[1]}`;
-}
+const EMPTY = { invoiceNumber: "", invoiceDate: "", subTotal: null, total: null, invoiceType: "Monthly", typeDetected: false, extractedOk: false };
 
 export async function extractInvoiceFromFile(file) {
-  const buf = await file.arrayBuffer();
-  const doc = await getDocument({ data: new Uint8Array(buf) }).promise;
-  let joined = "";
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
-    joined += content.items.map((it) => it.str).join("|") + "|";
+  let doc;
+  try {
+    const buf = await file.arrayBuffer();
+    doc = await getDocument({ data: new Uint8Array(buf) }).promise;
+  } catch (err) {
+    console.error("Invoice PDF could not be opened:", err);
+    const name = err && err.name;
+    const problem = name === "PasswordException"
+      ? "This PDF is password-protected, so it can't be read — download an unprotected copy from Zoho, or type the details in below."
+      : name === "InvalidPDFException"
+        ? "This file doesn't look like a valid PDF (it may be damaged or not fully downloaded) — re-download it, or type the details in below."
+        : `This PDF couldn't be opened (${(err && err.message) || "unknown error"}) — try again, or type the details in below.`;
+    return { ...EMPTY, problem };
   }
-  // Two views of the same text: `cleaned` keeps single spaces between tokens (for "label: value"
-  // regexes), `flat` removes separators entirely (for keyword detection, since a phrase like
-  // "Pro-Rated Invoice" can get split across adjacent text items).
-  const cleaned = joined.replace(/\|/g, " ").replace(/\s+/g, " ").trim();
-  const flat = joined.replace(/\|/g, "");
 
-  const invoiceNumber = firstMatch(cleaned, /Invoice Number\s*:\s*(\S+)/i);
-  const invoiceDateRaw = firstMatch(cleaned, /Invoice Date\s*:\s*(\d{2}\/\d{2}\/\d{4})/i);
-  const subTotal = parseAmount(firstMatch(cleaned, /Sub Total\s*[₹$]?\s*([\d,]+\.\d{2})/i));
-  // Negative lookbehind so this doesn't match the "Sub Total" line itself.
-  const total = parseAmount(firstMatch(cleaned, /(?<!Sub )Total\s*[₹$]?\s*([\d,]+\.\d{2})/i));
+  let joined = "";
+  try {
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      joined += content.items.map((it) => it.str).join("|") + "|";
+    }
+  } catch (err) {
+    console.error("Invoice PDF text could not be read:", err);
+    return { ...EMPTY, problem: "The text inside this PDF couldn't be read — type the details in below." };
+  }
 
-  const isProRata = /Pro-Rated Invoice/i.test(flat) || /Invoice Period\s*-/i.test(flat);
-  // Billing period, when the invoice says it. Otherwise typeDetected=false and the upload form starts from the lab's
-  // own Payment Cycle — the CSM confirms or corrects it either way.
-  // Only the invoice's own "Invoice For …" line counts (words like "annual" can appear anywhere else on a PDF).
-  const period =
-    /Invoice\s*For\s*((Twelve|12)\s*Months|One\s*Year)/i.test(flat) ? "Annual"
-    : /Invoice\s*For\s*((Six|6)\s*Months|Half[\s-]*Year)/i.test(flat) ? "HalfYearly"
-    : /Invoice\s*For\s*((Three|3)\s*Months|(One\s*)?Quarter)/i.test(flat) ? "Quarterly"
-    : /Invoice\s*For\s*One\s*Month/i.test(flat) ? "Monthly"
-    : null;
-  const invoiceType = isProRata ? "ProRata" : period || "Monthly";
-  const typeDetected = isProRata || !!period;
-
-  const invoiceDate = invoiceDateRaw ? toIsoDate(invoiceDateRaw) : "";
-  const extractedOk = !!(invoiceNumber && invoiceDate && subTotal != null && total != null);
-
-  return { invoiceNumber: invoiceNumber || "", invoiceDate, subTotal, total, invoiceType, typeDetected, extractedOk };
+  const parsed = parseInvoiceText(joined);
+  let problem = null;
+  if (parsed.textLength < 20) {
+    problem = "This PDF has no readable text — it's probably a scan or an image. Type the details in below (or download the original PDF from Zoho).";
+  } else if (!parsed.extractedOk) {
+    problem = `Couldn't find the ${parsed.missing.join(", ")} in this PDF — it may use a different layout. Please fill ${parsed.missing.length > 1 ? "them" : "it"} in below.`;
+  }
+  return { ...parsed, problem };
 }

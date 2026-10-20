@@ -464,14 +464,22 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       // Half Yearly / Annual) — the CSM can still change it before saving.
       setUploadForm(extracted.typeDetected ? extracted : { ...extracted, invoiceType: invoiceTypeForCycle(lab.paymentCycle) });
       setUploadStage("confirm");
-      if (!extracted.extractedOk) showToast("Couldn't auto-read every field — please check the numbers below before saving.");
+      if (!extracted.extractedOk) showToast("Couldn't auto-read every field — see the note in the form.");
     } catch (err) {
       console.error(err);
-      // Auto-extraction failing is not fatal — drop straight into the confirm form empty so the
-      // CSM can still type everything in by hand rather than being blocked.
-      setUploadForm({ invoiceNumber: "", invoiceDate: "", invoiceType: invoiceTypeForCycle(lab.paymentCycle), subTotal: null, total: null, extractedOk: false });
+      // The PDF reader is downloaded on demand. If this tab was opened before the app was updated, that download
+      // points at the old version's file, which no longer exists — say so (a refresh fixes it) instead of an empty form
+      // with no explanation. Any other failure still drops into the form so the CSM can type the details in.
+      const staleApp = /dynamically imported module|Importing a module script failed|Loading chunk|error loading dynamically/i.test(err?.message || "");
+      setUploadForm({
+        invoiceNumber: "", invoiceDate: "", invoiceType: invoiceTypeForCycle(lab.paymentCycle), subTotal: null, total: null, extractedOk: false,
+        staleApp,
+        problem: staleApp
+          ? "The CS Console was updated while this page was open, so the invoice reader couldn't load. Refresh the page and upload again — or type the details in below."
+          : `This PDF couldn't be read (${err?.message || "unknown error"}) — type the details in below.`,
+      });
       setUploadStage("confirm");
-      showToast("Couldn't read this PDF automatically — please fill the details in by hand.");
+      showToast(staleApp ? "The app was updated — refresh the page to read invoices again." : "Couldn't read this PDF automatically — please fill the details in by hand.");
     }
   }
   async function handleSaveInvoice() {
@@ -1659,8 +1667,13 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                     return null;
                   })()}
                   {!uploadForm.extractedOk && (
-                    <div className="warn-banner" style={{ marginBottom: 12 }}>
-                      Couldn't auto-read every field from {uploadFile?.name} — please fill in / correct the details below.
+                    <div className="warn-banner" style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ flex: "1 1 240px" }}>
+                        <b>{uploadFile?.name}:</b> {uploadForm.problem || "Couldn't auto-read every field — please fill in / correct the details below."}
+                      </span>
+                      {uploadForm.staleApp && (
+                        <button type="button" className="btn btn-primary" style={{ fontSize: 11.5, padding: "5px 12px" }} onClick={() => window.location.reload()}>Refresh now</button>
+                      )}
                     </div>
                   )}
                   <div className="frow">
