@@ -99,8 +99,8 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
   const itemsByLab = {};
   scopedItems.forEach((i) => { (itemsByLab[i.labId] = itemsByLab[i.labId] || []).push(i); });
   const agingCounts = { Current: 0, "Due Soon": 0, Overdue: 0, Critical: 0 };
-  Object.values(itemsByLab).forEach((labItems) => {
-    const s = labCollectionsSummary(labItems);
+  Object.entries(itemsByLab).forEach(([labId, labItems]) => {
+    const s = labCollectionsSummary(labItems, labsById[labId]?.creditDays);
     if (s.openCount) agingCounts[s.bucket] += 1;
   });
 

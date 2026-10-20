@@ -127,6 +127,10 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
       setSaveError("Credit Days is required — enter 0 if this lab has no credit period.");
       return;
     }
+    if (hierarchy !== "child" && form.yearlyVisits.trim() === "") {
+      setSaveError("Yearly Visits Required is required for a Parent lab — enter 0 if no in-person visits are owed.");
+      return;
+    }
     if (needsBillingModeChoice && !form.newParentBillingMode) {
       setSaveError("Choose how this group is billed — Consolidated (one invoice for the whole group) or Per-Branch (each center billed separately) — before adding its first child lab.");
       return;
@@ -140,6 +144,7 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
       mrr, status: "Active",
       creditDays: form.creditDays, billingType: form.billingType, paymentCycle: form.paymentCycle,
       remarks: form.remarks.trim(),
+      yearlyVisitsRequired: form.yearlyVisits.trim() === "" ? null : parseInt(form.yearlyVisits, 10),
       // Not a field on the child row itself — a signal for the caller to also set the PARENT's
       // billing_mode, since this is the moment (first child added) that choice first matters.
       setParentBillingMode: needsBillingModeChoice ? form.newParentBillingMode : null,
@@ -288,6 +293,15 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
                     <option>Monthly</option><option>Quarterly</option><option>Half Yearly</option><option>Annual</option>
                   </select>
                 </div>
+                <div className="field"><label>Yearly Visits Required {hierarchy !== "child" ? <span className="req">*</span> : <span className="hint" style={{ fontWeight: 400 }}>(optional)</span>}</label>
+                  <input
+                    type="number" min="0" step="1" inputMode="numeric"
+                    value={form.yearlyVisits}
+                    onChange={(e) => set("yearlyVisits", e.target.value.replace(/[^0-9]/g, ""))}
+                    placeholder="e.g. 4"
+                  />
+                  <div className="hint">In-person visits this lab should get each year.</div>
+                </div>
               </div>
             </div>
 
@@ -348,6 +362,6 @@ function initialForm(csmNames, plans) {
   return {
     id: "", name: "", parentId: "", csm: csmNames[0] || "", region: "Domestic", plan: plans[0]?.id || "",
     city: "", state: "", country: "", creditDays: "30", billingType: "Fixed", paymentCycle: "Monthly",
-    mrr: "", remarks: "", newParentBillingMode: "",
+    mrr: "", remarks: "", newParentBillingMode: "", yearlyVisits: "",
   };
 }

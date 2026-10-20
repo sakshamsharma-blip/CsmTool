@@ -2,7 +2,7 @@ import { supabase } from "../supabaseClient";
 import { logActivity } from "./activity";
 import { updateLabMRR } from "./labs";
 import { nativeCurrency } from "./format";
-import { addDaysISO } from "./dates";
+import { dueDateFor } from "./dates";
 
 export async function fetchInvoicesForLab(labId) {
   const { data, error } = await supabase
@@ -60,8 +60,8 @@ export function invoiceStatusLabel(inv) {
 //               Monthly invoice sets MRR again.
 // Returns { id, newMrr }.
 export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate, subTotal, total, extractedOk, sourceFilename, csmId }) {
-  const creditDays = parseInt(lab.creditDays, 10) || 0;
-  const dueDate = addDaysISO(invoiceDate, creditDays);
+  const creditDays = lab.creditDays;
+  const dueDate = dueDateFor(invoiceDate, creditDays);
   const currency = nativeCurrency(lab.region);
 
   const { data, error } = await supabase
@@ -164,7 +164,7 @@ async function applyInvoiceMrrDelta(lab, before, after, csmId, why) {
 // Edits an invoice's number / type / date / amounts (due date is recomputed from the new date + credit
 // days). `labInvoices` = this lab's current invoices (to work out the MRR effect). Returns { newMrr }.
 export async function updateInvoice(inv, { invoiceNumber, invoiceType, invoiceDate, subTotal, total }, lab, labInvoices, csmId) {
-  const dueDate = addDaysISO(invoiceDate, parseInt(lab.creditDays, 10) || 0);
+  const dueDate = dueDateFor(invoiceDate, lab.creditDays);
   const { data: updated, error } = await supabase.from("invoices").update({
     invoice_number: invoiceNumber, invoice_type: invoiceType, invoice_date: invoiceDate, due_date: dueDate,
     sub_total: subTotal, total,

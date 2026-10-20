@@ -17,31 +17,39 @@ export default function AdoptionTemplateView({
   modules, plans,
   onAddModule, onUpdateModule, onDeleteModule,
   onAddModuleParam, onUpdateModuleParam, onDeleteModuleParam,
-  onToggleModule, onToggleParam,
+  onToggleModule, onToggleParam, onReorderModules,
   canEdit = true,
 }) {
   const [selectedKey, setSelectedKey] = useState(modules[0]?.key || null);
   const selectedModule = modules.find((m) => m.key === selectedKey) || null;
 
-  // draft = a locally-editable copy of the selected module (name/weight/description/params),
-  // re-synced only when the selection changes — so our own optimistic saves (which update
-  // the `modules` prop) don't fight with whatever the user is mid-typing.
+  // draft = a locally-editable copy of the selected module (name/weight/description/params). NOTHING in it is
+  // saved until "Save Changes" (decision, Oct 2026) — type, category, weight, name, description, added and
+  // removed parameters all wait for that click, and "Discard" throws them away. Each param keeps `_orig` (its
+  // saved values) so the save only sends what actually changed.
   const [draft, setDraft] = useState(null);
   const [paramError, setParamError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [expandedParam, setExpandedParam] = useState(null); // param name whose per-Plan chips are open
+  const [descOpen, setDescOpen] = useState({}); // row index -> description box open
+
+  function draftFrom(mod) {
+    if (!mod) return null;
+    return {
+      key: mod.key,
+      name: mod.name,
+      icon: mod.icon,
+      weight: mod.weight,
+      description: mod.description || "",
+      params: mod.params.map((p) => ({ ...p, description: p.description || "", _origName: p.name, _orig: { ...p, description: p.description || "" } })),
+    };
+  }
 
   useEffect(() => {
     setParamError("");
     setExpandedParam(null);
-    if (!selectedModule) { setDraft(null); return; }
-    setDraft({
-      key: selectedModule.key,
-      name: selectedModule.name,
-      icon: selectedModule.icon,
-      weight: selectedModule.weight,
-      description: selectedModule.description || "",
-      params: selectedModule.params.map((p) => ({ ...p, _origName: p.name, _origWeight: p.weight })),
-    });
+    setDescOpen({});
+    setDraft(draftFrom(selectedModule));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKey]);
 
@@ -56,7 +64,27 @@ export default function AdoptionTemplateView({
   const totalModuleWeight = weightTotal(modules);
   const modulesOff = totalModuleWeight !== TARGET_TOTAL;
 
+  // ---- unsaved-changes tracking ----
+  const paramChanged = (p) => !p._isNew && !p._deleted && (
+    p.name.trim() !== p._orig.name || p.type !== p._orig.type || p.category !== p._orig.category
+    || Number(p.weight) !== Number(p._orig.weight) || (p.description || "").trim() !== (p._orig.description || "").trim()
+  );
+  const isDirty = !!draft && !!selectedModule && (
+    draft.name.trim() !== selectedModule.name
+    || Number(draft.weight) !== Number(selectedModule.weight)
+    || (draft.description || "").trim() !== (selectedModule.description || "").trim()
+    || draft.params.some((p) => (p._isNew && p.name.trim()) || p._deleted || paramChanged(p))
+  );
+  function confirmLeave() {
+    return !isDirty || window.confirm(`You have unsaved changes to ${draft.name}. Discard them?`);
+  }
+  function selectModule(key) {
+    if (key === selectedKey || !confirmLeave()) return;
+    setSelectedKey(key);
+  }
+
   function openAddModule() {
+    if (!confirmLeave()) return;
     setAddingModule(true);
     setNewModName(""); setNewModKey(""); setNewModKeyTouched(false); setNewModIcon("🧩"); setNewModWeight("10"); setNewModError("");
   }
@@ -84,59 +112,101 @@ export default function AdoptionTemplateView({
     }
   }
 
-  function handleModuleFieldChange(field, value) {
-    setDraft((d) => ({ ...d, [field]: value }));
-  }
-  function handleModuleFieldBlur(field) {
-    if (!draft) return;
-    const value = field === "weight" ? (Number(draft.weight) || 1) : draft[field];
-    if (field === "weight") {
-      const savedWeight = Number(selectedModule?.weight) || 0;
-      if (value !== draft.weight) setDraft((d) => ({ ...d, weight: value }));
-      if (value === savedWeight) return;
-    }
-    onUpdateModule(draft.key, { [field]: value });
+  // ---- module order: drag a row (or use ▲ ▼); the order is saved and every lab's Adoption tab follows it ----
+  const [dragKey, setDragKey] = useState(null);
+  const [dragOverKey, setDragOverKey] = useState(null);
+  function moveModule(fromKey, toIndex) {
+    const keys = modules.map((m) => m.key);
+    const from = keys.indexOf(fromKey);
+    if (from < 0 || toIndex < 0 || toIndex >= keys.length || from === toIndex) return;
+    keys.splice(from, 1);
+    keys.splice(toIndex, 0, fromKey);
+    onReorderModules?.(keys);
   }
 
+  function updateDraft(patch) {
+    setDraft((d) => ({ ...d, ...patch }));
+  }
   function updateDraftParam(idx, patch) {
     setDraft((d) => ({ ...d, params: d.params.map((p, i) => (i === idx ? { ...p, ...patch } : p)) }));
   }
 
-  function persistParamRow(idx, overridePatch = {}) {
-    const row = { ...draft.params[idx], ...overridePatch };
-    const name = (row.name || "").trim();
-    if (!name) return;
-    const dupe = draft.params.some((p, i) => i !== idx && p.name.trim().toLowerCase() === name.toLowerCase());
-    if (dupe) { setParamError(`"${name}" already exists on ${draft.name}.`); return; }
-    setParamError("");
-    const weight = Number(row.weight) || 1;
-    if (row._isNew) {
-      onAddModuleParam({ moduleKey: draft.key, name, type: row.type, weight, category: row.category });
-      updateDraftParam(idx, { name, weight, _isNew: false, _origName: name, _origWeight: weight });
-    } else {
-      onUpdateModuleParam(draft.key, row._origName, { newName: name !== row._origName ? name : undefined, type: row.type, weight, category: row.category });
-      updateDraftParam(idx, { name, weight, _origName: name, _origWeight: weight });
-    }
-  }
-
   function addParamRow() {
-    setDraft((d) => ({ ...d, params: [...d.params, { name: "", type: "O", weight: 10, category: "Expansion", _isNew: true }] }));
+    // New parameters default to Adoption — a lab's CSM decides per lab whether it's in their plan.
+    setDraft((d) => ({ ...d, params: [...d.params, { name: "", type: "O", weight: 10, category: "Adoption", description: "", _isNew: true }] }));
   }
 
   function deleteParamRow(idx) {
     const row = draft.params[idx];
     if (row._isNew) { setDraft((d) => ({ ...d, params: d.params.filter((_, i) => i !== idx) })); return; }
-    if (!window.confirm(`Delete parameter "${row.name}"? This won't affect adoption already recorded for labs.`)) return;
-    onDeleteModuleParam(draft.key, row.name);
-    setDraft((d) => ({ ...d, params: d.params.filter((_, i) => i !== idx) }));
+    updateDraftParam(idx, { _deleted: !row._deleted }); // toggled; removed for real on Save Changes
   }
 
-  const paramWeightTotal = draft ? weightTotal(draft.params) : 0;
-  const savedParams = draft ? draft.params.filter((p) => !p._isNew) : [];
-  const paramsOff = savedParams.length > 0 && paramWeightTotal !== TARGET_TOTAL;
+  function discardChanges() {
+    setParamError("");
+    setDescOpen({});
+    setDraft(draftFrom(selectedModule));
+  }
 
-  // One click: scale every module weight by the same factor so they total exactly 100 (ratios kept).
+  async function saveChanges() {
+    if (!draft || !selectedModule) return;
+    const live = draft.params.filter((p) => !p._deleted && !(p._isNew && !p.name.trim()));
+    const names = live.map((p) => p.name.trim().toLowerCase());
+    if (live.some((p) => !p.name.trim())) { setParamError("Every parameter needs a name."); return; }
+    const dupe = names.find((n, i) => names.indexOf(n) !== i);
+    if (dupe) { setParamError(`Two parameters are named "${dupe}" — names must be unique within a module.`); return; }
+    if (!draft.name.trim()) { setParamError("The module needs a name."); return; }
+    setParamError("");
+    setSaving(true);
+    try {
+      const modPatch = {};
+      if (draft.name.trim() !== selectedModule.name) modPatch.name = draft.name.trim();
+      if (Number(draft.weight) !== Number(selectedModule.weight)) modPatch.weight = Number(draft.weight) || 1;
+      if ((draft.description || "").trim() !== (selectedModule.description || "").trim()) modPatch.description = draft.description.trim();
+      if (Object.keys(modPatch).length) await onUpdateModule(draft.key, modPatch);
+
+      for (const p of draft.params) {
+        if (p._deleted && !p._isNew) await onDeleteModuleParam(draft.key, p._origName);
+      }
+      for (const p of draft.params) {
+        if (paramChanged(p)) {
+          const name = p.name.trim();
+          await onUpdateModuleParam(draft.key, p._origName, {
+            newName: name !== p._origName ? name : undefined,
+            type: p.type, weight: Number(p.weight) || 1, category: p.category, description: (p.description || "").trim(),
+          });
+        }
+      }
+      for (const p of draft.params) {
+        if (p._isNew && p.name.trim()) {
+          await onAddModuleParam({ moduleKey: draft.key, name: p.name.trim(), type: p.type, weight: Number(p.weight) || 1, category: p.category, description: (p.description || "").trim() });
+        }
+      }
+      // Everything now matches what was saved.
+      setDraft((d) => ({
+        ...d,
+        name: d.name.trim(),
+        weight: Number(d.weight) || 1,
+        params: d.params
+          .filter((p) => !p._deleted && !(p._isNew && !p.name.trim()))
+          .map((p) => {
+            const clean = { name: p.name.trim(), type: p.type, weight: Number(p.weight) || 1, category: p.category, description: (p.description || "").trim() };
+            return { ...clean, _origName: clean.name, _orig: clean };
+          }),
+      }));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const liveParams = draft ? draft.params.filter((p) => !p._deleted) : [];
+  const paramWeightTotal = weightTotal(liveParams);
+  const paramsOff = liveParams.length > 0 && paramWeightTotal !== TARGET_TOTAL;
+
+  // One click: scale every module weight by the same factor so they total exactly 100 (ratios kept). Module
+  // weights live in the list on the left, so this applies straight away (it isn't part of one module's draft).
   function rescaleModules() {
+    if (!window.confirm(`Rescale all module weights so they total exactly ${TARGET_TOTAL}% (same proportions)?`)) return;
     const next = scaleWeightsTo100(modules.map((m) => m.weight));
     if (!next) return;
     modules.forEach((m, i) => { if (Number(m.weight) !== next[i]) onUpdateModule(m.key, { weight: next[i] }); });
@@ -145,17 +215,14 @@ export default function AdoptionTemplateView({
       if (i >= 0) setDraft((d) => ({ ...d, weight: next[i] }));
     }
   }
-  // Same for the selected module's saved parameters. Unsaved new rows (no name yet) are left out.
+  // Rescales this module's parameters in the DRAFT — saved with everything else on "Save Changes".
   function rescaleParams() {
-    const rows = draft.params.map((p, i) => ({ p, i })).filter(({ p }) => !p._isNew);
+    const rows = draft.params.map((p, i) => ({ p, i })).filter(({ p }) => !p._deleted);
     const next = scaleWeightsTo100(rows.map(({ p }) => p.weight));
     if (!next) return;
-    rows.forEach(({ p }, k) => {
-      if (Number(p.weight) !== next[k]) onUpdateModuleParam(draft.key, p._origName, { type: p.type, weight: next[k], category: p.category });
-    });
     setDraft((d) => {
       const params = d.params.slice();
-      rows.forEach(({ i }, k) => { params[i] = { ...params[i], weight: next[k], _origWeight: next[k] }; });
+      rows.forEach(({ i }, k) => { params[i] = { ...params[i], weight: next[k] }; });
       return { ...d, params };
     });
   }
@@ -206,16 +273,34 @@ export default function AdoptionTemplateView({
               </div>
             </div>
           )}
+          {canEdit && modules.length > 1 && (
+            <div style={{ padding: "6px 14px", fontSize: 11, color: "var(--text-faint)", borderBottom: "1px solid var(--border)" }}>
+              Drag ⠿ (or use ▲ ▼) to reorder — labs show modules in this order.
+            </div>
+          )}
           <div className="tmpl-list">
-            {modules.map((m) => (
+            {modules.map((m, i) => (
               <div
                 key={m.key}
-                className={`tmpl-list-row${m.key === selectedKey ? " selected" : ""}`}
-                onClick={() => setSelectedKey(m.key)}
+                className={`tmpl-list-row${m.key === selectedKey ? " selected" : ""}${dragOverKey === m.key && dragKey !== m.key ? " drag-over" : ""}`}
+                onClick={() => selectModule(m.key)}
+                draggable={canEdit}
+                onDragStart={(e) => { setDragKey(m.key); e.dataTransfer.effectAllowed = "move"; }}
+                onDragOver={(e) => { if (dragKey) { e.preventDefault(); setDragOverKey(m.key); } }}
+                onDragLeave={() => setDragOverKey((k) => (k === m.key ? null : k))}
+                onDrop={(e) => { e.preventDefault(); if (dragKey) moveModule(dragKey, i); setDragKey(null); setDragOverKey(null); }}
+                onDragEnd={() => { setDragKey(null); setDragOverKey(null); }}
               >
+                {canEdit && <span className="drag-handle" title="Drag to reorder">⠿</span>}
                 <span>{m.icon}</span>
                 <span className="tlname">{m.name}</span>
                 <span className="tlweight">{m.weight}%</span>
+                {canEdit && (
+                  <span className="reorder-btns" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" title="Move up" disabled={i === 0} onClick={() => moveModule(m.key, i - 1)}>▲</button>
+                    <button type="button" title="Move down" disabled={i === modules.length - 1} onClick={() => moveModule(m.key, i + 1)}>▼</button>
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -250,7 +335,7 @@ export default function AdoptionTemplateView({
                 <div>
                   <h3>Module Configuration — {draft.name}</h3>
                   <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                    {draft.params.length} parameter{draft.params.length === 1 ? "" : "s"} · {paramWeightTotal}% of {TARGET_TOTAL}% allocated within this module
+                    {liveParams.length} parameter{liveParams.length === 1 ? "" : "s"} · {paramWeightTotal}% of {TARGET_TOTAL}% allocated within this module
                   </div>
                 </div>
                 {canEdit && (
@@ -263,29 +348,28 @@ export default function AdoptionTemplateView({
               <div className="tmpl-field-row">
                 <div className="tmpl-field">
                   <label>Module Name</label>
-                  <input value={draft.name} onChange={(e) => handleModuleFieldChange("name", e.target.value)} onBlur={() => handleModuleFieldBlur("name")} />
+                  <input value={draft.name} onChange={(e) => updateDraft({ name: e.target.value })} />
                 </div>
                 <div className="tmpl-field">
                   <label>Weightage (% of overall score — all modules = {TARGET_TOTAL}%)</label>
-                  <input type="number" min="0.01" step="any" max={TARGET_TOTAL} value={draft.weight} onChange={(e) => handleModuleFieldChange("weight", e.target.value)} onBlur={() => handleModuleFieldBlur("weight")} />
+                  <input type="number" min="0.01" step="any" max={TARGET_TOTAL} value={draft.weight} onChange={(e) => updateDraft({ weight: e.target.value })} />
                 </div>
               </div>
               <div className="tmpl-field" style={{ marginBottom: 16 }}>
                 <label>Description (optional)</label>
                 <textarea
-                  placeholder="What this module covers, for other CSMs reading the template…"
+                  placeholder="What this module covers — shown as an ⓘ next to the module on every lab's Adoption tab"
                   value={draft.description}
-                  onChange={(e) => handleModuleFieldChange("description", e.target.value)}
-                  onBlur={() => handleModuleFieldBlur("description")}
+                  onChange={(e) => updateDraft({ description: e.target.value })}
                 />
               </div>
 
               <h4 style={{ margin: "0 0 4px", fontSize: 12.5 }}>Adoption Parameters</h4>
               <p style={{ fontSize: 11.5, color: "var(--text-faint)", margin: "0 0 10px", lineHeight: 1.5 }}>
                 Mandatory parameters drive the Mandatory Completion score; Optional ones only count toward Overall
-                Adoption. Category decides how a lab experiences the feature: Adoption is base-plan, tracked purely
-                on rollout status; Expansion is an add-on, pitched in My Portfolio until bought. Click "Plans" on a
-                row to include/exclude it for specific Plans that already have this module.
+                Adoption. Category is the default — Adoption (base plan) or Expansion (add-on). Click "Plans" on a row
+                to include/exclude it for specific Plans; ⓘ adds a description shown on labs. Edits here are saved only
+                when you click Save Changes.
               </p>
 
               <div className="tparam-table-head">
@@ -300,9 +384,9 @@ export default function AdoptionTemplateView({
               {draft.params.map((p, idx) => {
                 const includedCount = plansWithSelectedModule.filter((pl) => planIncludesParam(pl, draft.key, p._origName || p.name)).length;
                 return (
-                  <div key={p._isNew ? `new-${idx}` : p._origName}>
-                    <div className="tparam-row">
-                      <select style={{ width: 98 }} className="tw-input" value={p.type} onChange={(e) => { updateDraftParam(idx, { type: e.target.value }); persistParamRow(idx, { type: e.target.value }); }}>
+                  <div key={p._isNew ? `new-${idx}` : p._origName} style={p._deleted ? { opacity: 0.45 } : undefined}>
+                    <div className="tparam-row" style={p._isNew || paramChanged(p) ? { background: "var(--accent-dim)" } : undefined}>
+                      <select style={{ width: 98 }} className="tw-input" value={p.type} disabled={p._deleted} onChange={(e) => updateDraftParam(idx, { type: e.target.value })}>
                         {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                       <input
@@ -310,10 +394,14 @@ export default function AdoptionTemplateView({
                         placeholder="Parameter name"
                         value={p.name}
                         autoFocus={p._isNew}
+                        disabled={p._deleted}
+                        style={p._deleted ? { textDecoration: "line-through" } : undefined}
                         onChange={(e) => updateDraftParam(idx, { name: e.target.value })}
-                        onBlur={() => persistParamRow(idx)}
                       />
-                      <select style={{ width: 104 }} className="tw-input" value={p.category} onChange={(e) => { updateDraftParam(idx, { category: e.target.value }); persistParamRow(idx, { category: e.target.value }); }}>
+                      <button type="button" className="icon-btn" title={p.description ? "Edit description" : "Add a description (shown as ⓘ on labs)"} disabled={p._deleted}
+                        style={{ color: p.description ? "var(--accent)" : "var(--text-faint)" }}
+                        onClick={() => setDescOpen((o) => ({ ...o, [idx]: !o[idx] }))}>ⓘ</button>
+                      <select style={{ width: 104 }} className="tw-input" value={p.category} disabled={p._deleted} onChange={(e) => updateDraftParam(idx, { category: e.target.value })}>
                         {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                       <input
@@ -324,8 +412,8 @@ export default function AdoptionTemplateView({
                         step="any"
                         max={TARGET_TOTAL}
                         value={p.weight}
+                        disabled={p._deleted}
                         onChange={(e) => updateDraftParam(idx, { weight: e.target.value })}
-                        onBlur={() => persistParamRow(idx)}
                       />
                       <button
                         className="mark-purchased"
@@ -335,8 +423,20 @@ export default function AdoptionTemplateView({
                       >
                         {p._isNew ? "—" : `${includedCount}/${plansWithSelectedModule.length}`}
                       </button>
-                      <button className="icon-btn" title="Delete parameter" onClick={() => deleteParamRow(idx)}>×</button>
+                      <button className="icon-btn" title={p._deleted ? "Undo remove" : "Remove parameter (on Save Changes)"} onClick={() => deleteParamRow(idx)}>{p._deleted ? "↺" : "×"}</button>
                     </div>
+                    {descOpen[idx] && !p._deleted && (
+                      <div style={{ padding: "2px 0 10px 108px" }}>
+                        <textarea
+                          rows="2"
+                          className="tw-input"
+                          style={{ width: "100%", textAlign: "left", resize: "vertical" }}
+                          placeholder="What this parameter means — shown as ⓘ next to it on every lab's Adoption tab"
+                          value={p.description || ""}
+                          onChange={(e) => updateDraftParam(idx, { description: e.target.value })}
+                        />
+                      </div>
+                    )}
                     {expandedParam === (p._origName || p.name) && !p._isNew && (
                       <div style={{ padding: "4px 0 10px 84px" }}>
                         {plansWithSelectedModule.length === 0 ? (
@@ -361,6 +461,15 @@ export default function AdoptionTemplateView({
                 );
               })}
               <button className="btn btn-ghost" style={{ marginTop: 10, fontSize: 12.5 }} onClick={addParamRow}>+ Add Parameter</button>
+              {canEdit && (
+                <div className={isDirty ? "info-banner" : undefined} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 14, flexWrap: "wrap", ...(isDirty ? {} : { fontSize: 11.5, color: "var(--text-faint)" }) }}>
+                  <span>{isDirty ? <><b>Unsaved changes</b> — nothing is saved until you click Save Changes.</> : "All changes saved."}</span>
+                  <span style={{ display: "flex", gap: 8 }}>
+                    <button className="btn btn-ghost" style={{ fontSize: 12, padding: "6px 12px" }} disabled={!isDirty || saving} onClick={discardChanges}>Discard</button>
+                    <button className="btn btn-primary" style={{ fontSize: 12, padding: "6px 12px" }} disabled={!isDirty || saving} onClick={saveChanges}>{saving ? "Saving…" : "Save Changes"}</button>
+                  </span>
+                </div>
+              )}
               {paramError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>{paramError}</div>}
               <div style={{ textAlign: "right", fontSize: 11.5, color: paramsOff ? "var(--bad)" : "var(--text-faint)", marginTop: 6 }}>
                 Parameters total: {paramWeightTotal}% / {TARGET_TOTAL}%

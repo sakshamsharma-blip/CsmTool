@@ -20,7 +20,7 @@ import { updateLabStatus, updateLabStageTags, updateLabTestimonial, updateLabDet
 import { HEALTH_STATUSES, isHealthyStatus, logLabPulse } from "../lib/pulse";
 import { fetchAllVisits, fetchVisitById, updateVisit } from "../lib/visits";
 import { syncFollowupTaskForVisit, addTask } from "../lib/tasks";
-import { todayISO } from "../lib/dates";
+import { todayISO, dueDateFor } from "../lib/dates";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { CHURN_TYPES, logChurn } from "../lib/churn";
 import { getCountryNames, getStatesForCountry, cityOptionsFor } from "../lib/geography";
@@ -32,6 +32,8 @@ import Sparkline from "../components/Sparkline";
 import SearchSelect from "../components/SearchSelect";
 import PitchStageModal from "../components/PitchStageModal";
 import Paginated from "../components/Pager";
+import LabContactsCard from "../components/LabContactsCard";
+import LabDocumentsTab from "../components/LabDocumentsTab";
 import {
   fetchLabPitchStatus, getModulePitchStatus, getParamPitchStatus, PITCH_STATUSES,
   applyPitchStageChange,
@@ -56,7 +58,7 @@ function isValidHttpUrl(value) {
   }
 }
 
-const VISIT_TYPES = ["Visit", "Call", "Email", "WhatsApp", "Note"];
+const VISIT_TYPES = ["Visit", "Call", "GMeet", "Email", "WhatsApp", "Note"];
 const VISIT_DISCUSSION_TOPICS = [
   "Adoption/Usage", "Billing & Payments", "Support Issue", "Renewal/Expansion",
   "Training Need", "Relationship/Escalation", "Other",
@@ -156,6 +158,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   const [editBillingType, setEditBillingType] = useState(lab.billingType || "Fixed");
   const [editPaymentCycle, setEditPaymentCycle] = useState(lab.paymentCycle || "Monthly");
   const [editCreditDays, setEditCreditDays] = useState(lab.creditDays || "30");
+  const [editYearlyVisits, setEditYearlyVisits] = useState(lab.yearlyVisitsRequired != null ? String(lab.yearlyVisitsRequired) : "");
   const [editRemarks, setEditRemarks] = useState(lab.remarks || "");
   const [editMrr, setEditMrr] = useState(String(lab.mrr ?? ""));
   const [savingDetails, setSavingDetails] = useState(false);
@@ -889,7 +892,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
 
   async function handleChurnConfirm() {
     const outstandingNow = (() => {
-      const itemSummary = labCollectionsSummary(collItems);
+      const itemSummary = labCollectionsSummary(collItems, lab.creditDays);
       const openInvoices = invoices.filter(isInvoiceOpen);
       const invOutstanding = openInvoices.reduce((s, iv) => s + invoiceBalance(iv), 0);
       return itemSummary.outstanding + invOutstanding;
@@ -983,6 +986,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setEditBillingType(lab.billingType || "Fixed");
     setEditPaymentCycle(lab.paymentCycle || "Monthly");
     setEditCreditDays(lab.creditDays || "30");
+    setEditYearlyVisits(lab.yearlyVisitsRequired != null ? String(lab.yearlyVisitsRequired) : "");
     setEditRemarks(lab.remarks || "");
     setEditMrr(String(lab.mrr ?? ""));
     setDetailsEditMode(true);
@@ -1019,6 +1023,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       const patch = {
         name: trimmedName, labCode: trimmedLabCode, city: editCity, state: editState, country: editCountry, region: editRegion,
         billingType: editBillingType, paymentCycle: editPaymentCycle, creditDays: editCreditDays, remarks: editRemarks,
+        yearlyVisitsRequired: editYearlyVisits === "" ? null : parseInt(editYearlyVisits, 10),
       };
       await updateLabDetails(lab.id, patch);
       onPatchLab?.(lab.id, patch);
@@ -1081,6 +1086,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     { key: "adoption", label: "Adoption" },
     { key: "collections", label: `Collections${collItems.length ? ` (${collItems.length})` : ""}` },
     { key: "history", label: `Lab History${activity.length ? ` (${activity.length})` : ""}` },
+    ...(SUPABASE_CONFIGURED ? [{ key: "documents", label: "Documents" }] : []),
   ];
 
   const inScopeResults = scores.moduleResults.filter((m) => m.inScope);
@@ -1247,6 +1253,13 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                     placeholder="e.g. 30" style={inputStyle}
                   />
                 )}
+                {row("Yearly Visits Required", lab.yearlyVisitsRequired != null ? lab.yearlyVisitsRequired : "—",
+                  <input
+                    type="number" min="0" step="1" inputMode="numeric" value={editYearlyVisits}
+                    onChange={(e) => setEditYearlyVisits(e.target.value.replace(/[^0-9]/g, ""))}
+                    placeholder={lab.type === "Parent" ? "required, e.g. 4" : "optional"} style={inputStyle}
+                  />
+                )}
                 {row("Billing Type", lab.billingType || "Variable",
                   <select value={editBillingType} onChange={(e) => setEditBillingType(e.target.value)} style={inputStyle}>
                     <option>Fixed</option><option>Variable</option>
@@ -1328,6 +1341,8 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           </div>
         </div>
       )}
+      {tab === "details" && SUPABASE_CONFIGURED && <LabContactsCard lab={lab} csmId={idByName?.[currentCSM]} showToast={showToast} />}
+      {tab === "documents" && <LabDocumentsTab lab={lab} csmId={idByName?.[currentCSM]} showToast={showToast} />}
 
       <Modal
         open={reassignOpen}
@@ -1701,7 +1716,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                     <div className="module-head" style={{ cursor: "default" }}>
                       <span className="mtoggle"></span>
                       <span>{mod.icon}</span>
-                      <span className="mname">{mod.name}</span>
+                      <span className="mname">{mod.name}{mod.description ? <InfoTip label={`About ${mod.name}`}>{mod.description}</InfoTip> : null}</span>
                       <span className="out-of-scope-tag">Not applicable to this lab — can be pitched as a new module</span>
                       <div className="bar-track"></div>
                       {(() => {
@@ -1725,7 +1740,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                   <div className="module-head" onClick={() => setExpandedModule(isOpen ? null : mod.key)}>
                     <span className="mtoggle">{isOpen ? "▾" : "▸"}</span>
                     <span>{mod.icon}</span>
-                    <span className="mname">{mod.name}</span>
+                    <span className="mname">{mod.name}{mod.description ? <InfoTip label={`About ${mod.name}`}>{mod.description}</InfoTip> : null}</span>
                     <span className="mtag">{scores.weightTotal ? Math.round((mod.weight / scores.weightTotal) * 100) : 0}% of score</span>
                     <div className="bar-track"><div className="bar-fill" style={{ width: `${pct}%`, background: barColor }}></div></div>
                     <span className="mpct">{pct}%</span>
@@ -1744,7 +1759,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                         return (
                           <div key={p.name} className="param-row" style={{ opacity: 0.55 }}>
                             <span className="param-type">{p.type === "M" ? "Mandatory" : "Optional"}</span>
-                            <span className="pname">{p.name}</span>
+                            <span className="pname">{p.name}{p.description ? <InfoTip label={`About ${p.name}`}>{p.description}</InfoTip> : null}</span>
                             {catTag}
                             <span className="out-of-scope-tag">Not applicable to this lab</span>
                             {paramScopeToggle}
@@ -1756,7 +1771,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                         return (
                           <div key={p.name} className="param-row">
                             <span className={`param-type ${p.type}`}>{p.type === "M" ? "Mandatory" : "Optional"}</span>
-                            <span className="pname">{p.name}</span>
+                            <span className="pname">{p.name}{p.description ? <InfoTip label={`About ${p.name}`}>{p.description}</InfoTip> : null}</span>
                             {catTag}
                             <span className="param-weight">{p.weight}%</span>
                             <select className="status-select" value={st.status} onChange={(e) => handleSetStatus(mod.key, p.name, e.target.value)}>
@@ -1790,7 +1805,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                       return (
                         <div key={p.name} className="param-row">
                           <span className={`param-type ${p.type}`}>{p.type === "M" ? "Mandatory" : "Optional"}</span>
-                          <span className="pname">{p.name}</span>
+                          <span className="pname">{p.name}{p.description ? <InfoTip label={`About ${p.name}`}>{p.description}</InfoTip> : null}</span>
                           {catTag}
                           <span className="param-weight">{p.weight}%</span>
                           <span className="expansion-chip" style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -1842,11 +1857,11 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           <div className="table-card" style={{ padding: "6px 20px 20px", overflow: "visible" }}>
             <div style={{ display: "flex", alignItems: "center", fontSize: 11.5, color: "var(--text-faint)", padding: "10px 0 4px" }}>
               How invoices work
-              <InfoTip>Upload an invoice below — its date, amount and type are read automatically and you confirm before saving. A Monthly invoice sets this lab's MRR to its Sub Total; a Pro-Rata invoice adds its Sub Total to the current MRR (until the next Monthly invoice sets it again). Due date is the invoice date + this lab's Credit Days ({lab.creditDays || "30"}), not the invoice's own due date field.</InfoTip>
+              <InfoTip>Upload an invoice below — its date, amount and type are read automatically and you confirm before saving. A Monthly invoice sets this lab's MRR to its Sub Total; a Pro-Rata invoice adds its Sub Total to the current MRR (until the next Monthly invoice sets it again). Due date is the last day to pay — invoice date + this lab's Credit Days ({lab.creditDays || "30"}) − 1 — so it's overdue from the next day.</InfoTip>
             </div>
 
             {(() => {
-              const itemSummary = labCollectionsSummary(collItems);
+              const itemSummary = labCollectionsSummary(collItems, lab.creditDays);
               const openInvoices = invoices.filter(isInvoiceOpen);
               const invOutstanding = openInvoices.reduce((s, iv) => s + invoiceBalance(iv), 0);
               const invOldestDays = openInvoices.reduce((max, iv) => Math.max(max, Math.floor((Date.now() - new Date(iv.dueDate + "T00:00:00")) / 86400000)), 0);
@@ -2047,8 +2062,8 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                     <div className="field"><label>Invoice Date</label>
                       <input type="date" value={uploadForm.invoiceDate} onChange={(e) => setUploadForm((f) => ({ ...f, invoiceDate: e.target.value }))} /></div>
                     <div className="field"><label>Due Date (auto)</label>
-                      <input readOnly value={uploadForm.invoiceDate ? new Date(new Date(uploadForm.invoiceDate + "T00:00:00").getTime() + (parseInt(lab.creditDays, 10) || 0) * 86400000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—"} />
-                      <div className="hint">Invoice date + this lab's Credit Days ({lab.creditDays || "30"}).</div>
+                      <input readOnly value={uploadForm.invoiceDate ? new Date(dueDateFor(uploadForm.invoiceDate, lab.creditDays) + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—"} />
+                      <div className="hint">Last day to pay: invoice date + Credit Days ({lab.creditDays || "30"}) − 1. Overdue from the next day.</div>
                     </div>
                   </div>
                   <div className="frow">

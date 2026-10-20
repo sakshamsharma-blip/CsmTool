@@ -9,6 +9,12 @@ export const ACTIVITY_ICONS = {
   "Collections Reminder": "🔔",
   "Task Added": "✅",
   "Pitch Updated": "🎯",
+  "Contact Added": "👤",
+  "Contact Updated": "👤",
+  "Contact Removed": "👤",
+  "Document Added": "📄",
+  "Document Updated": "📄",
+  "Document Removed": "📄",
   "Expansion Converted": "🎯",
   "MRR Updated": "💰",
   "Invoice Uploaded": "🧾",
@@ -16,6 +22,7 @@ export const ACTIVITY_ICONS = {
   Call: "📞",
   Email: "✉️",
   WhatsApp: "💬",
+  GMeet: "🎥",
   Note: "📝",
 };
 

@@ -4,7 +4,7 @@ import Modal from "./Modal";
 const fieldStyle = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
 
 // Confirm step for every Expansion pitch-stage change (My Portfolio, Tasks → Pitch Reminders, a lab's Adoption
-// tab — including its "Mark purchased" button). The comment is always optional. "Added" asks the person to
+// tab — including its "Mark purchased" button). A comment is REQUIRED for every change (decision, Oct 2026). "Added" asks the person to
 // choose Priced or Trial (and the monthly charge if priced) because that stage creates a Collections entry;
 // "Lost after Purchase" explains the MRR drop before confirming. Render it only while a change is pending
 // (`{pending && <PitchStageModal … />}`) so its fields start fresh for each change.
@@ -23,6 +23,7 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
 
   async function handleConfirm() {
     let parsed = 0;
+    if (!comment.trim()) { setError(true); return; }
     if (isAdded && !pricing) { setError(true); return; }
     if (isAdded && !trial) {
       parsed = parseFloat(amount);
@@ -73,8 +74,8 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
       )}
 
       <div className="tmpl-field">
-        <label>Comment (optional)</label>
-        <textarea rows="3" style={{ ...fieldStyle, resize: "vertical" }} value={comment} onChange={(e) => setComment(e.target.value)}
+        <label>Comment <span style={{ color: "var(--bad)" }}>*</span></label>
+        <textarea rows="3" style={{ ...fieldStyle, resize: "vertical" }} value={comment} onChange={(e) => { setComment(e.target.value); setError(false); }}
           placeholder="Why is this changing? Anything the next person should know." />
       </div>
       {isLostAfterPurchase && (
@@ -84,9 +85,9 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
           charge, so only the stage is recorded.
         </div>
       )}
-      {error && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>{isAdded && !pricing ? "Choose Priced or Trial." : "Enter the monthly charge."}</div>}
+      {error && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>{!comment.trim() ? "A comment is required — say why the stage is changing." : isAdded && !pricing ? "Choose Priced or Trial." : "Enter the monthly charge."}</div>}
       <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 10 }}>
-        This change is recorded in the lab's Lab History{comment.trim() ? ", including your comment" : ""}.
+        This change and your comment are recorded in the lab's Lab History.
       </div>
     </Modal>
   );

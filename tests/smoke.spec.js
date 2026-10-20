@@ -37,7 +37,7 @@ test("every live screen opens without errors", async ({ page }) => {
   for (const [label, heading] of [
     ["Dashboard", "Dashboard"], ["My Portfolio", "My Portfolio"], ["Collections", "Collections"],
     ["Expansion", "Expansion"], ["Tasks", "Tasks"], ["Visits & Meetings", "Visits & Meetings"],
-    ["Adoption Template", "Adoption Template"], ["Reports", "Reports"],
+    ["Adoption Template", "Adoption Template"], ["Financial Reports", "Financial Reports"],
   ]) {
     await nav(page, label);
     // Database-backed screens show a demo-mode placeholder instead of their heading — either is fine.
@@ -86,4 +86,28 @@ test("Adoption Template is view-only for a plain CSM", async ({ page }) => {
   await nav(page, "Adoption Template");
   await expect(page.getByText(/View only/)).toBeVisible();
   await expect(page.locator(".tparam-row input[type=number]").first()).toBeDisabled();
+});
+
+test("Adoption Template: edits wait for Save Changes, and modules can be reordered", async ({ page }) => {
+  await nav(page, "Adoption Template");
+  await expect(page.getByText("All changes saved.")).toBeVisible();
+  const firstName = page.locator(".tparam-row input.pname").first();
+  await firstName.fill("Renamed parameter");
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
+  await page.getByRole("button", { name: "Discard" }).click();
+  await expect(page.getByText("All changes saved.")).toBeVisible();
+  await expect(firstName).not.toHaveValue("Renamed parameter");
+
+  const rows = page.locator(".tmpl-list .tmpl-list-row .tlname");
+  const first = await rows.nth(0).textContent();
+  const second = await rows.nth(1).textContent();
+  await page.locator(".tmpl-list .tmpl-list-row").first().getByTitle("Move down").click();
+  await expect(rows.nth(0)).toHaveText(second);
+  await expect(rows.nth(1)).toHaveText(first);
+});
+
+test("Total Labs: city filter narrows the list", async ({ page }) => {
+  const city = page.getByPlaceholder("All Cities");
+  await expect(city).toBeVisible();
+  await expect(page.getByPlaceholder("All Countries")).toBeVisible();
 });

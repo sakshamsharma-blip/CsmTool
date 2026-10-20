@@ -6,12 +6,14 @@ import { fetchLabActivity, ACTIVITY_ICONS } from "../lib/activity";
 import { fetchAllVisits, addVisit } from "../lib/visits";
 import { addTask } from "../lib/tasks";
 import { todayISO, daysFromTodayISO } from "../lib/dates";
+import { fetchLabContacts, addLabContact } from "../lib/labContacts";
 
 const CHECKIN_TYPES = [
   { key: "Call", icon: "📞" },
   { key: "Visit", icon: "🧑‍💼" },
   { key: "Email", icon: "✉️" },
   { key: "WhatsApp", icon: "💬" },
+  { key: "GMeet", icon: "🎥" },
   { key: "Note", icon: "📝" },
 ];
 const DISCUSSION_TOPICS = [
@@ -47,6 +49,9 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   const [location, setLocation] = useState("");
   const [personName, setPersonName] = useState("");
   const [personDesignation, setPersonDesignation] = useState("");
+  // This lab's points of contact (Lab Details → Points of Contact), offered as a type-or-pick list.
+  const [contacts, setContacts] = useState([]);
+  const [saveAsPoc, setSaveAsPoc] = useState(true);
   const [topics, setTopics] = useState([]);
   const [notes, setNotes] = useState("");
   const [flagged, setFlagged] = useState([]);
@@ -65,6 +70,8 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
     if (!SUPABASE_CONFIGURED) { setLoadingSide(false); return; }
     let cancelled = false;
     setLoadingSide(true);
+    // Contacts are optional extras — a missing table (migration 0032 not run) must not block the check-in.
+    fetchLabContacts(lab.id).then((rows) => { if (!cancelled) setContacts(rows); }).catch(() => {});
     Promise.all([fetchLabAdoption(lab.id), fetchAllVisits(), fetchLabActivity(lab.id)])
       .then(([a, visits, activity]) => {
         if (cancelled) return;
@@ -96,10 +103,21 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
     setActionItems((items) => items.filter((_, idx) => idx !== i));
   }
 
+  const knownContact = contacts.find((c) => c.name.trim().toLowerCase() === personName.trim().toLowerCase());
+  function handlePersonNameChange(v) {
+    setPersonName(v);
+    const match = contacts.find((c) => c.name.trim().toLowerCase() === v.trim().toLowerCase());
+    if (match) setPersonDesignation(match.designation || "");
+  }
+
   async function handleSubmit() {
     setSaving(true);
     try {
       const csmId = idByName?.[currentCSM];
+      // Someone new was typed in and "save as a point of contact" is ticked → add them to the lab's POCs.
+      if (personName.trim() && !knownContact && saveAsPoc) {
+        await addLabContact(lab.id, { name: personName, designation: personDesignation }, csmId).catch((err) => console.error(err));
+      }
       const newVisitId = await addVisit({
         labId: lab.id,
         csmId,
@@ -245,10 +263,24 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
           <div className="table-card" style={{ padding: "16px 18px", marginBottom: 14 }}>
             <h3 style={{ fontSize: 13, margin: "0 0 10px" }}>3. Person Contacted</h3>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <div className="tmpl-field" style={{ flex: "1 1 160px" }}><label>Name</label><input style={fieldStyle} value={personName} onChange={(e) => setPersonName(e.target.value)} placeholder="Who you spoke with" /></div>
+              <div className="tmpl-field" style={{ flex: "1 1 160px" }}>
+                <label>Name</label>
+                <input style={fieldStyle} value={personName} onChange={(e) => handlePersonNameChange(e.target.value)} list="lab-poc-names"
+                  placeholder={contacts.length ? "Pick a point of contact or type a name" : "Who you spoke with"} autoComplete="off" />
+                <datalist id="lab-poc-names">
+                  {contacts.map((c) => <option key={c.id} value={c.name}>{c.designation}</option>)}
+                </datalist>
+              </div>
               <div className="tmpl-field" style={{ flex: "1 1 160px" }}><label>Designation</label><input style={fieldStyle} value={personDesignation} onChange={(e) => setPersonDesignation(e.target.value)} placeholder="e.g. Lab Manager" /></div>
             </div>
           </div>
+
+          {personName.trim() && !knownContact && (
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, margin: "-6px 0 14px 4px", cursor: "pointer" }}>
+              <input type="checkbox" checked={saveAsPoc} onChange={(e) => setSaveAsPoc(e.target.checked)} />
+              Save {personName.trim()} as a point of contact for {lab.name}
+            </label>
+          )}
 
           {/* 4. Discussion topics */}
           <div className="table-card" style={{ padding: "16px 18px", marginBottom: 14 }}>

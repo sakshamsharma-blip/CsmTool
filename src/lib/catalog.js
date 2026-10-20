@@ -7,11 +7,17 @@ import { supabase } from "../supabaseClient";
 // actual adoption can still be further customized per-lab on top of that via
 // scope_overrides / param_scope_overrides, independent of this catalog.
 export async function fetchCatalog() {
+  // Modules come back in the order set by dragging them in the Module Builder (sort_order, migration 0028).
+  // If that column doesn't exist yet, fall back to the old heaviest-first order so the app still loads.
+  let modsRes = await supabase.from("modules").select("key,name,icon,weight,description,sort_order")
+    .order("sort_order", { ascending: true, nullsFirst: false }).order("weight", { ascending: false });
+  if (modsRes.error && /sort_order/.test(modsRes.error.message || "")) {
+    modsRes = await supabase.from("modules").select("key,name,icon,weight,description").order("weight", { ascending: false });
+  }
   const [{ data: mods, error: e1 }, { data: params, error: e2 }] = await Promise.all([
-    supabase.from("modules").select("key,name,icon,weight,description").order("weight", { ascending: false }),
-    // description is a newer column (migration 0016) holding the Adoption Template's per-item
-    // validation notes — not yet surfaced in the Module Builder UI, but round-tripped here so a
-    // save through that screen doesn't silently drop it.
+    Promise.resolve(modsRes),
+    // description = the parameter's explanation, edited via ⓘ in the Module Builder and shown as ⓘ next to the
+    // parameter on every lab's Adoption tab.
     supabase.from("module_params").select("module_key,name,type,weight,category,description"),
   ]);
   if (e1) throw e1;
@@ -32,9 +38,18 @@ export function slugifyModuleKey(name) {
     .slice(0, 40);
 }
 
-export async function addModule({ key, name, icon, weight, description }) {
-  const { error } = await supabase.from("modules").insert({ key, name, icon, weight, description: description || null });
+export async function addModule({ key, name, icon, weight, description, sortOrder }) {
+  const row = { key, name, icon, weight, description: description || null };
+  if (sortOrder != null) row.sort_order = sortOrder; // new modules go to the bottom of the list
+  const { error } = await supabase.from("modules").insert(row);
   if (error) throw error;
+}
+
+// Saves the Module Builder's order (array of module keys, top to bottom) as sort_order 1..n.
+export async function reorderModules(keysInOrder) {
+  const results = await Promise.all(keysInOrder.map((key, i) => supabase.from("modules").update({ sort_order: i + 1 }).eq("key", key)));
+  const failed = results.find((r) => r.error);
+  if (failed) throw failed.error;
 }
 
 export async function updateModule(key, { name, icon, weight, description }) {

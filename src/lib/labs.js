@@ -29,6 +29,8 @@ export async function fetchLabs(idByName) {
     // Only meaningful on a Parent lab once it has children — see computeLabRollup in
     // lib/labRollup.js for what this actually controls.
     billingMode: l.billing_mode || null,
+    // In-person visits a year this lab is owed (migration 0030). Required for Parent labs when added.
+    yearlyVisitsRequired: l.yearly_visits_required != null ? Number(l.yearly_visits_required) : null,
     remarks: l.remarks || "",
     healthStatus: l.health_status || null,
     lastRating: l.last_rating != null ? Number(l.last_rating) : null,
@@ -62,6 +64,7 @@ export async function insertLab(lab, idByName) {
     payment_cycle: lab.paymentCycle || null,
     billing_mode: lab.billingMode || null,
     remarks: lab.remarks || null,
+    ...(lab.yearlyVisitsRequired != null ? { yearly_visits_required: lab.yearlyVisitsRequired } : {}),
   });
   if (error) throw error;
   recordMrrSnapshot(lab.id, lab.mrr, lab.region, "lab_created").catch((err) => console.error(err));
@@ -124,7 +127,7 @@ export async function updateLabStatus(labId, status) {
 // itself, the internal primary key, is never touched here) plus anything else that isn't already
 // covered by its own dedicated action (CSM, Plan, Status). Available to whoever can already see
 // this lab (the owning CSM, or any Lead/Admin) — same visibility the RLS policy already enforces.
-export async function updateLabDetails(labId, { name, labCode, city, state, country, region, billingType, paymentCycle, creditDays, remarks }) {
+export async function updateLabDetails(labId, { name, labCode, city, state, country, region, billingType, paymentCycle, creditDays, remarks, yearlyVisitsRequired }) {
   const patch = {
     city: city || null,
     state,
@@ -137,6 +140,7 @@ export async function updateLabDetails(labId, { name, labCode, city, state, coun
   };
   if (name !== undefined) patch.name = name;
   if (labCode !== undefined) patch.lab_code = labCode;
+  if (yearlyVisitsRequired !== undefined) patch.yearly_visits_required = yearlyVisitsRequired === "" || yearlyVisitsRequired == null ? null : parseInt(yearlyVisitsRequired, 10);
   const { error } = await supabase.from("labs").update(patch).eq("id", labId);
   if (error) throw error;
 }

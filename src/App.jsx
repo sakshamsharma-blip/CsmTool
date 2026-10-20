@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "./supabaseClient";
 import { fetchProfiles, upsertProfile, myProfileName } from "./lib/profiles";
 import {
-  fetchCatalog, addModule, updateModule, deleteModule,
+  fetchCatalog, addModule, updateModule, deleteModule, reorderModules,
   addModuleParam, updateModuleParam, deleteModuleParam,
 } from "./lib/catalog";
 import { fetchPlans, setPlanModule, setPlanExcludedParam } from "./lib/plans";
@@ -361,7 +361,7 @@ export default function App() {
     const newModule = { key, name, icon, weight, description, params: [] };
     setModules((ms) => [...ms, newModule]);
     if (SUPABASE_CONFIGURED) {
-      try { await addModule({ key, name, icon, weight, description }); }
+      try { await addModule({ key, name, icon, weight, description, sortOrder: modules.length + 1 }); }
       catch (err) { console.error(err); showToast(`⚠ ${name} saved locally but NOT to the database — ${err.message}`); return; }
     }
     showToast(`${name} module added.`);
@@ -390,11 +390,11 @@ export default function App() {
     return true;
   }
 
-  async function handleAddModuleParam({ moduleKey, name, type, weight, category }) {
-    const newParam = { name, type, weight, category };
+  async function handleAddModuleParam({ moduleKey, name, type, weight, category, description }) {
+    const newParam = { name, type, weight, category, description: description || "" };
     setModules((ms) => ms.map((m) => (m.key === moduleKey ? { ...m, params: [...m.params, newParam] } : m)));
     if (SUPABASE_CONFIGURED) {
-      try { await addModuleParam({ moduleKey, name, type, weight, category }); }
+      try { await addModuleParam({ moduleKey, name, type, weight, category, description }); }
       catch (err) { console.error(err); showToast(`⚠ ${name} saved locally but NOT to the database — ${err.message}`); return; }
     }
     showToast(`${name} parameter added.`);
@@ -408,6 +408,17 @@ export default function App() {
     if (SUPABASE_CONFIGURED) {
       try { await updateModuleParam(moduleKey, name, patch); }
       catch (err) { console.error(err); showToast(`⚠ Not saved to the database — ${err.message}`); }
+    }
+  }
+
+  // Module Builder drag/▲▼: reorder locally at once, then save; roll back if the save fails.
+  async function handleReorderModules(keysInOrder) {
+    const before = modules;
+    const byKey = Object.fromEntries(modules.map((m) => [m.key, m]));
+    setModules(keysInOrder.map((k) => byKey[k]).filter(Boolean));
+    if (SUPABASE_CONFIGURED) {
+      try { await reorderModules(keysInOrder); }
+      catch (err) { console.error(err); setModules(before); showToast(`⚠ New order not saved — ${err.message}`); }
     }
   }
 
@@ -515,6 +526,7 @@ export default function App() {
               onDeleteModuleParam={handleDeleteModuleParam}
               onToggleModule={handleToggleModule}
               onToggleParam={handleToggleParam}
+              onReorderModules={handleReorderModules}
               canEdit={viewer.isHead}
             />
           )}

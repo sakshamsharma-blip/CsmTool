@@ -95,6 +95,22 @@ with the same context and follows the same rules. Read it fully before making ch
   value is *counted* still follows billing mode — Consolidated = the parent's own MRR (set by the
   group's Monthly invoice), Per-Branch = sum of the children. ARR = MRR × 12 everywhere.
 - **Total Labs and Dashboard tiles**: Total Labs, Parent Labs (Clients), Child Labs.
+- **Due dates & overdue** (Oct 2026): due date = LAST day to pay = start date + credit days − 1 (`dueDateFor` in
+  `lib/dates.js`). Invoice Oct 1 + 7 credit days → due Oct 7; Oct 8 = 1 day overdue. Collections items use the
+  same rule from their added date. Migration 0029 shifted existing invoice due dates.
+- **Adoption Template editing**: changes to a module (name, weight, description) and its parameters (type,
+  category, weight, name, description, add/remove) are a DRAFT until "Save Changes"; "Discard" reverts. Plan
+  ticks ("Apply Rules"/"Plans") and the module-total Rescale still apply straight away. Modules are ordered by
+  `modules.sort_order` (drag ⠿ or ▲▼ in the Module Builder) and labs show them in that order. Module and
+  parameter descriptions show as ⓘ on each lab's Adoption tab.
+- **Pitch stage comment is mandatory** (every stage change, incl. Mark purchased).
+- **Visits & Meetings**: the "Next Visit" on a logged visit becomes a planned visit (Upcoming); planned visits can
+  be edited (date, purpose). City column + city filter on both lists.
+- **Labs**: `yearly_visits_required` (required when adding a Parent lab, optional for Child). Total Labs has
+  Country / State / City type-to-filter dropdowns and a City column.
+- **Points of contact** (`lab_contacts`, Lab Details → Points of Contact) feed Log Check-in's "Person Contacted"
+  (pick or type; a new name can be saved as a POC). **Documents** tab per lab = links only (`lab_documents`).
+- Check-in types include **GMeet**. The old "Reports" screen is now **Financial Reports**.
 - **Dates**: build `YYYY-MM-DD` strings with `lib/dates.js` (`todayISO`, `addDaysISO`, `daysFromTodayISO`) —
   never `toISOString().slice(0, 10)`, which is UTC and gives yesterday's date in India.
 - **Display mode**: Light / System / Dark toggle in the top bar (`lib/theme.js`, saved per browser). Colours must
@@ -160,7 +176,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership, Support & Tickets, Feedback &
   NPS, KPI Management, Automation (all still "Planned" and greyed out in the sidebar).
-- Latest migration: `0027_drop_notification_prefs.sql`; **0001–0027 are all applied** (Oct 2026). Applied
+- Latest migration: `0033_lab_documents.sql`; **0001–0033 are all applied** (Oct 2026). Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).
 - Leaked-password protection is NOT on — it needs Supabase's Pro plan.

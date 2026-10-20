@@ -27,3 +27,10 @@ export function daysFromTodayISO(days) {
   d.setDate(d.getDate() + days);
   return toLocalISODate(d);
 }
+
+// Due date = the LAST day to pay (decision, Oct 2026): invoice date + credit days − 1. Invoice on Oct 1 with 7
+// credit days → due Oct 7, and Oct 8 is the first overdue day (1 day overdue). 0 credit days → due the same day.
+export function dueDateFor(startISO, creditDays) {
+  const days = Math.max(1, parseInt(creditDays, 10) || 0);
+  return addDaysISO(startISO, days - 1);
+}

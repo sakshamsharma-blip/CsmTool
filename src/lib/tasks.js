@@ -117,6 +117,7 @@ function fromRow(r, nameById) {
     repeatIntervalDays: r.repeat_interval_days,
     repeatAnchor: r.repeat_anchor,
     auto: r.auto,
+    sourceVisitId: r.source_visit_id || null,
   };
 }
 
@@ -190,11 +191,13 @@ export async function deleteTask(id) {
 // where there wasn't one before, and removes it if the follow-up date was cleared. Called from
 // the Visit Detail edit-save flow (LabDetailView) — never from visit creation, which already
 // creates its own task inline via addTask with sourceVisitId set.
-export async function syncFollowupTaskForVisit({ visitId, labId, labName, ownerName, idByName, nextFollowupDate, nextFollowupReason }) {
+// `type` / `descPrefix` let Visits & Meetings keep its next visit as a "planned-visit" task (so it shows under
+// Upcoming Planned Visits) while Log Check-in follow-ups stay plain "follow-up" tasks.
+export async function syncFollowupTaskForVisit({ visitId, labId, labName, ownerName, idByName, nextFollowupDate, nextFollowupReason, type = "follow-up", descPrefix = "Follow-up" }) {
   const { data: existing, error: e1 } = await supabase.from("tasks").select("id").eq("source_visit_id", visitId).limit(1);
   if (e1) throw e1;
   const existingId = existing && existing[0] ? existing[0].id : null;
-  const desc = `Follow-up — ${labName}${nextFollowupReason ? `: ${nextFollowupReason}` : ""}`;
+  const desc = `${descPrefix} — ${labName}${nextFollowupReason ? `: ${nextFollowupReason}` : ""}`;
 
   if (!nextFollowupDate) {
     if (existingId) await deleteTask(existingId);
@@ -204,7 +207,7 @@ export async function syncFollowupTaskForVisit({ visitId, labId, labName, ownerN
     await updateTask(existingId, { desc, due: nextFollowupDate });
   } else {
     await addTask({
-      labId, desc, owners: [ownerName], type: "follow-up", repeat: "none",
+      labId, desc, owners: [ownerName], type, repeat: "none",
       due: nextFollowupDate, idByName, assignedByName: ownerName, sourceVisitId: visitId,
     });
   }

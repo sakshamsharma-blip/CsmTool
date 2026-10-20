@@ -118,7 +118,7 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
 
   return (
     <div>
-      <h1 className="page-title">Reports</h1>
+      <h1 className="page-title">Financial Reports</h1>
       <p className="page-sub">Churn/contraction history and MRR breakdowns for <b>{scopeLabel}</b> — the granular reporting leadership tracked in spreadsheets, now live.</p>
 
       <div className="tabbar">

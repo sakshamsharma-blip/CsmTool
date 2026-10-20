@@ -21,7 +21,7 @@ const LIVE_NAV = [
   { key: "tasks", icon: "✅", label: "Tasks" },
   { key: "visits", icon: "📅", label: "Visits & Meetings" },
   { key: "adoption-template", icon: "📈", label: "Adoption Template" },
-  { key: "reports", icon: "📑", label: "Reports" },
+  { key: "reports", icon: "📑", label: "Financial Reports" },
 ];
 // "Manage Users" (the old "CSM Setup") moved to the top bar, matching the reference
 // tool — it's Admin/Lead-only, not a regular nav item everyone sees in the sidebar.

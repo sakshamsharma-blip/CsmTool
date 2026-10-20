@@ -2,6 +2,23 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 2026 — batch 4, phase 1
+**Database (all applied):** 0028 module order, 0029 due date = last day to pay, 0030 yearly
+visits required, 0031 GMeet check-in type, 0032 lab contacts, 0033 lab documents.
+- Pitch-stage comment is now required.
+- Adoption Template: drag/▲▼ to reorder modules (labs follow the order); module & parameter edits are saved only
+  with "Save Changes" (Discard reverts); per-parameter descriptions; descriptions show as ⓘ on labs' Adoption tab.
+- Visits & Meetings: a logged visit's "Next Visit" now appears under Upcoming Planned Visits; planned visits are
+  editable; City column and city filter.
+- Add Lab / Lab Details: "Yearly Visits Required" (required for Parent labs).
+- Total Labs: Country and City filters (type-to-filter) and a City column.
+- "Reports" renamed "Financial Reports".
+- Collections: due date = last day to pay (invoice date + credit days − 1); overdue days count from the next day,
+  for invoices and items alike.
+- Log Check-in: GMeet type; Person Contacted picks from the lab's points of contact (or type a new one and save it).
+- Lab Details: Points of Contact card. New Documents tab (links to the lab's documents).
+- MRR trend: hover any point to see its date and value.
+
 ## Oct 2026 — reminders kept in-app only
 - Removed the Email/Slack reminder feature (Reminder Settings in the top bar, the sender function, its data
   layer). Reminders stay inside the tool: Tasks, Dashboard and Pitch Reminders. Migration

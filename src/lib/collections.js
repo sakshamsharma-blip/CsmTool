@@ -1,5 +1,6 @@
 import { supabase } from "../supabaseClient";
 import { logActivity } from "./activity";
+import { dueDateFor } from "./dates";
 
 // Collections tracker — manual, no Zoho Books dependency. Each item has one number that
 // matters: how much has actually been collected so far (`collected_manual`), which a CSM can
@@ -135,10 +136,12 @@ export const AGING_COLORS = { Current: "var(--ok)", "Due Soon": "var(--accent)",
 // Collections Aging chart: which items are still open (a balance remains), how old the oldest
 // one is, and when this lab last had a payment logged. Amounts here stay in the lab's own
 // native currency — callers convert to INR themselves when summing across labs.
-export function labCollectionsSummary(items) {
+// `creditDays` = the lab's credit period: an item is overdue from the day after its last day to pay
+// (added date + credit days − 1), the same rule as invoices. Without it, days count from the added date.
+export function labCollectionsSummary(items, creditDays) {
   const open = items.filter(isItemOpen);
   const outstanding = open.reduce((s, i) => s + itemBalance(i), 0);
-  const oldestDays = open.reduce((max, i) => Math.max(max, daysSince(i.addedDate)), 0);
+  const oldestDays = open.reduce((max, i) => Math.max(max, daysSince(creditDays != null ? dueDateFor(i.addedDate, creditDays) : i.addedDate)), 0);
   const paid = items.filter((i) => i.collectedAt).sort((a, b) => new Date(b.collectedAt) - new Date(a.collectedAt));
   return {
     outstanding,

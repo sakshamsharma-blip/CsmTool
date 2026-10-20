@@ -64,10 +64,13 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
   const { isHead, scope, setScope, csmFilter, setCsmFilter, scopeCsm } = useScopedCsm(viewer);
 
   const [expanded, setExpanded] = useState({});
-  const [filters, setFilters] = useState({ csm: "", region: "", status: "", segment: "", state: "" });
+  const EMPTY_FILTERS = { csm: "", region: "", status: "", segment: "", country: "", state: "", city: "" };
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   // Populated from whatever States actually exist on labs today — not the full geography
   // dataset — so this only ever offers choices that will actually match something.
-  const stateOptions = useMemo(() => [...new Set(labs.map((l) => l.state).filter(Boolean))].sort(), [labs]);
+  const stateOptions = useMemo(() => [...new Set(labs.map((l) => l.state).filter((v) => v && v !== "—"))].sort(), [labs]);
+  const countryOptions = useMemo(() => [...new Set(labs.map((l) => l.country).filter((v) => v && v !== "—"))].sort(), [labs]);
+  const cityOptions = useMemo(() => [...new Set(labs.map((l) => (l.city || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [labs]);
   const [query, setQuery] = useState(initialQuery || "");
   const [visits, setVisits] = useState([]);
 
@@ -104,7 +107,12 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
     if (q) r = r.filter((row) => matchesLab(row) || row.children.some(matchesLab));
     if (filters.csm) r = r.filter((row) => row.csm === filters.csm || row.children.some((c) => c.csm === filters.csm));
     if (filters.region) r = r.filter((row) => row.region === filters.region);
+    if (filters.country) r = r.filter((row) => row.country === filters.country || row.children.some((c) => c.country === filters.country));
     if (filters.state) r = r.filter((row) => row.state === filters.state || row.children.some((c) => c.state === filters.state));
+    if (filters.city) {
+      const sameCity = (l) => (l.city || "").trim().toLowerCase() === filters.city.toLowerCase();
+      r = r.filter((row) => sameCity(row) || row.children.some(sameCity));
+    }
     if (filters.status) r = r.filter((row) => row.status === filters.status || row.children.some((c) => c.status === filters.status));
     if (filters.segment) r = r.filter((row) => segmentFor(toINR(row.mrr, row.region)).code === filters.segment);
     return r;
@@ -195,6 +203,13 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
           <option value="">All Regions</option><option>Domestic</option><option>ROW</option>
         </select>
         <SearchSelect
+          value={filters.country}
+          onChange={(v) => setFilters((f) => ({ ...f, country: v }))}
+          options={countryOptions.map((c) => ({ value: c, label: c }))}
+          emptyLabel="All Countries"
+          placeholder="All Countries"
+        />
+        <SearchSelect
           value={filters.state}
           onChange={(v) => setFilters((f) => ({ ...f, state: v }))}
           options={stateOptions.map((s) => ({ value: s, label: s }))}
@@ -204,7 +219,14 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
         <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}>
           <option value="">All Status</option><option>Active</option><option>Inactive</option><option>At Risk</option><option>Churned</option>
         </select>
-        <span className="clear" onClick={() => { setFilters({ csm: "", region: "", status: "", segment: "", state: "" }); setQuery(""); }}>Clear all</span>
+        <SearchSelect
+          value={filters.city}
+          onChange={(v) => setFilters((f) => ({ ...f, city: v }))}
+          options={cityOptions.map((c) => ({ value: c, label: c }))}
+          emptyLabel="All Cities"
+          placeholder="All Cities"
+        />
+        <span className="clear" onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); }}>Clear all</span>
       </div>
 
       <div className="table-card">
@@ -213,13 +235,13 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
         <thead>
           <tr>
             <th></th><th>Lab ID</th><th>Lab Name</th><th>Type</th><th>CSM</th><th>Segment</th>
-            <th>Region</th><th>State</th><th>Country</th><th>MRR</th><th>Status</th><th>Health</th>
+            <th>Region</th><th>City</th><th>State</th><th>Country</th><th>MRR</th><th>Status</th><th>Health</th>
             <th title="Auto, from logged visit/check-in sentiment — separate from Health">Lab Health</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
-            <tr><td colSpan="13" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>No labs match these filters.</td></tr>
+            <tr><td colSpan="14" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>No labs match these filters.</td></tr>
           )}
           {rows.map((r) => {
             const seg = segmentFor(toINR(r.mrr, r.region));
@@ -243,7 +265,7 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
                   </td>
                   <td>{r.csm}</td>
                   <td><span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span></td>
-                  <td>{r.region}</td><td>{r.state}</td><td>{r.country}</td>
+                  <td>{r.region}</td><td>{r.city || "—"}</td><td>{r.state}</td><td>{r.country}</td>
                   <td className="mrr-cell">{fmtMoney(r.mrr, r.region)}</td>
                   <td><span className={`status-pill ${statusPillClass(r.status)}`}>{r.status}</span></td>
                   <td>{r.healthStatus ? <span className={`status-pill ${healthPillClass(r.healthStatus)}`}>{r.healthStatus}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
@@ -258,7 +280,7 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
                       <td><span className="pill pill-child">Child</span></td>
                       <td>{c.csm}</td>
                       <td><span className="seg-badge" style={{ background: cseg.color }}>{cseg.code}</span></td>
-                      <td>{c.region}</td><td>{c.state}</td><td>{c.country}</td>
+                      <td>{c.region}</td><td>{c.city || "—"}</td><td>{c.state}</td><td>{c.country}</td>
                       <td className="mrr-cell">{fmtMoney(c.mrr, c.region)}</td>
                       <td><span className={`status-pill ${statusPillClass(c.status)}`}>{c.status}</span></td>
                       <td>{c.healthStatus ? <span className={`status-pill ${healthPillClass(c.healthStatus)}`}>{c.healthStatus}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllVisits, addVisit, updateVisit } from "../lib/visits";
-import { fetchAllTasks, taskBucket, addTask, toggleTaskDone, deleteTask, todayISO, syncFollowupTaskForVisit } from "../lib/tasks";
+import { fetchAllTasks, taskBucket, addTask, toggleTaskDone, deleteTask, updateTask, todayISO, syncFollowupTaskForVisit } from "../lib/tasks";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
@@ -58,6 +58,9 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
   const [editSentiment, setEditSentiment] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [fLab, setFLab] = useState("");
+  const [fCity, setFCity] = useState("");
+  // Edit a planned visit (date + purpose)
+  const [editPlan, setEditPlan] = useState(null); // { task, date, purpose }
 
   async function loadAll() {
     if (!SUPABASE_CONFIGURED) { setLoading(false); return; }
@@ -89,10 +92,18 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
   labs.forEach((l) => { labsById[l.id] = l; });
 
   // Offline visits only — everything else (calls, emails…) belongs to Log Check-in / Lab History.
-  const scoped = visits.filter((v) => flatIds.has(v.labId) && v.type === VISIT_TYPE && (!fLab || v.labId === fLab));
+  const cityOf = (labId) => (labsById[labId]?.city || "").trim();
+  const cityMatch = (labId) => !fCity || cityOf(labId).toLowerCase() === fCity.toLowerCase();
+  const cityOptions = [...new Set(flat.map((l) => (l.city || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const visitById = {};
+  visits.forEach((v) => { visitById[v.id] = v; });
+  const scoped = visits.filter((v) => flatIds.has(v.labId) && v.type === VISIT_TYPE && (!fLab || v.labId === fLab) && cityMatch(v.labId));
   const recent = scoped.slice().sort((a, b) => new Date(b.visitDate) - new Date(a.visitDate));
   const upcoming = tasks
-    .filter((t) => t.type === PLANNED_VISIT_TASK_TYPE && !t.done && t.labId && flatIds.has(t.labId) && (!fLab || t.labId === fLab))
+    // Planned visits, plus any older "next follow-up" task that came from logging an offline visit (before
+    // those were saved as planned visits) — both are upcoming visits.
+    .filter((t) => (t.type === PLANNED_VISIT_TASK_TYPE || (t.type === "follow-up" && visitById[t.sourceVisitId]?.type === VISIT_TYPE))
+      && !t.done && t.labId && flatIds.has(t.labId) && (!fLab || t.labId === fLab) && cityMatch(t.labId))
     .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999"));
 
   // Every lab — parents AND children — searchable by name, Lab ID or city.
@@ -123,14 +134,14 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
         sentiment: logSentiment || null,
       });
 
-      // A next-follow-up date always creates a real task too, so it shows up under Tasks on the day it's
-      // due. sourceVisitId links it back to this visit so a later edit can keep it in sync.
+      // The next visit date becomes a planned visit — it shows under Upcoming Planned Visits here and in Tasks
+      // on the day. sourceVisitId links it back to this visit so editing the visit keeps it in sync.
       if (logFollowup) {
         await addTask({
           labId: logLabId,
-          desc: `Follow-up — ${lab ? lab.name : logLabId}${logFollowupReason ? `: ${logFollowupReason}` : ""}`,
-          owners: [currentCSM],
-          type: "follow-up",
+          desc: `Planned visit — ${lab ? lab.name : logLabId}${logFollowupReason ? `: ${logFollowupReason}` : ""}`,
+          owners: [lab?.csm || currentCSM],
+          type: PLANNED_VISIT_TASK_TYPE,
           repeat: "none",
           due: logFollowup,
           idByName,
@@ -174,6 +185,25 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
       showToast("Visit planned — it's in Tasks for that day.");
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
+  // Purpose is whatever follows "Planned visit — <lab>: " in the task text.
+  function openEditPlanned(task) {
+    const m = (task.desc || "").match(/^[^—]*—[^:]*:\s*(.*)$/);
+    setEditPlan({ task, date: task.due || "", purpose: m ? m[1] : "" });
+  }
+  async function handleSavePlanned() {
+    if (!editPlan.date) { showToast("Pick the planned date."); return; }
+    try {
+      const lab = labsById[editPlan.task.labId];
+      await updateTask(editPlan.task.id, {
+        due: editPlan.date,
+        desc: `Planned visit — ${lab ? lab.name : editPlan.task.labId}${editPlan.purpose.trim() ? `: ${editPlan.purpose.trim()}` : ""}`,
+      });
+      setEditPlan(null);
+      await loadAll();
+      showToast("Planned visit updated.");
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+
   async function handleCancelPlanned(task) {
     if (!window.confirm("Cancel this planned visit? It will be removed from Tasks.")) return;
     try { await deleteTask(task.id); await loadAll(); showToast("Planned visit cancelled."); }
@@ -204,6 +234,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
       await syncFollowupTaskForVisit({
         visitId: editId, labId: editLabId, labName: editLab ? editLab.name : editLabId, ownerName: editLab?.csm || currentCSM, idByName,
         nextFollowupDate: editFollowup || null, nextFollowupReason: editFollowupReason,
+        type: PLANNED_VISIT_TASK_TYPE, descPrefix: "Planned visit",
       });
       setEditOpen(false);
       await loadAll();
@@ -227,7 +258,8 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <div className="filters" style={{ marginBottom: 0 }}>
           <SearchSelect value={fLab} onChange={setFLab} options={labSelectOptions(flat)} emptyLabel="All labs" placeholder="All labs" />
-          {fLab && <span className="clear" onClick={() => setFLab("")}>Clear filter</span>}
+          <SearchSelect value={fCity} onChange={setFCity} options={cityOptions.map((c) => ({ value: c, label: c }))} emptyLabel="All cities" placeholder="All cities" />
+          {(fLab || fCity) && <span className="clear" onClick={() => { setFLab(""); setFCity(""); }}>Clear filters</span>}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
         <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={openPlan}>+ Plan a Visit</button>
@@ -240,7 +272,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
         <div className="table-card" style={{ padding: "18px 20px", textAlign: "center", color: "var(--text-faint)", fontSize: 12.5, marginBottom: 22 }}>No visits planned — use “Plan a Visit” to schedule one.</div>
       ) : (
         <div className="table-card" style={{ marginBottom: 22 }}><div className="table-scroll"><table className="child-mini">
-          <thead><tr><th>Lab</th><th>Visit</th><th>Planned For</th><th>CSM</th><th></th></tr></thead>
+          <thead><tr><th>Lab</th><th>City</th><th>Visit</th><th>Planned For</th><th>CSM</th><th></th></tr></thead>
           <tbody>{upcoming.map((t) => {
             const bucket = taskBucket(t.due);
             const dueColor = bucket === "overdue" ? "var(--bad)" : bucket === "today" ? "var(--warn)" : "var(--text-dim)";
@@ -248,6 +280,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
             return (
               <tr key={t.id}>
                 <td className="lab-name clickable" onClick={() => onOpenLab(t.labId)}>{lab ? lab.name : t.labId}</td>
+                <td>{cityOf(t.labId) || "—"}</td>
                 <td style={{ fontSize: 12 }}>{t.desc}</td>
                 <td style={{ fontWeight: 700, color: dueColor, whiteSpace: "nowrap" }}>
                   {bucket === "overdue" ? "Overdue · " : ""}{t.due ? new Date(t.due + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "—"}
@@ -255,6 +288,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
                 <td>{t.owner}</td>
                 <td style={{ whiteSpace: "nowrap" }}>
                   <span className="mark-purchased" onClick={() => openLogForPlanned(t)}>Log this visit</span>
+                  <span className="icon-btn" title="Edit this planned visit" onClick={() => openEditPlanned(t)} style={{ cursor: "pointer", marginLeft: 8 }}>✎</span>
                   <span className="icon-btn" title="Cancel this planned visit" onClick={() => handleCancelPlanned(t)} style={{ cursor: "pointer", marginLeft: 8 }}>✕</span>
                 </td>
               </tr>
@@ -268,13 +302,14 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
         <div className="table-card" style={{ padding: "18px 20px", textAlign: "center", color: "var(--text-faint)", fontSize: 12.5 }}>No offline visits logged yet.</div>
       ) : (
         <div className="table-card"><Paginated items={recent}>{(pageRows) => (<div className="table-scroll"><table className="child-mini">
-          <thead><tr><th>Lab</th><th>Date</th><th>Notes</th><th>Sentiment</th><th></th></tr></thead>
+          <thead><tr><th>Lab</th><th>City</th><th>Date</th><th>Notes</th><th>Sentiment</th><th></th></tr></thead>
           <tbody>{pageRows.map((v) => {
             const lab = labsById[v.labId];
             const sentColor = v.sentiment === "Positive" ? "var(--ok)" : v.sentiment === "At Risk" ? "var(--bad)" : "var(--text-dim)";
             return (
               <tr key={v.id}>
                 <td className="lab-name clickable" onClick={() => onOpenLab(v.labId)}>{lab ? lab.name : v.labId}</td>
+                <td>{cityOf(v.labId) || "—"}</td>
                 <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{new Date(v.visitDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</td>
                 <td style={{ fontSize: 12 }}>{v.notes || "—"}</td>
                 <td>{v.sentiment ? <span style={{ fontSize: 11, fontWeight: 700, color: sentColor }}>{v.sentiment}</span> : "—"}</td>
@@ -317,16 +352,40 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
         </div>
         <div className="tmpl-field-row" style={{ marginBottom: 4, display: "flex", gap: 10 }}>
           <div className="tmpl-field" style={{ flex: 1 }}>
-            <label>Next Follow-up (optional)</label>
-            <input type="date" style={fieldStyle} value={logFollowup} onChange={(e) => setLogFollowup(e.target.value)} />
+            <label>Next Visit (optional)</label>
+            <input type="date" style={fieldStyle} value={logFollowup} min={todayISO()} onChange={(e) => setLogFollowup(e.target.value)} />
           </div>
           <div className="tmpl-field" style={{ flex: 1 }}>
-            <label>Follow-up Reason</label>
-            <input style={fieldStyle} value={logFollowupReason} onChange={(e) => setLogFollowupReason(e.target.value)} placeholder="e.g. QBR" />
+            <label>Purpose of next visit</label>
+            <input style={fieldStyle} value={logFollowupReason} onChange={(e) => setLogFollowupReason(e.target.value)} placeholder="e.g. QBR, training" />
           </div>
         </div>
         {logError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>Pick a lab first.</div>}
-        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 10 }}>Saved to this lab's Lab History{logFromTask ? ", and the planned visit is marked done" : ""}.</div>
+        <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 10 }}>Saved to this lab's Lab History{logFromTask ? ", and the planned visit is marked done" : ""}. A next visit date is added to Upcoming Planned Visits.</div>
+      </Modal>
+
+      <Modal
+        open={!!editPlan}
+        title="Edit Planned Visit"
+        onClose={() => setEditPlan(null)}
+        actions={[
+          { label: "Cancel", className: "btn-ghost", onClick: () => setEditPlan(null) },
+          { label: "Save Changes", className: "btn-primary", onClick: handleSavePlanned },
+        ]}
+      >
+        {editPlan && (
+          <>
+            <div style={{ fontSize: 12.5, marginBottom: 12 }}><b>{labsById[editPlan.task.labId]?.name || editPlan.task.labId}</b>{cityOf(editPlan.task.labId) ? ` · ${cityOf(editPlan.task.labId)}` : ""}</div>
+            <div className="tmpl-field" style={{ marginBottom: 12 }}>
+              <label>Planned Date</label>
+              <input type="date" style={fieldStyle} value={editPlan.date} onChange={(e) => setEditPlan((p) => ({ ...p, date: e.target.value }))} />
+            </div>
+            <div className="tmpl-field">
+              <label>Purpose (optional)</label>
+              <input style={fieldStyle} value={editPlan.purpose} onChange={(e) => setEditPlan((p) => ({ ...p, purpose: e.target.value }))} placeholder="e.g. Quarterly review" />
+            </div>
+          </>
+        )}
       </Modal>
 
       <Modal
@@ -382,11 +441,11 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
         </div>
         <div className="tmpl-field-row" style={{ marginBottom: 4, display: "flex", gap: 10 }}>
           <div className="tmpl-field" style={{ flex: 1 }}>
-            <label>Next Follow-up (optional)</label>
+            <label>Next Visit (optional)</label>
             <input type="date" style={fieldStyle} value={editFollowup} onChange={(e) => setEditFollowup(e.target.value)} />
           </div>
           <div className="tmpl-field" style={{ flex: 1 }}>
-            <label>Follow-up Reason</label>
+            <label>Purpose of next visit</label>
             <input style={fieldStyle} value={editFollowupReason} onChange={(e) => setEditFollowupReason(e.target.value)} placeholder="e.g. QBR" />
           </div>
         </div>
