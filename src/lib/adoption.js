@@ -82,12 +82,15 @@ export function resolveParam(plan, mod, paramDef, adoption, pitchForLab) {
   const purchased = !inPlan && !!st && !!st.included && (st.inPlan === false || paramDef.category === "Expansion");
   const status = (st && st.status) || "Not Started";
   const pitch = (pitchForLab && pitchForLab[`param:${key}`]) || (purchased ? "Added" : "To Do");
+  // Either Lost stage means the feature is gone — including one that had been bought (e.g. a trial that was
+  // then marked Lost): it scores 0 and has no rollout or charges left to track.
+  const lost = !inPlan && (pitch === "Lost after Purchase" || pitch === "Lost in Expansion");
   let score;
-  if (pitch === "Lost after Purchase" || (!inPlan && !purchased && pitch === "Lost in Expansion")) score = 0;
+  if (lost) score = 0;
   else if (inPlan || purchased) score = ROLLOUT_SCORE[status] ?? 0;
   else score = PITCH_SCORE[pitch] ?? 0;
   return {
-    key, def: paramDef, inPlan, purchased, status, pitch, score,
+    key, def: paramDef, inPlan, purchased, lost, status, pitch, score,
     category: inPlan ? "Adoption" : "Expansion",   // what this parameter is for THIS lab
     state: st,
   };

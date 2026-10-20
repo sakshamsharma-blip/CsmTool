@@ -5,6 +5,8 @@ Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks 
 ## Oct 2026 — fix: lost-after-purchase trials
 - A feature marked "Lost after Purchase" no longer offers "Add charges" (Adoption tab, Collections tab) or a
   rollout status; it shows a "Lost after purchase" tag instead (also on My Portfolio).
+- Same for a bought feature moved to "Lost in Expansion": it counts as lost (score 0, no charges / rollout).
+  Bought features now only offer "Lost after Purchase" (which lowers MRR and logs a Contraction).
 
 ## Oct 2026 — batch 4, phase 2: adoption model v2
 **Database (both applied):** `0034_in_plan_audit_trail_discussed_params.sql`; `0035_fix_supabase_advisor_warnings.sql`

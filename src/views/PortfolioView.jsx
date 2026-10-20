@@ -4,7 +4,7 @@ import { fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
 import { fetchAllLabsAdoption, computeSavedLabScores } from "../lib/adoption";
 import {
-  fetchAllPitchStatus, applyPitchStageChange, PITCH_STATUSES, PITCH_ACTIVE_STATUSES,
+  fetchAllPitchStatus, applyPitchStageChange, PITCH_ACTIVE_STATUSES, pitchOptionsFor,
 } from "../lib/pitch";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask } from "../lib/tasks";
 import { fetchAllCollectionsItems } from "../lib/collections";
@@ -213,7 +213,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
                             <div className="param-row" style={{ color: "var(--text-faint)", fontSize: 12 }}>Everything in this module is in {lab.name}'s plan — nothing to pitch. Rollout is tracked on the lab's Adoption tab.</div>
                           ) : addOns.map((r) => {
                             const p = r.def;
-                            const lost = r.pitch === "Lost after Purchase";
+                            const lost = r.lost && r.purchased;
                             const charge = r.purchased && !lost ? collItems.find((i) => i.labId === lab.id && i.moduleKey === mod.key && i.paramName === p.name) : null;
                             return (
                               <div key={p.name} className="param-row">
@@ -226,7 +226,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
                                 <select className="status-select" onClick={(e) => e.stopPropagation()}
                                   value={r.pitch}
                                   onChange={(e) => handlePitchStatusChange(e.target.value, { labId: lab.id, moduleKey: mod.key, paramName: p.name, level: "param", label: p.name, existingParamState: r.state, fromStatus: r.pitch })}>
-                                  {PITCH_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+                                  {pitchOptionsFor(r.purchased, r.pitch).map((st) => <option key={st} value={st}>{st}</option>)}
                                 </select>
                               </div>
                             );

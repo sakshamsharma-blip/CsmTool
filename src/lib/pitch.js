@@ -19,6 +19,14 @@ export const PITCH_ACTIVE_STATUSES = ["To Do", "Pitching", "In Progress"];
 // invoice resets MRR to the real billed figure anyway.
 export const PITCH_LOST_STATUSES = ["Lost in Expansion", "Lost after Purchase"];
 
+// Stage choices for one parameter. Once a feature has been bought, losing it must go through "Lost after
+// Purchase" (which lowers MRR and logs a Contraction), so "Lost in Expansion" isn't offered — unless that's
+// already its stage (older data), so the dropdown can still show it.
+export function pitchOptionsFor(purchased, currentStage) {
+  if (!purchased) return PITCH_STATUSES;
+  return PITCH_STATUSES.filter((s) => s !== "Lost in Expansion" || s === currentStage);
+}
+
 // Bulk fetch across every lab — mirrors fetchAllLabsAdoption. Rows are keyed the same way the UI reads
 // them: "mod:<moduleKey>" for a module not yet in scope, "param:<moduleKey>|<paramName>" for an
 // in-scope module's Expansion feature.

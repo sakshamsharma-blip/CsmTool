@@ -86,8 +86,11 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     fetchLabPitchStatus(lab.id).then((m) => { if (!cancelled) setPitchMap(m); }).catch((err) => console.error(err));
     return () => { cancelled = true; };
   }, [lab.id]);
-  const isLostAfterPurchase = (item) =>
-    !!item.moduleKey && pitchMap[item.paramName ? `param:${item.moduleKey}|${item.paramName}` : `mod:${item.moduleKey}`] === "Lost after Purchase";
+  const isLostAfterPurchase = (item) => {
+    if (!item.moduleKey) return false;
+    const stage = pitchMap[item.paramName ? `param:${item.moduleKey}|${item.paramName}` : `mod:${item.moduleKey}`];
+    return stage === "Lost after Purchase" || stage === "Lost in Expansion";
+  };
   // Edit forms for an existing invoice / Collections item: { …the record, form fields as strings }
   const [editInv, setEditInv] = useState(null);
   const [editItem, setEditItem] = useState(null);

@@ -4,7 +4,7 @@ import { fmtMoney, nativeCurrency } from "../lib/format";
 import {
   STATUS_ORDER, fetchLabAdoption, computeLabScores, fetchParamChanges, setParamInPlan, setParamStatus,
 } from "../lib/adoption";
-import { fetchLabPitchStatus, PITCH_STATUSES, applyPitchStageChange } from "../lib/pitch";
+import { fetchLabPitchStatus, applyPitchStageChange, pitchOptionsFor } from "../lib/pitch";
 import { fetchAllCollectionsItems, convertItemToChargeable } from "../lib/collections";
 import Modal from "./Modal";
 import InfoTip from "./InfoTip";
@@ -166,7 +166,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
               {params.map((r) => {
                 const latest = latestByParam[r.key];
                 // A feature lost after purchase is over: no rollout to track and nothing to charge for.
-                const lost = r.pitch === "Lost after Purchase";
+                const lost = r.lost;
                 const c = r.purchased && !lost ? charge(mod.key, r.def.name) : null;
                 return (
                   <div key={r.key} className="param-block">
@@ -189,13 +189,13 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
                       ) : null}
                       {!r.inPlan && (
                         <select className="status-select" value={r.pitch} onChange={(e) => askPitch(r, e.target.value, mod)} title="Expansion stage">
-                          {PITCH_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+                          {pitchOptionsFor(r.purchased, r.pitch).map((st) => <option key={st} value={st}>{st}</option>)}
                         </select>
                       )}
                       {!r.inPlan && !r.purchased && (
                         <button type="button" className="mark-purchased" onClick={() => askPitch(r, "Added", mod)}>Mark purchased</button>
                       )}
-                      {lost && <span className="cat-tag cat-Warn" title="Change the stage back if this was a mistake">Lost after purchase</span>}
+                      {lost && r.purchased && <span className="cat-tag cat-Warn" title="Change the stage back if this was a mistake">Lost after purchase</span>}
                       {c && (c.isTrial ? (
                         <span className="cat-tag cat-Warn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                           Trial <button type="button" className="mark-purchased" style={{ fontSize: 10.5 }} onClick={() => setChargeItem(c)}>Add charges</button>

@@ -91,7 +91,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Pitch-stage changes** (My Portfolio, Tasks → Pitch Reminders, and each lab's own Adoption tab —
   all three go through `applyPitchStageChange` in `lib/pitch.js`, so they always agree) open a confirm
   dialog with an *optional* comment, and every change is written to Lab History as a check-in-sourced
-  entry. "Lost in Expansion" only records the outcome. "Lost after Purchase" also drops the lab's MRR by
+  entry. "Lost in Expansion" only records the outcome (and is not offered once a feature has been bought; a bought feature already at either Lost stage counts as lost — score 0, no charges/rollout). "Lost after Purchase" also drops the lab's MRR by
   the feature's charge (its newest priced Collections entry) and logs a Contraction in the churn log
   (Reports); the next Monthly invoice resets MRR.
 - **Visits & Meetings = offline visits only** (type "Visit"). A past visit is logged to Lab
