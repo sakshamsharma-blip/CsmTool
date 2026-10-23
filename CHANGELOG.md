@@ -2,6 +2,13 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 23 2026 — Feedback & NPS reworked
+**Database (applied):** `0039_feedback_nps_responses.sql`.
+- Feedback & NPS is now a place to RECORD responses collected offline (call, visit, Google Form, email, WhatsApp):
+  NPS 0–10 and/or a 1–5 rating, who gave it (name, designation), source, comment and a supporting link.
+- Tabs: Responses (edit / delete), Report (NPS score, promoters / passives / detractors, average rating, by CSM and
+  by lab, CSV export), Testimonials. Filter by lab, CSM, source and date range.
+
 ## Oct 23 2026 — batch 5: new status lists, Tasks rework, Feedback & NPS, Resources
 **Database (applied):** `0038_new_stages_feedback_resources.sql` — renames existing statuses (Not Started → To-Do,
 In Progress → Onboarding / Setup, To Do → To-Do, Added → Purchased), lets a module be deleted while keeping its

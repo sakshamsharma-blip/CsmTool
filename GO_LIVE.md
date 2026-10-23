@@ -91,6 +91,7 @@ Two things are worth knowing before you flip the switch:
        model v2 audit trail, advisor fixes, engagement + module links, invoice billing periods (see CHANGELOG).
    38. `migrations/0038_new_stages_feedback_resources.sql` — new In-plan / Expansion status lists (renames existing
        rows), module delete keeps Collections entries, parameter order, Feedback & NPS, team Resources.
+   39. `migrations/0039_feedback_nps_responses.sql` — Feedback & NPS responses (NPS score, source, respondent, link).
 3. **Settings → API**: copy the **Project URL** and the **`anon` public** key — you'll need both in step 3.
 4. **Authentication → Providers**: enable **Email**. Password is the right choice here (not magic link) —
    the login page now has a working "Forgot your password?" link that needs password auth to make sense.

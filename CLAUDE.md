@@ -96,8 +96,11 @@ with the same context and follows the same rules. Read it fully before making ch
   way (from `param_changes`), status dropdown, "Remind me" (creates a `tasks.type='reminder'` task). The task list
   can be sorted by due date. Sidebar Tasks shows a green unread count of the signed-in person's tasks created since
   they last opened Tasks (`lib/taskNotifications.js`, remembered per browser).
-- **Feedback & NPS** (sidebar, `views/FeedbackView.jsx`, tables `lab_feedback` / `lab_testimonials`): Feedback tab =
-  CSM-entered 1–5 ratings per lab; Testimonials tab = video links per lab by designation. Lab + CSM filters.
+- **Feedback & NPS** (sidebar, `views/FeedbackView.jsx`, `lib/feedback.js`, tables `lab_feedback` / `lab_testimonials`):
+  labs give feedback OFFLINE (call, visit, Google Form, email…) and the CSM records each response manually — NPS
+  0–10 and/or rating 1–5 (at least one), given by + designation, source, comment, optional supporting link (0039).
+  Tabs: Responses (edit/delete), Report (NPS = % promoters 9–10 − % detractors 0–6, avg rating, by CSM, by lab, CSV
+  export), Testimonials (video links per lab by designation). Filters: lab, CSM scope, source, date range.
 - **Resources** (sidebar, `views/ResourcesView.jsx`, table `resources`): team-wide docs / training links + a
   roll-up of every module's links.
 - **Total Labs**: default sort MRR high → low (in INR); columns Lab ID, Lab Name, Type, CSM Name, MRR, Segment,
@@ -221,7 +224,7 @@ with the same context and follows the same rules. Read it fully before making ch
   manual), full Plan CRUD beyond toggling module/param membership, KPI Management,
   Automation (still "Planned" and greyed out in the sidebar). **Support & Tickets** is a sidebar link that opens
   Flow (https://creliohealthflow.vercel.app/, the CS ↔ Product escalation tracker) in a new tab.
-- Latest migration: `0038_new_stages_feedback_resources.sql`; **0001–0038 are all applied** (Oct 23 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+- Latest migration: `0039_feedback_nps_responses.sql`; **0001–0039 are all applied** (Oct 23 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).

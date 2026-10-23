@@ -373,6 +373,12 @@
   .sidebar.collapsed .nav-count{position:absolute; top:2px; right:4px; min-width:16px; height:16px; font-size:9.5px; padding:0 4px;}
   .star-pick button{border:none; background:none; font-size:22px; line-height:1; cursor:pointer; color:var(--surface-3); padding:0 1px;}
   .star-pick button.on{color:#f5a524;}
+  .nps-pick{display:flex; flex-wrap:wrap; gap:4px;}
+  .nps-pick button{width:32px; height:30px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); font-weight:700; cursor:pointer;}
+  .nps-pick button.on{color:#fff; border-color:transparent;}
+  .nps-pick button.nps-Promoter{background:var(--ok);}
+  .nps-pick button.nps-Passive{background:var(--warn);}
+  .nps-pick button.nps-Detractor{background:var(--bad);}
   .stars{color:#f5a524; letter-spacing:1px; white-space:nowrap;}
   .mr-row{display:flex; align-items:center; gap:8px; padding:5px 0; font-size:12.5px; border-top:1px solid var(--border);}
   .mr-row:first-of-type{border-top:none;}
