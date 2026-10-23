@@ -26,9 +26,9 @@ with the same context and follows the same rules. Read it fully before making ch
     plan_modules, plan_excluded_params, profiles, labs, scope_overrides, param_scope_overrides,
     param_states, pitch_status, collections_items, tasks, activity_log). `profile_emails` and
     `profile_auth_links` come from `0006_identity_linking.sql`.
-  - Migrations were run by hand, so Supabase's migration-tracking table is empty
-    (`list_migrations` returns nothing). The live schema is still the final source of truth if
-    the repo and database ever seem to disagree — inspect it directly rather than guessing.
+  - Migrations are run by hand in the SQL Editor; since 0026 each file also records itself in
+    `supabase_migrations.schema_migrations`, so the applied list is visible there. The live schema is still
+    the final source of truth if the repo and database ever seem to disagree — inspect it directly.
 
 ## Supabase
 
@@ -70,9 +70,15 @@ with the same context and follows the same rules. Read it fully before making ch
   sees the whole template (no module/parameter "In scope" switches). Per lab, per parameter: **In plan** (=
   Adoption, tracked by rollout status) or **Not in plan** (= Expansion: pitch stages → purchased → rollout).
   Default: In plan when the lab's Plan includes it AND its template category is Adoption (`param_states.in_plan`
-  NULL = default). Score ladder per parameter (0–100, `lib/adoption.js` ROLLOUT_SCORE / PITCH_SCORE): Not in plan
-  To Do 0 · Pitching 10 · In Progress 30; In plan or purchased: Not Started 70 · In Progress 85 · Adopted 100;
-  Not Required = 0; Lost = 0. Module = weighted avg of params; lab = weighted avg of modules. Every change
+  NULL = default). **Status lists (Oct 23 2026, migration 0038)** — In plan (`param_states.status`, `STATUS_ORDER`):
+  To-Do 70 · In Discussion / Demo 75 · Trial 80 · Onboarding / Setup 90 · Adopted 100 · Not Required 0 · Not
+  Applicable (left OUT of the score) · Did Not Meet Requirements 0. Not in plan (`pitch_status.status`,
+  `PITCH_STATUSES`): To-Do 0 · Pitching 10 · Trial 30 · Onboarding / Setup 50 · Purchased · Not Required 0 · Not
+  Applicable (left out) · Lost in Expansion 0 · Lost after Purchase 0. **Purchased moves the feature onto the In-plan
+  list** (it starts at To-Do = 70 and climbs to Adopted 100; data-wise it stays `in_plan=false, included=true`).
+  Old names (Not Started / In Progress / To Do / Added) are mapped on read (`normalizeStatus` / `normalizePitch`).
+  Module = weighted avg of params; lab = weighted avg of modules. The Adoption tab shows two pies (In plan vs Not
+  in plan, Mandatory vs Optional — `components/AdoptionPies.jsx`, `groupAdoption`) and a stage filter. Every change
   on a lab's Adoption tab needs a comment and saves immediately (`param_changes` audit trail; newest comment
   shown under the parameter; click the name for the history). The Adoption tab lives in
   `components/LabAdoptionTab.jsx`. Log Check-in's Adoption Snapshot marks modules and/or parameters as
@@ -84,38 +90,55 @@ with the same context and follows the same rules. Read it fully before making ch
   all labs; anyone can add from the Adoption Template or a lab's Adoption tab; the adder or a Lead/Admin can
   edit/remove (DB-enforced).
 - "Tasks for Today" (Dashboard / My Portfolio) and the Tasks page both have a lab filter.
-- **Adoption vs Expansion**: Adoption = base-plan features, always in scope, tracked only on
-  rollout status, never pitched/sold. Expansion = paid add-ons, pitched/sold through a 7-stage
-  vocabulary (To Do → Pitching → In Progress → Added → Not Required, plus the two terminal
-  stages Lost in Expansion and Lost after Purchase). A module/param's category is a deliberate
-  one-time choice made on the Adoption Template — never inferred per lab.
-- **Adoption status** of a parameter is Not Started (0%) / In Progress (25%) / Adopted (100%).
-  "Partially Adopted" was removed (migration 0018 moves existing rows to In Progress).
-- **Mandatory vs Optional** (Adoption Template, per parameter): Mandatory parameters drive the
-  *Mandatory Completion* score; Optional ones only count toward *Overall Adoption*. A module's
-  score is the weighted % of its in-scope parameters; a lab's score is the module scores weighted
-  by module weight over that lab's in-scope modules only.
+- **Tasks page** (Oct 23 2026): lists every Adoption/Expansion item that is UNDER WAY — In plan: In Discussion /
+  Demo, Trial, Onboarding / Setup; Not in plan: Pitching, Trial, Onboarding / Setup (`buildActiveItemRows` in
+  `lib/pitch.js`). Items at To-Do are NOT tasks. Each row: lab, In-Plan / Not-in-Plan, item, days since it got under
+  way (from `param_changes`), status dropdown, "Remind me" (creates a `tasks.type='reminder'` task). The task list
+  can be sorted by due date. Sidebar Tasks shows a green unread count of the signed-in person's tasks created since
+  they last opened Tasks (`lib/taskNotifications.js`, remembered per browser).
+- **Feedback & NPS** (sidebar, `views/FeedbackView.jsx`, tables `lab_feedback` / `lab_testimonials`): Feedback tab =
+  CSM-entered 1–5 ratings per lab; Testimonials tab = video links per lab by designation. Lab + CSM filters.
+- **Resources** (sidebar, `views/ResourcesView.jsx`, table `resources`): team-wide docs / training links + a
+  roll-up of every module's links.
+- **Total Labs**: default sort MRR high → low (in INR); columns Lab ID, Lab Name, Type, CSM Name, MRR, Segment,
+  Region, Status, Health, Lab Health, City, State, Country; the first columns stay frozen when scrolling sideways.
+  No Consolidated / Per-Branch label in the list (it lives on the lab's Child Labs tab).
+- **Dashboard churn tiles** (overall and per CSM): Churn Count, MRR Churned, ARR Churned, MRR Contraction, MRR
+  Churn % (= MRR Churned ÷ current Total MRR of the view), all time from `churn_log`, by the lab's CSM.
+- Financial Reports hides people with no labs.
+- **Adoption vs Expansion (per lab)**: In plan = Adoption (tracked only by rollout status, never pitched);
+  Not in plan = Expansion (pitched through To Do → Pitching → In Progress → Added → Not Required, plus the
+  terminal Lost in Expansion / Lost after Purchase). The template's category is only the DEFAULT; each lab's
+  CSM sets In plan / Not in plan per parameter on the lab's Adoption tab (adoption model v2 above).
+- **Rollout status** of an In-plan or purchased parameter is Not Started / In Progress / Adopted (scored
+  70 / 85 / 100 — see the v2 ladder above). "Partially Adopted" was removed (migration 0018).
+- **Mandatory vs Optional** (Adoption Template, per parameter): the lab's *Mandatory* score uses only
+  Mandatory parameters; the overall *Adoption score* uses all of them. Both use the same v2 ladder and
+  weighting (parameters by parameter weight within a module; modules by module weight).
 - **Weights total exactly 100%**: all module weights together, and all parameter weights inside one
-  module, must each total exactly 100%. Edits are allowed while working (e.g. adding a parameter), but any
+  module, must each total exactly 100%. A weight may be **0**. Adding a module that would push the total past 100
+  opens "Make room" (other modules pre-reduced proportionally, editable). Parameters can be dragged into order
+  (`module_params.sort_order`, saved with Save Changes). Deleting a module keeps its Collections entries (FK set
+  null, 0038). Edits are allowed while working (e.g. adding a parameter), but any
   group that isn't 100 shows a red warning with a one-click "Rescale to 100%" (same ratios). Nothing is
   rescaled automatically. Only a CSM Lead / Admin can edit the template (view-only for CSMs; DB: 0024).
 - **Pitch-stage changes** (My Portfolio, Tasks → Pitch Reminders, and each lab's own Adoption tab —
   all three go through `applyPitchStageChange` in `lib/pitch.js`, so they always agree) open a confirm
-  dialog with an *optional* comment, and every change is written to Lab History as a check-in-sourced
-  entry. "Lost in Expansion" only records the outcome (and is not offered once a feature has been bought; a bought feature already at either Lost stage counts as lost — score 0, no charges/rollout). "Lost after Purchase" also drops the lab's MRR by
+  dialog with a **required** comment, and every change is written to Lab History as a check-in-sourced
+  entry and to the parameter's own history (`param_changes`). "Lost in Expansion" only records the outcome (and is not offered once a feature has been bought; a bought feature already at either Lost stage counts as lost — score 0, no charges/rollout). "Lost after Purchase" also drops the lab's MRR by
   the feature's charge (its newest priced Collections entry) and logs a Contraction in the churn log
-  (Reports); the next Monthly invoice resets MRR.
+  (Financial Reports); the next recurring invoice resets MRR.
 - **Visits & Meetings = offline visits only** (type "Visit"). A past visit is logged to Lab
   History; a future one is *planned* as a task (`tasks.type = 'planned-visit'`, due on the visit
   date, owned by the lab's CSM). Calls/emails/WhatsApp/notes are logged only via Log Check-in.
-- **Log Check-in → Tasks**: each action item becomes a task (`type = 'action-item'`), the next
-  follow-up date becomes a follow-up task, and each flagged module a training follow-up task. Only
-  the follow-up task carries `source_visit_id` (editing the visit keeps that one in sync).
+- **Log Check-in → Tasks**: each action item becomes a task (`type = 'action-item'`) and the next
+  follow-up date becomes a follow-up task (the only one carrying `source_visit_id`, so editing the visit keeps
+  it in sync). Adoption Snapshot ticks only mark what was *discussed* — they create no tasks.
 - **Searchable dropdowns**: every lab picker (parents *and* children), country and state uses
   `components/SearchSelect.jsx` (type to filter). Any new picker should use it too.
 - **MRR editing**: any lab (parent or child) can have its own MRR edited in Lab Details. Which
   value is *counted* still follows billing mode — Consolidated = the parent's own MRR (set by the
-  group's Monthly invoice), Per-Branch = sum of the children. ARR = MRR × 12 everywhere.
+  group's recurring invoice), Per-Branch = sum of the children. ARR = MRR × 12 everywhere.
 - **Total Labs and Dashboard tiles**: Total Labs, Parent Labs (Clients), Child Labs.
 - **Due dates & overdue** (Oct 2026): due date = LAST day to pay = start date + credit days − 1 (`dueDateFor` in
   `lib/dates.js`). Invoice Oct 1 + 7 credit days → due Oct 7; Oct 8 = 1 day overdue. Collections items use the
@@ -130,7 +153,7 @@ with the same context and follows the same rules. Read it fully before making ch
   be edited (date, purpose). City column + city filter on both lists.
 - **Labs**: `yearly_visits_required` (required when adding a Parent lab, optional for Child). Total Labs has
   Country / State / City type-to-filter dropdowns and a City column.
-- **Points of contact** (`lab_contacts`, Lab Details → Points of Contact) feed Log Check-in's "Person Contacted"
+- **Points of contact** (`lab_contacts`, their own "Points of Contact" tab on the lab page) feed Log Check-in's "Person Contacted"
   (pick or type; a new name can be saved as a POC). **Documents** tab per lab = links only (`lab_documents`).
 - Check-in types include **GMeet**. The old "Reports" screen is now **Financial Reports**.
 - **Dates**: build `YYYY-MM-DD` strings with `lib/dates.js` (`todayISO`, `addDaysISO`, `daysFromTodayISO`) —
@@ -140,12 +163,11 @@ with the same context and follows the same rules. Read it fully before making ch
   `#fff` or light greys for backgrounds, or that spot stays white in dark mode. Dark values live under
   `:root[data-theme="dark"]`.
 - **Plans** are a real named entity (LIMS Starter/Growth/Advance/Premium/Enterprise), each with a
-  default module/param scope. A lab's actual scope can deviate from its Plan's defaults, but
-  deviating never renames or forks the Plan — it only produces a deviation note, logged to Lab
-  History.
+  default module/param set. A lab's Plan only decides each parameter's DEFAULT In plan / Not in plan; the lab's
+  CSM can change any parameter (with a comment) without renaming or forking the Plan.
 - **Purchasing an Expansion feature** ("Added" stage, or "Mark purchased" on the Adoption tab) asks
-  **Priced or Trial** (+ monthly charge if priced), moves it into scope, creates a Collections entry and
-  logs to Lab History. The feature then shows a "Priced ₹X/mo" or "Trial" tag (Adoption tab, My
+  **Priced or Trial** (+ monthly charge if priced), marks it purchased (it stays Not in plan, now tracked by
+  rollout status), creates a Collections entry and logs to Lab History. The feature then shows a "Priced ₹X/mo" or "Trial" tag (Adoption tab, My
   Portfolio); a trial has "Add charges". Neither purchasing nor adding charges changes MRR — invoices do.
 - **Lab History** (`activity_log`) is meant to capture everything that happens to a lab, whether
   logged manually (a check-in) or as a side effect of any other action anywhere in the app.
@@ -196,10 +218,10 @@ with the same context and follows the same rules. Read it fully before making ch
   respects billing mode, Average MRR card), Dashboard, Tasks, Visits & Meetings, Expansion (deal
   tracking with Onboarding/Pipeline/Lost/Live MRR + Live ARR tiles), editable Lab Name and Lab ID.
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
-  manual), full Plan CRUD beyond toggling module/param membership, Feedback & NPS, KPI Management,
+  manual), full Plan CRUD beyond toggling module/param membership, KPI Management,
   Automation (still "Planned" and greyed out in the sidebar). **Support & Tickets** is a sidebar link that opens
   Flow (https://creliohealthflow.vercel.app/, the CS ↔ Product escalation tracker) in a new tab.
-- Latest migration: `0037_invoice_billing_periods.sql`; **0001–0037 are all applied** (Oct 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+- Latest migration: `0038_new_stages_feedback_resources.sql`; **0001–0038 are all applied** (Oct 23 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).

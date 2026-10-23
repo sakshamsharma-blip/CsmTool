@@ -38,6 +38,7 @@ test("every live screen opens without errors", async ({ page }) => {
     ["Dashboard", "Dashboard"], ["My Portfolio", "My Portfolio"], ["Collections", "Collections"],
     ["Expansion", "Expansion"], ["Tasks", "Tasks"], ["Visits & Meetings", "Visits & Meetings"],
     ["Adoption Template", "Adoption Template"], ["Financial Reports", "Financial Reports"],
+    ["Feedback & NPS", "Feedback & NPS"], ["Resources", "Resources"],
   ]) {
     await nav(page, label);
     // Database-backed screens show a demo-mode placeholder instead of their heading — either is fine.
@@ -133,4 +134,50 @@ test("Support & Tickets opens Flow in a new tab", async ({ page }) => {
   const link = page.locator(".sidebar a.nav-item", { hasText: "Support & Tickets" });
   await expect(link).toHaveAttribute("href", "https://creliohealthflow.vercel.app/");
   await expect(link).toHaveAttribute("target", "_blank");
+});
+
+test("Lab Adoption tab: adoption pies, new status lists and the stage filter", async ({ page }) => {
+  await page.getByText("iGenetic Diagnostics", { exact: true }).click();
+  await page.getByRole("button", { name: "Adoption" }).click();
+  for (const label of ["In-Plan Adoption", "Not-in-Plan Adoption", "Mandatory Adoption", "Optional Adoption"]) {
+    await expect(page.locator(".pie-card", { hasText: label })).toBeVisible();
+  }
+  await page.locator(".module-head").first().click();
+  const statusSelect = page.locator(".param-block select.status-select").first();
+  await expect(statusSelect.locator("option", { hasText: "Onboarding / Setup" })).toHaveCount(1);
+  // Filter to one stage: only matching parameters stay listed.
+  const filter = page.getByLabel("Filter by stage");
+  await filter.selectOption("plan:Did Not Meet Requirements");
+  await expect(page.locator(".param-block")).toHaveCount(0);
+  await filter.selectOption("");
+  await expect(page.locator(".param-block").first()).toBeVisible();
+});
+
+test("Adoption Template: a weight can be 0, and adding a module past 100% asks to make room", async ({ page }) => {
+  await nav(page, "Adoption Template");
+  const firstWeight = page.locator(".tparam-row input[type=number]").first();
+  await firstWeight.fill("0");
+  await page.getByRole("button", { name: "Save Changes" }).click();
+  await expect(page.getByText("All changes saved.")).toBeVisible();
+  await expect(firstWeight).toHaveValue("0");
+
+  await page.getByTitle("Add module").click();
+  await page.getByPlaceholder("Module name").fill("Smoke Module");
+  await page.locator(".tmpl-list-card input.tw-input[type=number]").fill("10");
+  await page.locator(".tmpl-list-card").getByRole("button", { name: "Save" }).click();
+  const dialog = page.locator(".modal-box.show");
+  await expect(dialog.getByText(/Make room for Smoke Module/)).toBeVisible();
+  await expect(dialog.getByText("Total with Smoke Module: 100% / 100%")).toBeVisible();
+  await dialog.getByRole("button", { name: "Apply & add module" }).click();
+  await expect(page.locator(".tmpl-list-foot")).toContainText("100%");
+  await expect(page.locator(".tmpl-list .tlname", { hasText: "Smoke Module" })).toBeVisible();
+});
+
+test("Total Labs: highest MRR first, and the CSM column sits next to Type", async ({ page }) => {
+  const heads = page.locator("table.freeze-cols thead th");
+  await expect(heads.nth(1)).toHaveText("Lab ID");
+  await expect(heads.nth(4)).toHaveText("CSM Name");
+  await expect(heads.nth(5)).toHaveText("MRR");
+  await expect(page.getByText("Consolidated", { exact: true })).toHaveCount(0);
+  await expect(page.locator("select", { hasText: "MRR: high → low" })).toHaveValue("mrr-desc");
 });

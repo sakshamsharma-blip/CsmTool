@@ -894,6 +894,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   const children = lab.type === "Parent" ? labs.filter((l) => l.type === "Child" && l.parent === lab.id) : [];
   const tabs = [
     { key: "details", label: "Lab Details" },
+    ...(SUPABASE_CONFIGURED ? [{ key: "contacts", label: "Points of Contact" }] : []),
     ...(lab.type === "Parent" ? [{ key: "childlabs", label: `Child Labs (${children.length})` }] : []),
     { key: "adoption", label: "Adoption" },
     { key: "collections", label: `Collections${collItems.length ? ` (${collItems.length})` : ""}` },
@@ -1137,7 +1138,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           </div>
         </div>
       )}
-      {tab === "details" && SUPABASE_CONFIGURED && <LabContactsCard lab={lab} csmId={idByName?.[currentCSM]} showToast={showToast} />}
+      {tab === "contacts" && SUPABASE_CONFIGURED && <LabContactsCard lab={lab} csmId={idByName?.[currentCSM]} showToast={showToast} />}
       {tab === "documents" && <LabDocumentsTab lab={lab} csmId={idByName?.[currentCSM]} showToast={showToast} />}
 
       <Modal

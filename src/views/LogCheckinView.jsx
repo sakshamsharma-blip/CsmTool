@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtMoney, toINR, segmentFor } from "../lib/format";
 import { fetchLabAdoption, computeSavedLabScores } from "../lib/adoption";
-import { fetchLabPitchStatus } from "../lib/pitch";
+import { fetchLabPitchStatus, PITCH_ACTIVE_STATUSES } from "../lib/pitch";
 import { fetchLabActivity, ACTIVITY_ICONS } from "../lib/activity";
 import { fetchAllVisits, addVisit } from "../lib/visits";
 import { addTask } from "../lib/tasks";
@@ -32,7 +32,7 @@ const SENTIMENTS = [
 function snapshotStatus(params) {
   const counted = params.filter((r) => r.score != null);
   if (counted.length && counted.every((r) => (r.inPlan || r.purchased) && r.status === "Adopted")) return "Adopted";
-  if (counted.some((r) => r.status !== "Not Started" || ["Pitching", "In Progress"].includes(r.pitch))) return "In Progress";
+  if (counted.some((r) => ((r.inPlan || r.purchased) && r.status !== "To-Do") || PITCH_ACTIVE_STATUSES.includes(r.pitch))) return "In Progress";
   return "Not Started";
 }
 function statusChipClass(label) { return "st-" + label.replace(/ /g, ""); }
@@ -56,7 +56,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   const [location, setLocation] = useState("");
   const [personName, setPersonName] = useState("");
   const [personDesignation, setPersonDesignation] = useState("");
-  // This lab's points of contact (Lab Details → Points of Contact), offered as a type-or-pick list.
+  // This lab's points of contact (lab page → Points of Contact tab), offered as a type-or-pick list.
   const [contacts, setContacts] = useState([]);
   const [saveAsPoc, setSaveAsPoc] = useState(true);
   const [topics, setTopics] = useState([]);

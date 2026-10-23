@@ -4,12 +4,13 @@ import { fmtMoney, nativeCurrency } from "../lib/format";
 import {
   STATUS_ORDER, fetchLabAdoption, computeLabScores, fetchParamChanges, setParamInPlan, setParamStatus,
 } from "../lib/adoption";
-import { fetchLabPitchStatus, applyPitchStageChange, pitchOptionsFor } from "../lib/pitch";
+import { fetchLabPitchStatus, applyPitchStageChange, pitchOptionsFor, PITCH_STATUSES } from "../lib/pitch";
 import { fetchAllCollectionsItems, convertItemToChargeable } from "../lib/collections";
 import Modal from "./Modal";
 import InfoTip from "./InfoTip";
 import PitchStageModal from "./PitchStageModal";
 import ModuleResources from "./ModuleResources";
+import AdoptionPies from "./AdoptionPies";
 import { fetchModuleResources } from "../lib/moduleResources";
 
 const field = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
@@ -18,7 +19,7 @@ const barColor = (v) => (v == null ? "var(--surface-3)" : v >= 85 ? "var(--ok)" 
 
 // A lab's Adoption tab (adoption model v2 — see lib/adoption.js). Every module and parameter of the template is
 // listed in the template's order. Per parameter the CSM sets In plan / Not in plan; In-plan (and purchased)
-// parameters move through the rollout statuses, Not-in-plan ones through the pitch stages until purchased.
+// parameters move through the In-plan statuses, Not-in-plan ones through the Expansion stages until purchased.
 // EVERY change asks for a comment and saves immediately; the newest comment shows under the parameter and
 // clicking the parameter name opens its full audit trail.
 export default function LabAdoptionTab({ lab, modules, plans, idByName, currentCSM, myProfileId, isHead, showToast, onPatchLab, onChanged }) {
@@ -34,6 +35,8 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
   const [openModules, setOpenModules] = useState({});
+  // Stage filter: "" = everything, otherwise "plan:<status>" (In-plan / purchased track) or "exp:<stage>".
+  const [stageFilter, setStageFilter] = useState("");
 
   const [pendingComment, setPendingComment] = useState(null); // { title, change, apply(comment) }
   const [pendingPitch, setPendingPitch] = useState(null);     // { target, from, to }
@@ -76,12 +79,11 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
   const charge = (moduleKey, paramName) => collItems.find((i) => i.moduleKey === moduleKey && i.paramName === paramName) || null;
 
   const all = scores.moduleResults.flatMap((m) => m.params);
-  const counts = {
-    inPlan: all.filter((r) => r.inPlan).length,
-    notInPlan: all.filter((r) => !r.inPlan).length,
-    purchased: all.filter((r) => r.purchased).length,
-    adopted: all.filter((r) => (r.inPlan || r.purchased) && r.status === "Adopted").length,
-    pitching: all.filter((r) => !r.inPlan && !r.purchased && ["Pitching", "In Progress"].includes(r.pitch)).length,
+  const onPlanTrack = (r) => (r.inPlan || r.purchased) && !r.lost;
+  const matchesStage = (r) => {
+    if (!stageFilter) return true;
+    const [track, value] = [stageFilter.slice(0, stageFilter.indexOf(":")), stageFilter.slice(stageFilter.indexOf(":") + 1)];
+    return track === "plan" ? onPlanTrack(r) && r.status === value : !onPlanTrack(r) && !r.inPlan && r.pitch === value;
   };
 
   async function afterChange(message, alsoCollections) {
@@ -119,7 +121,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
       const res = await applyPitchStageChange(target, { from, to, comment, amount, isTrial, csmId, labMrr: lab.mrr });
       if (res.newMrr != null) onPatchLab?.(lab.id, { mrr: res.newMrr });
       setPendingPitch(null);
-      await afterChange(res.message, to === "Added" || to === "Lost after Purchase");
+      await afterChange(res.message, to === "Purchased" || to === "Lost after Purchase");
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
@@ -135,17 +137,14 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
           <div>
             <div style={{ fontSize: 12, color: "var(--text-dim)", display: "flex", alignItems: "center" }}>
               Adoption score
-              <InfoTip>Out of 100 = everything purchased and fully adopted. Per parameter: In plan / purchased → Not Started 70, In Progress 85, Adopted 100. Not in plan → by pitch stage (To Do 0, Pitching 10, In Progress 30; Not Required and Lost = 0). Modules average their parameters (by weight); the lab averages its modules (by weight).</InfoTip>
+              <InfoTip>Out of 100 = everything purchased and fully adopted. Per parameter: In plan / purchased → To-Do 70, In Discussion / Demo 75, Trial 80, Onboarding / Setup 90, Adopted 100. Not in plan → To-Do 0, Pitching 10, Trial 30, Onboarding / Setup 50; Purchased moves it onto the In-plan list (70). Not Required, Did Not Meet Requirements and Lost = 0; Not Applicable is left out of the score. Modules average their parameters (by weight); the lab averages its modules (by weight).</InfoTip>
             </div>
             <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>
               Mandatory: <b style={{ color: "var(--text)" }}>{Math.round(scores.mandatoryPct)}%</b>
             </div>
           </div>
         </div>
-        <div className="tile"><div className="tval">{counts.inPlan}</div><div className="tlabel">In plan</div></div>
-        <div className="tile"><div className="tval" style={{ color: "var(--purple-text)" }}>{counts.notInPlan}</div><div className="tlabel">Not in plan</div></div>
-        <div className="tile"><div className="tval" style={{ color: "var(--accent)" }}>{counts.purchased}</div><div className="tlabel">Purchased add-ons</div></div>
-        <div className="tile"><div className="tval" style={{ color: "var(--ok)" }}>{counts.adopted}</div><div className="tlabel">Adopted</div></div>
+        <AdoptionPies moduleResults={scores.moduleResults} />
       </div>
 
       <div className="adopt-note" style={{ margin: "0 0 12px" }}>
@@ -153,8 +152,24 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
         Every change asks for a comment and saves straight away. Click a parameter's name to see its history.
       </div>
 
-      {scores.moduleResults.map(({ mod, params, overallPct }) => {
-        const isOpen = !!openModules[mod.key];
+      <div className="filters" style={{ marginBottom: 12 }}>
+        <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} aria-label="Filter by stage">
+          <option value="">All stages</option>
+          <optgroup label="In plan / purchased">
+            {STATUS_ORDER.map((st) => <option key={st} value={`plan:${st}`}>{st}</option>)}
+          </optgroup>
+          <optgroup label="Not in plan">
+            {PITCH_STATUSES.filter((st) => st !== "Purchased").map((st) => <option key={st} value={`exp:${st}`}>{st}</option>)}
+          </optgroup>
+        </select>
+        {stageFilter && <span className="clear" onClick={() => setStageFilter("")}>Clear filter</span>}
+        {stageFilter && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{all.filter(matchesStage).length} parameter(s)</span>}
+      </div>
+
+      {scores.moduleResults.map(({ mod, params: allParams, overallPct }) => {
+        const params = allParams.filter(matchesStage);
+        if (stageFilter && !params.length) return null;
+        const isOpen = !!openModules[mod.key] || !!stageFilter;
         const inPlanCount = params.filter((r) => r.inPlan).length;
         return (
           <div key={mod.key} className="module-row">
@@ -162,7 +177,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
               <span className="mtoggle">{isOpen ? "▾" : "▸"}</span>
               <span>{mod.icon}</span>
               <span className="mname">{mod.name}{mod.description ? <InfoTip label={`About ${mod.name}`}>{mod.description}</InfoTip> : null}</span>
-              <span className="mtag">{inPlanCount}/{params.length} in plan</span>
+              <span className="mtag">{stageFilter ? `${params.length} match` : `${inPlanCount}/${params.length} in plan`}</span>
               {resources.some((r) => r.moduleKey === mod.key) && <span className="mres-badge" title="Docs & training videos">📚 {resources.filter((r) => r.moduleKey === mod.key).length}</span>}
               <div className="bar-track"><div className="bar-fill" style={{ width: `${overallPct || 0}%`, background: barColor(overallPct) }}></div></div>
               <span className="mpct">{pct(overallPct)}</span>
@@ -194,17 +209,17 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
                       </span>
                       <span className={`cat-tag cat-${r.category}`}>{r.category}</span>
                       {(r.inPlan || r.purchased) && !lost ? (
-                        <select className="status-select" value={r.status} onChange={(e) => askStatus(r, e.target.value)} title="Rollout status">
+                        <select className="status-select" value={r.status} onChange={(e) => askStatus(r, e.target.value)} title="In-plan status">
                           {STATUS_ORDER.map((st) => <option key={st} value={st}>{st}</option>)}
                         </select>
                       ) : null}
                       {!r.inPlan && (
-                        <select className="status-select" value={r.pitch} onChange={(e) => askPitch(r, e.target.value, mod)} title="Expansion stage">
+                        <select className="status-select" value={r.pitch} onChange={(e) => askPitch(r, e.target.value, mod)} title={r.purchased ? "Purchased — only Lost after Purchase is left here" : "Expansion stage"}>
                           {pitchOptionsFor(r.purchased, r.pitch).map((st) => <option key={st} value={st}>{st}</option>)}
                         </select>
                       )}
                       {!r.inPlan && !r.purchased && (
-                        <button type="button" className="mark-purchased" onClick={() => askPitch(r, "Added", mod)}>Mark purchased</button>
+                        <button type="button" className="mark-purchased" onClick={() => askPitch(r, "Purchased", mod)}>Mark purchased</button>
                       )}
                       {lost && r.purchased && <span className="cat-tag cat-Warn" title="Change the stage back if this was a mistake">Lost after purchase</span>}
                       {c && (c.isTrial ? (

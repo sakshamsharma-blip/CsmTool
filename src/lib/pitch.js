@@ -1,30 +1,30 @@
 import { supabase } from "../supabaseClient";
-import { markParamIncluded, markModuleInScope, resolveParam, recordParamChange } from "./adoption";
+import { markParamIncluded, markModuleInScope, resolveParam, recordParamChange, normalizePitch, STATUS_ACTIVE } from "./adoption";
 import { addCollectionsItem } from "./collections";
 import { logActivity } from "./activity";
 import { updateLabMRR } from "./labs";
 import { logChurn } from "./churn";
 import { todayISO } from "./dates";
 
-// The upsell/pitch worklist (My Portfolio) — for every Expansion-category feature (or whole module,
-// if the module itself isn't in scope yet), a 5-state pitch status. "Added" is the one status with
-// real consequences: the upsell succeeded, so the feature graduates onto the Adoption tab and a
-// Collections item is created for it (see markFeatureAdded below).
-export const PITCH_STATUSES = ["To Do", "Pitching", "In Progress", "Added", "Not Required", "Lost in Expansion", "Lost after Purchase"];
-export const PITCH_ACTIVE_STATUSES = ["To Do", "Pitching", "In Progress"];
-// Terminal "we lost it" stages — never counted as open work. "Lost in Expansion" = the pitch never
-// converted (recorded + logged only). "Lost after Purchase" = it was bought (Added) and then lost: the
-// lab's MRR drops by that feature's charge and it's logged as a Contraction in the churn log (Reports) —
-// see markLostAfterPurchase. Scope and the Collections entry are left as they are. The next Monthly
-// invoice resets MRR to the real billed figure anyway.
+// Expansion stages for a Not-in-plan parameter (list and order: decision Oct 23 2026). "Purchased" is the one
+// stage with real consequences: it asks Priced or Trial, creates a Collections item and moves the feature onto
+// the In-plan track (see markFeatureAdded below). The two Lost stages are kept at the end: "Lost in Expansion" =
+// the pitch never converted (recorded + logged only). "Lost after Purchase" = it was bought and then lost: the
+// lab's MRR drops by that feature's charge and it's logged as a Contraction (see markLostAfterPurchase).
+export const PITCH_STATUSES = ["To-Do", "Pitching", "Trial", "Onboarding / Setup", "Purchased", "Not Required", "Not Applicable", "Lost in Expansion", "Lost after Purchase"];
+// Stages that mean work is under way — these show up in Tasks (with STATUS_ACTIVE for In-plan items).
+export const PITCH_ACTIVE_STATUSES = ["Pitching", "Trial", "Onboarding / Setup"];
+// Still open (not bought, not closed) — what My Portfolio lists as "to pitch".
+export const PITCH_OPEN_STATUSES = ["To-Do", ...PITCH_ACTIVE_STATUSES];
 export const PITCH_LOST_STATUSES = ["Lost in Expansion", "Lost after Purchase"];
+export { STATUS_ACTIVE };
 
-// Stage choices for one parameter. Once a feature has been bought, losing it must go through "Lost after
-// Purchase" (which lowers MRR and logs a Contraction), so "Lost in Expansion" isn't offered — unless that's
-// already its stage (older data), so the dropdown can still show it.
+// Stage choices for one parameter. Once a feature has been bought it is on the In-plan track (its status
+// dropdown); the only Expansion stage left for it is "Lost after Purchase" (which lowers MRR and logs a
+// Contraction) — "Lost in Expansion" only if that's already its stage (older data).
 export function pitchOptionsFor(purchased, currentStage) {
-  if (!purchased) return PITCH_STATUSES;
-  return PITCH_STATUSES.filter((s) => s !== "Lost in Expansion" || s === currentStage);
+  if (!purchased) return PITCH_STATUSES.filter((s) => s !== "Lost after Purchase" || s === currentStage);
+  return PITCH_STATUSES.filter((s) => s === "Purchased" || s === "Lost after Purchase" || s === currentStage);
 }
 
 // Bulk fetch across every lab — mirrors fetchAllLabsAdoption. Rows are keyed the same way the UI reads
@@ -37,7 +37,7 @@ export async function fetchAllPitchStatus() {
   (data || []).forEach((r) => {
     byLab[r.lab_id] = byLab[r.lab_id] || {};
     const key = r.param_name ? `param:${r.module_key}|${r.param_name}` : `mod:${r.module_key}`;
-    byLab[r.lab_id][key] = r.status;
+    byLab[r.lab_id][key] = normalizePitch(r.status);
   });
   return byLab;
 }
@@ -49,18 +49,18 @@ export async function fetchLabPitchStatus(labId) {
   if (error) throw error;
   const map = {};
   (data || []).forEach((r) => {
-    map[r.param_name ? `param:${r.module_key}|${r.param_name}` : `mod:${r.module_key}`] = r.status;
+    map[r.param_name ? `param:${r.module_key}|${r.param_name}` : `mod:${r.module_key}`] = normalizePitch(r.status);
   });
   return map;
 }
 
 export function getModulePitchStatus(pitchForLab, moduleKey) {
-  return (pitchForLab && pitchForLab[`mod:${moduleKey}`]) || "To Do";
+  return (pitchForLab && pitchForLab[`mod:${moduleKey}`]) || "To-Do";
 }
 export function getParamPitchStatus(pitchForLab, moduleKey, paramName, paramIncluded) {
   const key = `param:${moduleKey}|${paramName}`;
   if (pitchForLab && pitchForLab[key]) return pitchForLab[key];
-  return paramIncluded ? "Added" : "To Do";
+  return paramIncluded ? "Purchased" : "To-Do";
 }
 
 async function upsertPitchStatus(labId, moduleKey, paramName, status) {
@@ -102,10 +102,11 @@ export async function setParamPitchStatus(labId, moduleKey, paramName, status, c
   logPitchChange(labId, { moduleKey, paramName, label, from, to: status, comment, csmId });
 }
 
-// Every open pitch across a set of labs — a read-only summary for Tasks → Pitch Reminders. Under the v2
-// adoption model that's every parameter that is Not in plan, not purchased yet, and still at To Do / Pitching /
-// In Progress (see resolveParam in lib/adoption.js — the same logic each lab's Adoption tab uses).
-export function buildActivePitchRows({ labs, modules, plans, adoptionByLab, pitchByLab }) {
+// Every item that is UNDER WAY across a set of labs — what Tasks lists (decision Oct 23 2026: an item becomes a task
+// only once it moves past To-Do). In plan / purchased: In Discussion / Demo, Trial, Onboarding / Setup. Not in plan:
+// Pitching, Trial, Onboarding / Setup. `changesByParam` ("<lab>|<module>|<param>" → ascending param_changes rows)
+// gives the date it got under way: the start of its latest unbroken run of active stages (null if unrecorded).
+export function buildActiveItemRows({ labs, modules, plans, adoptionByLab, pitchByLab, changesByParam = {} }) {
   const rows = [];
   labs.forEach((lab) => {
     const plan = plans.find((p) => p.id === lab.plan) || plans[0];
@@ -114,12 +115,15 @@ export function buildActivePitchRows({ labs, modules, plans, adoptionByLab, pitc
     modules.forEach((mod) => {
       mod.params.forEach((p) => {
         const r = resolveParam(plan, mod, p, adoptionByLab[lab.id], pf);
-        if (r.inPlan || r.purchased || !PITCH_ACTIVE_STATUSES.includes(r.pitch)) return;
+        if (r.lost) return;
+        const planTrack = r.inPlan || r.purchased;
+        const status = planTrack ? r.status : r.pitch;
+        const active = planTrack ? STATUS_ACTIVE : PITCH_ACTIVE_STATUSES;
+        if (!active.includes(status)) return;
         rows.push({
-          labId: lab.id, labName: lab.name, csm: lab.csm,
-          level: "param", moduleKey: mod.key, paramName: p.name,
-          label: `Pitch ${p.name} (${mod.name})`, status: r.pitch,
-          existingParamState: r.state,
+          labId: lab.id, labName: lab.name, csm: lab.csm, moduleKey: mod.key, moduleName: mod.name, paramName: p.name,
+          category: planTrack ? "In-Plan" : "Not-in-Plan", status, resolved: r,
+          startedAt: activeSince(changesByParam[`${lab.id}|${mod.key}|${p.name}`], active),
         });
       });
     });
@@ -127,11 +131,24 @@ export function buildActivePitchRows({ labs, modules, plans, adoptionByLab, pitc
   return rows;
 }
 
+// Start of the latest unbroken run of changes INTO an active stage ("Status: A → B" / "Stage: A → B").
+function activeSince(changes, active) {
+  if (!changes || !changes.length) return null;
+  let since = null;
+  changes.forEach((c) => {
+    const m = /→ ([^(]+?)(?: \(|$)/.exec(c.change || "");
+    if (!m) return;
+    const to = normalizePitch(m[1].trim()); // older trail rows use the pre-0038 names
+    if (active.includes(to)) { if (!since) since = c.created_at; } else since = null;
+  });
+  return since;
+}
+
 // Confirms an "Added" pitch: records the pitch status, graduates the feature/module onto the Adoption
 // tab, and creates a real Collections item so there's something to collect against.
 export async function markFeatureAdded(target, amount, isTrial, csmId, comment) {
   const { labId, moduleKey, paramName, level, label, existingParamState, fromStatus } = target;
-  await upsertPitchStatus(labId, moduleKey, level === "param" ? paramName : null, "Added");
+  await upsertPitchStatus(labId, moduleKey, level === "param" ? paramName : null, "Purchased");
   if (level === "module") {
     await markModuleInScope(labId, moduleKey);
   } else {
@@ -142,16 +159,16 @@ export async function markFeatureAdded(target, amount, isTrial, csmId, comment) 
   const sym = target.region === "ROW" ? "$" : "₹";
   if (level === "param" && trimmed) {
     await recordParamChange(labId, moduleKey, paramName,
-      `Stage: ${fromStatus || "—"} → Added (${isTrial ? "trial" : `${sym}${amount.toLocaleString("en-IN")}/mo`})`, trimmed, csmId)
+      `Stage: ${fromStatus || "—"} → Purchased (${isTrial ? "trial" : `${sym}${amount.toLocaleString("en-IN")}/mo`})`, trimmed, csmId)
       .catch((err) => console.error(err));
   }
   await logActivity(labId, {
     kind: "Expansion Converted",
-    title: `Pitch stage changed: ${fromStatus || "—"} → Added`,
-    meta: `${label}: ${fromStatus || "—"} → Added${isTrial ? " — trial/free" : ` — ${sym}${amount.toLocaleString("en-IN")}/mo`}${trimmed ? ` — ${trimmed}` : ""}`,
+    title: `Pitch stage changed: ${fromStatus || "—"} → Purchased`,
+    meta: `${label}: ${fromStatus || "—"} → Purchased${isTrial ? " — trial/free" : ` — ${sym}${amount.toLocaleString("en-IN")}/mo`}${trimmed ? ` — ${trimmed}` : ""}`,
     csmId,
     source: "checkin",
-    details: { pitch: { moduleKey, paramName: level === "param" ? paramName : null, label, from: fromStatus || null, to: "Added", comment: trimmed || null, amount: isTrial ? 0 : amount, isTrial } },
+    details: { pitch: { moduleKey, paramName: level === "param" ? paramName : null, label, from: fromStatus || null, to: "Purchased", comment: trimmed || null, amount: isTrial ? 0 : amount, isTrial } },
   });
 }
 
@@ -208,9 +225,9 @@ export async function markLostAfterPurchase(target, { labMrr, region, csmId, com
 // the three screens can never drift apart. `target` = { labId, moduleKey, paramName, level, label,
 // existingParamState, region }. Returns { newMrr, message } — newMrr is set only when the lab's MRR changed.
 export async function applyPitchStageChange(target, { from, to, comment, amount, isTrial, csmId, labMrr }) {
-  if (to === "Added") {
+  if (to === "Purchased") {
     await markFeatureAdded({ ...target, fromStatus: from }, amount, isTrial, csmId, comment);
-    return { newMrr: null, message: `${target.label} marked Added${isTrial ? " (trial)" : ""}.` };
+    return { newMrr: null, message: `${target.label} marked Purchased${isTrial ? " (trial)" : ""} — now tracked on the In-plan list.` };
   }
   if (to === "Lost after Purchase") {
     const { newMrr, lostAmount } = await markLostAfterPurchase(target, { labMrr, region: target.region, csmId, comment, from });

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNewTaskCount } from "./lib/taskNotifications";
 import { supabase, SUPABASE_CONFIGURED } from "./supabaseClient";
 import { fetchProfiles, upsertProfile, myProfileName } from "./lib/profiles";
 import {
-  fetchCatalog, addModule, updateModule, deleteModule, reorderModules,
+  fetchCatalog, addModule, updateModule, deleteModule, reorderModules, reorderModuleParams,
   addModuleParam, updateModuleParam, deleteModuleParam,
 } from "./lib/catalog";
 import { fetchPlans, setPlanModule, setPlanExcludedParam } from "./lib/plans";
@@ -29,6 +30,8 @@ import ExpansionView from "./views/ExpansionView";
 import TasksView from "./views/TasksView";
 import ReportsView from "./views/ReportsView";
 import VisitsView from "./views/VisitsView";
+import FeedbackView from "./views/FeedbackView";
+import ResourcesView from "./views/ResourcesView";
 import LogCheckinView from "./views/LogCheckinView";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 
@@ -380,7 +383,7 @@ export default function App() {
       try { await deleteModule(key); }
       catch (err) {
         console.error(err);
-        showToast(`⚠ Couldn't delete ${name} — ${err.message}`);
+        showToast(`⚠ Couldn't delete ${name} — ${/collections_items_module_key_fkey/.test(err.message || "") ? "Collections entries still point at it; run migration 0038, which lets the module go while keeping those entries." : err.message}`);
         return false;
       }
     }
@@ -419,6 +422,20 @@ export default function App() {
     if (SUPABASE_CONFIGURED) {
       try { await reorderModules(keysInOrder); }
       catch (err) { console.error(err); setModules(before); showToast(`⚠ New order not saved — ${err.message}`); }
+    }
+  }
+
+  // Module Builder: a module's parameter order (saved with Save Changes).
+  async function handleReorderModuleParams(moduleKey, namesInOrder) {
+    setModules((ms) => ms.map((m) => {
+      if (m.key !== moduleKey) return m;
+      const byName = Object.fromEntries(m.params.map((p) => [p.name, p]));
+      const ordered = namesInOrder.map((n) => byName[n]).filter(Boolean);
+      return { ...m, params: [...ordered, ...m.params.filter((p) => !namesInOrder.includes(p.name))] };
+    }));
+    if (SUPABASE_CONFIGURED) {
+      try { await reorderModuleParams(moduleKey, namesInOrder); }
+      catch (err) { console.error(err); showToast(`⚠ Parameter order not saved — ${/sort_order/.test(err.message || "") ? "run migration 0038 first" : err.message}`); }
     }
   }
 
@@ -468,6 +485,9 @@ export default function App() {
   // so it can't be reached (e.g. an Admin preview switched away, or stale state) by anyone else.
   const canManageUsers = viewer.isHead;
 
+  // Unread "new tasks" count for the sidebar (the signed-in person's own tasks; cleared by opening Tasks).
+  const newTaskCount = useNewTaskCount(idByName[myName], view === "tasks");
+
   if (SUPABASE_CONFIGURED && !authChecked) {
     return <div style={{ padding: 40, fontFamily: "sans-serif", color: "var(--text-dim)" }}>Loading…</div>;
   }
@@ -501,7 +521,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={navigateFromSidebar} viewer={viewer} setCurrentCSM={setCurrentCSM} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
+      <Sidebar view={view} setView={navigateFromSidebar} viewer={viewer} newTaskCount={newTaskCount} setCurrentCSM={setCurrentCSM} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
       <div className="main">
         <TopBar viewer={viewer} setView={navigate} showToast={showToast} searchQuery={globalSearchQuery} onSearchChange={handleGlobalSearch} />
         <div className="content">
@@ -527,6 +547,7 @@ export default function App() {
               onToggleModule={handleToggleModule}
               onToggleParam={handleToggleParam}
               onReorderModules={handleReorderModules}
+              onReorderModuleParams={handleReorderModuleParams}
               canEdit={viewer.isHead}
               myProfileId={idByName[myName]}
               isHead={viewer.isHead}
@@ -553,6 +574,12 @@ export default function App() {
           )}
           {view === "visits" && (
             <VisitsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+          )}
+          {view === "feedback" && (
+            <FeedbackView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+          )}
+          {view === "resources" && (
+            <ResourcesView modules={modules} myProfileId={idByName[myName]} isHead={viewer.isHead} showToast={showToast} />
           )}
           {view === "reports" && (
             <ReportsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />

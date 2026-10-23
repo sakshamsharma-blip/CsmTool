@@ -22,6 +22,8 @@ const LIVE_NAV = [
   { key: "visits", icon: "📅", label: "Visits & Meetings" },
   { key: "adoption-template", icon: "📈", label: "Adoption Template" },
   { key: "reports", icon: "📑", label: "Financial Reports" },
+  { key: "feedback", icon: "💬", label: "Feedback & NPS" },
+  { key: "resources", icon: "📚", label: "Resources" },
   // Support & Tickets lives in a separate tool (Flow, CrelioHealth's CS ↔ Product escalation tracker) — this item
   // opens it in a new tab rather than a screen inside the console.
   { key: "__support", icon: "🎫", label: "Support & Tickets", href: "https://creliohealthflow.vercel.app/" },
@@ -30,7 +32,6 @@ const LIVE_NAV = [
 // tool — it's Admin/Lead-only, not a regular nav item everyone sees in the sidebar.
 
 const PLANNED_NAV = [
-  { icon: "💬", label: "Feedback & NPS" },
   { icon: "🎯", label: "KPI Management" },
   { icon: "⚙️", label: "Automation" },
   { icon: "🛠️", label: "Settings" },
@@ -43,7 +44,7 @@ function writeCollapsed(v) {
   try { localStorage.setItem("csm_sidebar_collapsed", v ? "1" : "0"); } catch { /* ignore */ }
 }
 
-export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAddDrawer }) {
+export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAddDrawer, newTaskCount = 0 }) {
   const { csmDirectory, currentCSM, myName, isAdmin } = viewer;
   const initials = (name) => (name || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
   const role = currentCSM ? roleLabel(csmDirectory.find((c) => c.name === currentCSM)?.role) : "";
@@ -121,6 +122,9 @@ export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAd
             >
               <span className="ico">{item.icon}</span>
               <span className="lbl">{item.label}</span>
+              {item.key === "tasks" && newTaskCount > 0 && (
+                <span className="nav-count" title={`${newTaskCount} new task${newTaskCount === 1 ? "" : "s"} since you last opened Tasks`}>{newTaskCount > 99 ? "99+" : newTaskCount}</span>
+              )}
               {item.children && <span className="nav-caret">{expanded[item.key] ? "▾" : "▸"}</span>}
             </div>
             {item.children && expanded[item.key] && !collapsed && (

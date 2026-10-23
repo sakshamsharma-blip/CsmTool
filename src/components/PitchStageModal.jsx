@@ -4,7 +4,8 @@ import Modal from "./Modal";
 const fieldStyle = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
 
 // Confirm step for every Expansion pitch-stage change (My Portfolio, Tasks → Pitch Reminders, a lab's Adoption
-// tab — including its "Mark purchased" button). A comment is REQUIRED for every change (decision, Oct 2026). "Added" asks the person to
+// tab — including its "Mark purchased" button; Tasks also uses it for In-plan status changes). A comment is REQUIRED for
+// every change (decision, Oct 2026). "Purchased" asks the person to
 // choose Priced or Trial (and the monthly charge if priced) because that stage creates a Collections entry;
 // "Lost after Purchase" explains the MRR drop before confirming. Render it only while a change is pending
 // (`{pending && <PitchStageModal … />}`) so its fields start fresh for each change.
@@ -15,7 +16,7 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
   const [error, setError] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const isAdded = toStatus === "Added";
+  const isAdded = toStatus === "Purchased";
   const isLostAfterPurchase = toStatus === "Lost after Purchase";
   const trial = pricing === "trial";
   // Amounts are stored in the lab's own currency — ROW labs bill in USD, Domestic in INR.
@@ -44,7 +45,7 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
       onClose={saving ? () => {} : onClose}
       actions={[
         { label: "Cancel", className: "btn-ghost", onClick: onClose, disabled: saving },
-        { label: saving ? "Saving…" : isAdded ? "Confirm Added" : "Confirm", className: "btn-primary", onClick: handleConfirm, disabled: saving },
+        { label: saving ? "Saving…" : isAdded ? "Confirm Purchased" : "Confirm", className: "btn-primary", onClick: handleConfirm, disabled: saving },
       ]}
     >
       <div style={{ fontSize: 13, marginBottom: 14 }}>
@@ -64,6 +65,7 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
               </label>
             </div>
           </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginBottom: 10 }}>Once purchased, this feature moves onto the In-plan list (starting at To-Do) and is tracked through to Adopted.</div>
           {pricing === "priced" && (
             <div className="tmpl-field" style={{ marginBottom: 12 }}>
               <label>Added Monthly Cost ({sym})</label>

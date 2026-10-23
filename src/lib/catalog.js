@@ -14,12 +14,15 @@ export async function fetchCatalog() {
   if (modsRes.error && /sort_order/.test(modsRes.error.message || "")) {
     modsRes = await supabase.from("modules").select("key,name,icon,weight,description").order("weight", { ascending: false });
   }
-  const [{ data: mods, error: e1 }, { data: params, error: e2 }] = await Promise.all([
-    Promise.resolve(modsRes),
-    // description = the parameter's explanation, edited via ⓘ in the Module Builder and shown as ⓘ next to the
-    // parameter on every lab's Adoption tab.
-    supabase.from("module_params").select("module_key,name,type,weight,category,description"),
-  ]);
+  // description = the parameter's explanation, edited via ⓘ in the Module Builder and shown as ⓘ next to the
+  // parameter on every lab's Adoption tab. Parameters come back in their dragged order (sort_order, migration
+  // 0038); before that column exists, in creation order.
+  let paramsRes = await supabase.from("module_params").select("*").order("sort_order", { ascending: true, nullsFirst: false }).order("id", { ascending: true });
+  if (paramsRes.error && /sort_order/.test(paramsRes.error.message || "")) {
+    paramsRes = await supabase.from("module_params").select("*").order("id", { ascending: true });
+  }
+  const { data: mods, error: e1 } = modsRes;
+  const { data: params, error: e2 } = paramsRes;
   if (e1) throw e1;
   if (e2) throw e2;
   return mods.map((m) => ({
@@ -72,6 +75,20 @@ export async function addModuleParam({ moduleKey, name, type, weight, category, 
     .from("module_params")
     .insert({ module_key: moduleKey, name, type, weight, category, description: description || null });
   if (error) throw error;
+}
+
+// Saves one module's parameter order (array of names, top to bottom) as sort_order 1..n (migration 0038).
+export async function reorderModuleParams(moduleKey, namesInOrder) {
+  const results = await Promise.all(namesInOrder.map((name, i) =>
+    supabase.from("module_params").update({ sort_order: i + 1 }).eq("module_key", moduleKey).eq("name", name)));
+  const failed = results.find((r) => r.error);
+  if (failed) throw failed.error;
+}
+
+// A weight as typed: blank/invalid → 0. Zero is allowed (a module or parameter can count for nothing).
+export function weightValue(w) {
+  const n = Number(w);
+  return w === "" || w == null || !Number.isFinite(n) ? 0 : Math.max(0, n);
 }
 
 // module_params has no surrogate id in this app's data model (demo + live) — (module_key, name)

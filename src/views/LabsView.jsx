@@ -72,6 +72,7 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
   const countryOptions = useMemo(() => [...new Set(labs.map((l) => l.country).filter((v) => v && v !== "—"))].sort(), [labs]);
   const cityOptions = useMemo(() => [...new Set(labs.map((l) => (l.city || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [labs]);
   const [query, setQuery] = useState(initialQuery || "");
+  const [sortBy, setSortBy] = useState("mrr-desc"); // default: highest MRR first (compared in INR)
   const [visits, setVisits] = useState([]);
 
   // Lab Health (Sentiment) badge — fetched independently of `labs` (same pattern Dashboard/
@@ -115,8 +116,12 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
     }
     if (filters.status) r = r.filter((row) => row.status === filters.status || row.children.some((c) => c.status === filters.status));
     if (filters.segment) r = r.filter((row) => segmentFor(toINR(row.mrr, row.region)).code === filters.segment);
-    return r;
-  }, [labs, filters, query, scopeCsm]);
+    const mrrInr = (l) => toINR(l.mrr, l.region) || 0;
+    const cmp = sortBy === "mrr-asc" ? (a, b) => mrrInr(a) - mrrInr(b)
+      : sortBy === "name" ? (a, b) => a.name.localeCompare(b.name)
+        : (a, b) => mrrInr(b) - mrrInr(a);
+    return [...r].sort(cmp).map((row) => ({ ...row, children: [...row.children].sort(cmp) }));
+  }, [labs, filters, query, scopeCsm, sortBy]);
 
   const allRowsForTiles = useMemo(() => {
     let r = computeLabRollup(labs);
@@ -141,6 +146,30 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
 
   function statusPillClass(s) { return "status-" + s.replace(" ", ""); }
   function healthPillClass(s) { return isHealthyStatus(s) ? "status-Active" : s === "Churn" ? "status-Inactive" : "status-AtRisk"; }
+
+  // One table row (a parent, or a child under an expanded parent). The first five cells stay frozen when the
+  // table scrolls sideways.
+  function labRow(l, isChild) {
+    const seg = segmentFor(toINR(l.mrr, l.region));
+    return (
+      <tr key={l.id} className={isChild ? "child-row" : undefined}>
+        <td className="fz fz0">{!isChild && l.children.length > 0 && (
+          <span className="toggle" onClick={() => setExpanded((e) => ({ ...e, [l.id]: !e[l.id] }))}>{expanded[l.id] ? "▾" : "▸"}</span>
+        )}</td>
+        <td className="fz fz1">{l.labCode || l.id}</td>
+        <td className="fz fz2 lab-name clickable" onClick={() => onOpenLab(l.id)}>{l.name}</td>
+        <td className="fz fz3"><span className={`pill ${isChild ? "pill-child" : "pill-parent"}`}>{isChild ? "Child" : "Parent"}</span></td>
+        <td className="fz fz4">{l.csm}</td>
+        <td className="mrr-cell">{fmtMoney(l.mrr, l.region)}</td>
+        <td><span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span></td>
+        <td>{l.region}</td>
+        <td><span className={`status-pill ${statusPillClass(l.status)}`}>{l.status}</span></td>
+        <td>{l.healthStatus ? <span className={`status-pill ${healthPillClass(l.healthStatus)}`}>{l.healthStatus}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
+        <td><span style={{ fontSize: 11, fontWeight: 700, color: HEALTH_BUCKET_COLORS[sentimentHealthOf(l).bucket] }}>{sentimentHealthOf(l).bucket}</span></td>
+        <td>{l.city || "—"}</td><td>{l.state}</td><td>{l.country}</td>
+      </tr>
+    );
+  }
 
   return (
     <div>
@@ -226,71 +255,35 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
           emptyLabel="All Cities"
           placeholder="All Cities"
         />
-        <span className="clear" onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); }}>Clear all</span>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} title="Sort">
+          <option value="mrr-desc">MRR: high → low</option>
+          <option value="mrr-asc">MRR: low → high</option>
+          <option value="name">Lab name A → Z</option>
+        </select>
+        <span className="clear" onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); setSortBy("mrr-desc"); }}>Clear all</span>
       </div>
 
       <div className="table-card">
       <div className="table-scroll">
-      <table>
+      <table className="freeze-cols">
         <thead>
           <tr>
-            <th></th><th>Lab ID</th><th>Lab Name</th><th>Type</th><th>CSM</th><th>Segment</th>
-            <th>Region</th><th>City</th><th>State</th><th>Country</th><th>MRR</th><th>Status</th><th>Health</th>
+            <th className="fz fz0"></th><th className="fz fz1">Lab ID</th><th className="fz fz2">Lab Name</th><th className="fz fz3">Type</th><th className="fz fz4">CSM Name</th>
+            <th>MRR</th><th>Segment</th><th>Region</th><th>Status</th><th>Health</th>
             <th title="Auto, from logged visit/check-in sentiment — separate from Health">Lab Health</th>
+            <th>City</th><th>State</th><th>Country</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
             <tr><td colSpan="14" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>No labs match these filters.</td></tr>
           )}
-          {rows.map((r) => {
-            const seg = segmentFor(toINR(r.mrr, r.region));
-            return (
-              <Fragment key={r.id}>
-                <tr>
-                  <td>{r.children.length > 0 && (
-                    <span className="toggle" onClick={() => setExpanded((e) => ({ ...e, [r.id]: !e[r.id] }))}>
-                      {expanded[r.id] ? "▾" : "▸"}
-                    </span>
-                  )}</td>
-                  <td>{r.labCode || r.id}</td>
-                  <td className="lab-name clickable" onClick={() => onOpenLab(r.id)}>{r.name}</td>
-                  <td>
-                    <span className="pill pill-parent">Parent</span>
-                    {r.children.length > 0 && (
-                      <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "var(--text-dim)" }} title="Billing Mode — set from the lab's Child Labs tab">
-                        {r.billingMode === "Consolidated" ? "Consolidated" : "Per-Branch"}
-                      </span>
-                    )}
-                  </td>
-                  <td>{r.csm}</td>
-                  <td><span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span></td>
-                  <td>{r.region}</td><td>{r.city || "—"}</td><td>{r.state}</td><td>{r.country}</td>
-                  <td className="mrr-cell">{fmtMoney(r.mrr, r.region)}</td>
-                  <td><span className={`status-pill ${statusPillClass(r.status)}`}>{r.status}</span></td>
-                  <td>{r.healthStatus ? <span className={`status-pill ${healthPillClass(r.healthStatus)}`}>{r.healthStatus}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
-                  <td><span style={{ fontSize: 11, fontWeight: 700, color: HEALTH_BUCKET_COLORS[sentimentHealthOf(r).bucket] }}>{sentimentHealthOf(r).bucket}</span></td>
-                </tr>
-                {r.children.length > 0 && expanded[r.id] && r.children.map((c) => {
-                  const cseg = segmentFor(toINR(c.mrr, c.region));
-                  return (
-                    <tr className="child-row" key={c.id}>
-                      <td></td><td>{c.labCode || c.id}</td>
-                      <td className="lab-name clickable" onClick={() => onOpenLab(c.id)}>{c.name}</td>
-                      <td><span className="pill pill-child">Child</span></td>
-                      <td>{c.csm}</td>
-                      <td><span className="seg-badge" style={{ background: cseg.color }}>{cseg.code}</span></td>
-                      <td>{c.region}</td><td>{c.city || "—"}</td><td>{c.state}</td><td>{c.country}</td>
-                      <td className="mrr-cell">{fmtMoney(c.mrr, c.region)}</td>
-                      <td><span className={`status-pill ${statusPillClass(c.status)}`}>{c.status}</span></td>
-                      <td>{c.healthStatus ? <span className={`status-pill ${healthPillClass(c.healthStatus)}`}>{c.healthStatus}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
-                      <td><span style={{ fontSize: 11, fontWeight: 700, color: HEALTH_BUCKET_COLORS[sentimentHealthOf(c).bucket] }}>{sentimentHealthOf(c).bucket}</span></td>
-                    </tr>
-                  );
-                })}
-              </Fragment>
-            );
-          })}
+          {rows.map((r) => (
+            <Fragment key={r.id}>
+              {labRow(r, false)}
+              {r.children.length > 0 && expanded[r.id] && r.children.map((c) => labRow(c, true))}
+            </Fragment>
+          ))}
         </tbody>
       </table>
       </div>

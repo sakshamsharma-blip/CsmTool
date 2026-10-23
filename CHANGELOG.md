@@ -2,6 +2,34 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 23 2026 — batch 5: new status lists, Tasks rework, Feedback & NPS, Resources
+**Database (applied):** `0038_new_stages_feedback_resources.sql` — renames existing statuses (Not Started → To-Do,
+In Progress → Onboarding / Setup, To Do → To-Do, Added → Purchased), lets a module be deleted while keeping its
+Collections entries, adds parameter order, and the Feedback / Testimonials / Resources tables.
+- **New status lists.** In plan: To-Do (default) · In Discussion / Demo · Trial · Onboarding / Setup · Adopted ·
+  Not Required · Not Applicable · Did Not Meet Requirements. Not in plan: To-Do · Pitching · Trial · Onboarding /
+  Setup · Purchased · Not Required · Not Applicable (+ Lost in Expansion / Lost after Purchase kept at the end, so the
+  MRR drop and Contraction logging still work). Purchased moves the feature onto the In-plan list. Scores: In plan
+  70 / 75 / 80 / 90 / 100, Not in plan 0 / 10 / 30 / 50; Not Required, Did Not Meet Requirements and Lost = 0; Not
+  Applicable is left out of the score.
+- **Lab Adoption tab:** two pies — In-Plan vs Not-in-Plan, Mandatory vs Optional — each with its adoption % and
+  parameter count; a stage filter.
+- **My Portfolio:** Avg Adoption by Module now shows, per module, the share of labs in each score band.
+- **Tasks:** Adoption/Expansion items appear only once they're under way (not at To-Do), with lab, In-Plan /
+  Not-in-Plan, item, days since started, status dropdown and "Remind me". Task list can be sorted by due date.
+  Sidebar shows a green count of new tasks since you last opened Tasks.
+- **Feedback & NPS** (new): Feedback (1–5 ratings) and Testimonials (video links by designation), filter by lab / CSM.
+- **Resources** (new): team documents and training material, plus all module links.
+- **Points of Contact** moved to its own tab on the lab page.
+- **Adoption Template:** drag parameters to reorder; a weight can be 0; adding a module past 100% asks which modules
+  to reduce; deleting a module no longer fails when Collections entries point at it (after 0038).
+- **Total Labs:** sorted by MRR (high → low) by default, new column order, Consolidated / Per-Branch label removed,
+  first columns frozen while scrolling sideways.
+- **Financial Reports:** people with no labs aren't listed.
+- **Dashboard:** Churn Count, MRR Churned, ARR Churned, MRR Contraction and MRR Churn % — overall, per CSM, and in
+  the By CSM table.
+- Smoke tests: 13.
+
 ## Oct 2026 — Support & Tickets → Flow
 - The sidebar's "Support & Tickets" (previously greyed out as Planned) now opens Flow
   (https://creliohealthflow.vercel.app/) in a new tab.

@@ -4,7 +4,7 @@ import { fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
 import { fetchAllLabsAdoption, computeSavedLabScores } from "../lib/adoption";
 import {
-  fetchAllPitchStatus, applyPitchStageChange, PITCH_ACTIVE_STATUSES, pitchOptionsFor,
+  fetchAllPitchStatus, applyPitchStageChange, PITCH_OPEN_STATUSES, PITCH_STATUSES, pitchOptionsFor,
 } from "../lib/pitch";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask } from "../lib/tasks";
 import { fetchAllCollectionsItems } from "../lib/collections";
@@ -16,6 +16,17 @@ import PitchStageModal from "../components/PitchStageModal";
 import InfoTip from "../components/InfoTip";
 
 const SEG_LABELS = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
+
+const SCORE_BANDS = [
+  { key: "hi", label: "85–100%", min: 85, max: Infinity, color: "var(--ok)" },
+  { key: "mid", label: "70–84%", min: 70, max: 85, color: "var(--accent)" },
+  { key: "low", label: "30–69%", min: 30, max: 70, color: "var(--warn)" },
+  { key: "bad", label: "Below 30%", min: -Infinity, max: 30, color: "var(--bad)" },
+];
+const PITCH_COLORS = {
+  "To-Do": "var(--text-faint)", Pitching: "var(--warn)", Trial: "var(--purple-text)", "Onboarding / Setup": "var(--accent)",
+  Purchased: "var(--ok)", "Lost in Expansion": "var(--bad)", "Lost after Purchase": "var(--bad)",
+};
 
 export default function PortfolioView({ labs, modules, plans, viewer, idByName, onOpenLab, onPatchLab, showToast }) {
   const { currentCSM } = viewer;
@@ -76,17 +87,19 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
   rows.forEach((lab) => { scoresByLab[lab.id] = computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id], pitchByLab[lab.id]); });
   const allParamsOf = (lab) => scoresByLab[lab.id].moduleResults.flatMap((m) => m.params);
 
-  // Pitch Pipeline — every Not-in-plan parameter in this portfolio, bucketed by its stage (purchased = Added).
-  const pitchCounts = { "To Do": 0, Pitching: 0, "In Progress": 0, Added: 0, "Not Required": 0, "Lost in Expansion": 0, "Lost after Purchase": 0 };
+  // Pitch Pipeline — every Not-in-plan parameter in this portfolio, bucketed by its stage.
+  const pitchCounts = Object.fromEntries(PITCH_STATUSES.map((st) => [st, 0]));
   rows.forEach((lab) => {
     allParamsOf(lab).forEach((r) => { if (!r.inPlan && pitchCounts[r.pitch] != null) pitchCounts[r.pitch]++; });
   });
 
+  // Avg Adoption by Module — the average, plus the % of labs in each score band for that module.
   const moduleAvgs = modules.map((mod) => {
     const vals = rows.map((lab) => scoresByLab[lab.id].moduleResults.find((m) => m.mod.key === mod.key)?.overallPct).filter((v) => v != null);
     if (!vals.length) return null;
     const avg = Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
-    return { label: mod.name, value: avg, color: avg >= 85 ? "var(--ok)" : avg >= 70 ? "var(--accent)" : avg >= 30 ? "var(--warn)" : "var(--bad)" };
+    const bands = SCORE_BANDS.map((b) => ({ ...b, pct: (vals.filter((v) => v >= b.min && v < b.max).length / vals.length) * 100 }));
+    return { label: mod.name, value: avg, labs: vals.length, bands };
   }).filter(Boolean).sort((a, b) => a.value - b.value);
 
   async function handleToggleDone(task) {
@@ -130,19 +143,29 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, margin: "0 0 18px" }}>
         <div className="table-card" style={{ padding: "16px 18px" }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Pitch Pipeline (Expansion features)</div>
-          <BarChart labelWidth={125} data={[
-            { label: "To Do", value: pitchCounts["To Do"], color: "var(--text-faint)" },
-            { label: "Pitching", value: pitchCounts.Pitching, color: "var(--warn)" },
-            { label: "In Progress", value: pitchCounts["In Progress"], color: "var(--accent)" },
-            { label: "Added", value: pitchCounts.Added, color: "var(--ok)" },
-            { label: "Not Required", value: pitchCounts["Not Required"], color: "var(--text-dim)" },
-            { label: "Lost in Expansion", value: pitchCounts["Lost in Expansion"], color: "var(--bad)" },
-            { label: "Lost after Purchase", value: pitchCounts["Lost after Purchase"], color: "var(--bad)" },
-          ]} />
+          <BarChart labelWidth={125} data={PITCH_STATUSES.map((st) => ({ label: st, value: pitchCounts[st], color: PITCH_COLORS[st] || "var(--text-dim)" }))} />
         </div>
         <div className="table-card" style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Avg Adoption by Module</div>
-          <BarChart labelWidth={120} valueFmt={(v) => v + "%"} maxValue={100} data={moduleAvgs} />
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center" }}>
+            Avg Adoption by Module
+            <InfoTip>The number is the module's average adoption across these labs. The bar splits the labs by their score for that module — hover a segment for the exact share.</InfoTip>
+          </div>
+          <div className="modseg-legend">
+            {SCORE_BANDS.map((b) => <span key={b.key}><i style={{ background: b.color }} />{b.label}</span>)}
+          </div>
+          {!moduleAvgs.length ? <div style={{ color: "var(--text-faint)", fontSize: 12, padding: "8px 0" }}>No data yet.</div> : moduleAvgs.map((m) => (
+            <div key={m.label} className="modseg-row">
+              <span className="modseg-label" title={m.label}>{m.label}</span>
+              <div className="modseg-bar">
+                {m.bands.map((b) => b.pct > 0 && (
+                  <div key={b.key} style={{ width: `${b.pct}%`, background: b.color }} title={`${b.label}: ${Math.round(b.pct)}% of ${m.labs} lab(s)`}>
+                    {b.pct >= 14 ? `${Math.round(b.pct)}%` : ""}
+                  </div>
+                ))}
+              </div>
+              <b className="modseg-val">{m.value}%</b>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -154,7 +177,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
 
       <h3 style={{ fontSize: 14, margin: "0 0 8px", display: "flex", alignItems: "center" }}>
         Labs
-        <InfoTip>Each module lists this lab's add-ons — the parameters marked <b>Not in plan</b> on its Adoption tab. Move them through the pitch stages (To Do → Pitching → In Progress → Added → Not Required, or Lost); every change needs a comment and is logged to Lab History. <b>Added</b> asks Priced or Trial and creates a Collections entry. <b>Lost after Purchase</b> lowers MRR by the feature's charge. The adoption % uses the same 0–100 ladder as the lab's Adoption tab.</InfoTip>
+        <InfoTip>Each module lists this lab's add-ons — the parameters marked <b>Not in plan</b> on its Adoption tab. Move them through the Expansion stages (To-Do → Pitching → Trial → Onboarding / Setup → Purchased, or Not Required / Not Applicable / Lost); every change needs a comment and is logged to Lab History. <b>Purchased</b> asks Priced or Trial, creates a Collections entry and moves the feature onto the In-plan list. <b>Lost after Purchase</b> lowers MRR by the feature's charge. The adoption % uses the same 0–100 ladder as the lab's Adoption tab.</InfoTip>
       </h3>
       {!rows.length ? (
         <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>No labs assigned to {scopeLabel} yet.</div>
@@ -163,7 +186,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
         const scores = scoresByLab[lab.id];
         const isOpen = expandedLab === lab.id;
         const ringColor = scores.overallPct >= 85 ? "var(--ok)" : scores.overallPct >= 70 ? "var(--accent)" : scores.overallPct >= 30 ? "var(--warn)" : "var(--bad)";
-        const toPitchCount = allParamsOf(lab).filter((r) => !r.inPlan && !r.purchased && PITCH_ACTIVE_STATUSES.includes(r.pitch)).length;
+        const toPitchCount = allParamsOf(lab).filter((r) => !r.inPlan && !r.purchased && PITCH_OPEN_STATUSES.includes(r.pitch)).length;
 
         return (
           <div key={lab.id} className="table-card" style={{ marginBottom: 12 }}>
@@ -196,7 +219,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
                     const barColor = pct == null ? "var(--surface-3)" : pct >= 85 ? "var(--ok)" : pct >= 70 ? "var(--accent)" : pct >= 30 ? "var(--warn)" : "var(--bad)";
                     // This lab's add-ons in this module = its Not-in-plan parameters.
                     const addOns = params.filter((r) => !r.inPlan);
-                    const modToPitch = addOns.filter((r) => !r.purchased && PITCH_ACTIVE_STATUSES.includes(r.pitch)).length;
+                    const modToPitch = addOns.filter((r) => !r.purchased && PITCH_OPEN_STATUSES.includes(r.pitch)).length;
                     return (
                       <div key={mod.key} className="module-row">
                         <div className="module-head" onClick={() => setExpandedModule(isModOpen ? null : mod.key)}>
@@ -219,7 +242,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
                               <div key={p.name} className="param-row">
                                 <span className={`param-type ${p.type}`}>{p.type === "M" ? "Mandatory" : "Optional"}</span>
                                 <span className="pname">{p.name}</span>
-                                <span className={`status-chip st-${r.status.replace(/ /g, "")}`} style={{ cursor: "default" }}>{lost ? "Lost after purchase" : r.purchased ? r.status : "Not purchased"}</span>
+                                <span className={`status-chip ${r.status === "Adopted" ? "st-Adopted" : r.status === "To-Do" || !r.purchased ? "st-NotStarted" : "st-InProgress"}`} style={{ cursor: "default" }}>{lost ? "Lost after purchase" : r.purchased ? r.status : "Not purchased"}</span>
                                 {charge && (charge.isTrial
                                   ? <span className="cat-tag cat-Warn" title="Add charges from this lab's Adoption or Collections tab">Trial</span>
                                   : <span className="cat-tag cat-Adoption">Priced {fmtMoney(charge.amount, lab.region)}/mo</span>)}

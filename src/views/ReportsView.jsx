@@ -67,7 +67,9 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
 
   const segByCsm = useMemo(() => {
     const csmsInScope = teamAll || !isHead ? csmNames.filter((n) => teamAll || n === scopeCsm) : [scopeCsm].filter(Boolean);
-    const cols = teamAll ? csmNames : csmsInScope;
+    // Someone with no labs assigned (e.g. an Admin, or a new CSM) isn't shown as an empty column.
+    const withLabs = new Set(breakdownLabs.map((l) => l.csm));
+    const cols = (teamAll ? csmNames : csmsInScope).filter((c) => withLabs.has(c));
     const grid = {};
     SEGMENTS.forEach((seg) => { grid[seg] = {}; cols.forEach((c) => { grid[seg][c] = 0; }); });
     breakdownLabs.forEach((l) => {
@@ -127,7 +129,7 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
       </div>
 
       <div style={{ marginTop: 16 }}>
-        <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
+        <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames.filter((n) => labs.some((l) => l.csm === n))} />
       </div>
 
       {tab === "churn" && (

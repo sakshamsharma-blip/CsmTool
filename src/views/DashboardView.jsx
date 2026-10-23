@@ -7,6 +7,7 @@ import { fetchAllPitchStatus } from "../lib/pitch";
 import { fetchAllCollectionsItems, labCollectionsSummary, isItemOpen, itemBalance, AGING_COLORS } from "../lib/collections";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask, getOpenTasksFor } from "../lib/tasks";
 import { fetchAllVisits } from "../lib/visits";
+import { fetchChurnLog } from "../lib/churn";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
@@ -23,6 +24,7 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
   const [collectionsItems, setCollectionsItems] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [visits, setVisits] = useState([]);
+  const [churnLog, setChurnLog] = useState([]);
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
 
@@ -33,9 +35,11 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
     setLoading(true);
     setError(null);
     try {
-      const [adoption, items, tk, vs, pitch] = await Promise.all([
+      const [adoption, items, tk, vs, pitch, churn] = await Promise.all([
         fetchAllLabsAdoption(), fetchAllCollectionsItems(), fetchAllTasks(invert(idByName)), fetchAllVisits(), fetchAllPitchStatus(),
+        fetchChurnLog().catch(() => []),
       ]);
+      setChurnLog(churn);
       setAdoptionByLab(adoption);
       setPitchByLab(pitch);
       setCollectionsItems(items);
@@ -115,6 +119,18 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
     catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
+  // Churn & revenue impact (all time, from the churn log — Financial Reports → Churn Report). A record belongs to
+  // the lab's CSM. Amounts are in each lab's own currency, so convert to INR before summing.
+  function churnStats(csmName) {
+    const recs = churnLog.filter((r) => !csmName || labsById[r.labId]?.csm === csmName);
+    const churned = recs.filter((r) => r.churnType === "Churned");
+    const mrrChurned = churned.reduce((s, r) => s + toINR(r.mrrLost, labsById[r.labId]?.region), 0);
+    const contraction = recs.filter((r) => r.churnType === "Contraction").reduce((s, r) => s + toINR(r.mrrLost, labsById[r.labId]?.region), 0);
+    return { churnCount: new Set(churned.map((r) => r.labId)).size, mrrChurned, contraction };
+  }
+  const churn = churnStats(teamAll ? null : scopeCsm);
+  const churnPct = totalMRR > 0 ? (churn.mrrChurned / totalMRR) * 100 : null;
+
   const labOptions = [];
   allRows.forEach((r) => { labOptions.push(r); r.children.forEach((c) => labOptions.push(c)); });
 
@@ -124,7 +140,8 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
     const mrr = csmRows.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
     const avgAdopt = csmRows.length ? Math.round(csmRows.reduce((s, r) => s + scoreOf(r).overallPct, 0) / csmRows.length) : 0;
     const openTasks = getOpenTasksFor(tasks, name).length;
-    return { name, labCount, mrr, avgAdopt, openTasks };
+    const ch = churnStats(name);
+    return { name, labCount, mrr, avgAdopt, openTasks, ...ch, churnPct: mrr > 0 ? (ch.mrrChurned / mrr) * 100 : null };
   }).filter((c) => c.labCount > 0) : null;
 
   return (
@@ -143,6 +160,18 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
         <div className="stile"><div className="sval" style={{ color: atRiskCount > 0 ? "var(--bad)" : "var(--text)" }}>{atRiskCount}</div><div className="slabel">At Risk</div></div>
         <div className="stile"><div className="sval">{avgAdoption}%</div><div className="slabel">Avg Adoption</div></div>
         <div className="stile"><div className="sval">{openTaskCount}</div><div className="slabel">Open Tasks</div></div>
+      </div>
+
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", margin: "6px 0 0", display: "flex", alignItems: "center" }}>
+        Churn &amp; revenue impact
+        <InfoTip>All time, from the churn log (Financial Reports → Churn Report). Churn Count = labs churned. MRR / ARR Churned = MRR lost when those labs churned (ARR = × 12). MRR Contraction = MRR lost from labs that stayed (downgrades, features lost after purchase). MRR Churn % = MRR Churned ÷ current Total MRR of this view.</InfoTip>
+      </div>
+      <div className="summary-grid" style={{ gridTemplateColumns: "repeat(5,1fr)", paddingTop: 6, marginBottom: 8 }}>
+        <div className="stile"><div className="sval" style={{ color: churn.churnCount ? "var(--bad)" : undefined }}>{churn.churnCount}</div><div className="slabel">Churn Count</div></div>
+        <div className="stile"><div className="sval" style={{ color: churn.mrrChurned ? "var(--bad)" : undefined }}>{fmtINR(churn.mrrChurned)}</div><div className="slabel">MRR Churned</div></div>
+        <div className="stile"><div className="sval" style={{ color: churn.mrrChurned ? "var(--bad)" : undefined }}>{fmtINR(churn.mrrChurned * 12)}</div><div className="slabel">ARR Churned</div></div>
+        <div className="stile"><div className="sval" style={{ color: churn.contraction ? "var(--warn)" : undefined }}>{fmtINR(churn.contraction)}</div><div className="slabel">MRR Contraction</div></div>
+        <div className="stile"><div className="sval">{churnPct == null ? "—" : `${churnPct.toFixed(1)}%`}</div><div className="slabel">MRR Churn %</div></div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, margin: "18px 0" }}>
@@ -194,8 +223,8 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
       {byCsm && (
         <div style={{ marginTop: 18 }}>
           <h3 style={{ fontSize: 14, margin: "18px 0 8px" }}>By CSM</h3>
-          <div className="table-card"><table className="child-mini">
-            <thead><tr><th>CSM</th><th>Labs</th><th>Total MRR</th><th>Avg Adoption</th><th>Open Tasks</th></tr></thead>
+          <div className="table-card"><div className="table-scroll"><table className="child-mini">
+            <thead><tr><th>CSM</th><th>Labs</th><th>Total MRR</th><th>Avg Adoption</th><th>Open Tasks</th><th>Churned</th><th>MRR Churned</th><th>MRR Contraction</th><th>MRR Churn %</th></tr></thead>
             <tbody>{byCsm.map((c) => (
               <tr key={c.name}>
                 <td className="lab-name clickable" onClick={() => setCsmFilter(c.name)}>{c.name}</td>
@@ -203,9 +232,13 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
                 <td className="mrr-cell">{fmtINR(c.mrr)}</td>
                 <td>{c.avgAdopt}%</td>
                 <td>{c.openTasks}</td>
+                <td>{c.churnCount}</td>
+                <td className="mrr-cell">{fmtINR(c.mrrChurned)}</td>
+                <td className="mrr-cell">{fmtINR(c.contraction)}</td>
+                <td>{c.churnPct == null ? "—" : `${c.churnPct.toFixed(1)}%`}</td>
               </tr>
             ))}</tbody>
-          </table></div>
+          </table></div></div>
         </div>
       )}
 

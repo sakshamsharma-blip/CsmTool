@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup } from "../lib/labRollup";
-import { fetchAllLabsAdoption } from "../lib/adoption";
+import { fetchAllLabsAdoption, fetchAllParamChanges, setParamStatus, STATUS_ORDER } from "../lib/adoption";
 import {
-  fetchAllPitchStatus, buildActivePitchRows, applyPitchStageChange, PITCH_STATUSES,
+  fetchAllPitchStatus, buildActiveItemRows, applyPitchStageChange, pitchOptionsFor,
 } from "../lib/pitch";
+import { todayISO } from "../lib/dates";
+import Modal from "../components/Modal";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask, isTaskDoneToday } from "../lib/tasks";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
@@ -16,17 +18,16 @@ import Paginated from "../components/Pager";
 import { labSelectOptions } from "../lib/selectOptions";
 
 // Everything a CSM (or a Lead, across the team) needs to work through — every task regardless of
-// due date (Overdue/Today/Upcoming/Someday/Done, same data "Tasks for Today" already uses under
-// the hood, just not tucked away on Dashboard/Portfolio), plus every open Expansion pitch item
-// (To Do/Pitching/In Progress) so nothing sitting in the pitch worklist gets forgotten just
-// because it isn't a "task" yet. Status can be changed right from this table (same underlying
-// pitch_status row My Portfolio's dropdown edits) — no need to go find the lab there first.
+// due date (Overdue/Today/Upcoming/Someday/Done, or one list sorted by due date), plus every Adoption /
+// Expansion item that is UNDER WAY (moved past To-Do — see buildActiveItemRows in lib/pitch.js). An item
+// at To-Do is not a task yet. Status can be changed right from the table (the same records the lab's
+// Adoption tab edits), and "Remind me" adds a dated reminder task for it.
 const TASK_TYPE_FILTERS = [
   ["follow-up", "Follow-ups"], ["action-item", "Action items"], ["planned-visit", "Planned visits"],
-  ["collection", "Collection due"], ["recurring", "Recurring"], ["personal", "Personal"],
+  ["collection", "Collection due"], ["reminder", "Reminders"], ["recurring", "Recurring"], ["personal", "Personal"],
 ];
 function taskTypeKey(t) {
-  if (["follow-up", "action-item", "planned-visit", "collection", "pitch"].includes(t.type)) return t.type;
+  if (["follow-up", "action-item", "planned-visit", "collection", "pitch", "reminder"].includes(t.type)) return t.type;
   return t.repeat && t.repeat !== "none" ? "recurring" : "personal";
 }
 
@@ -36,11 +37,16 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
 
   const [adoptionByLab, setAdoptionByLab] = useState({});
   const [pitchByLab, setPitchByLab] = useState({});
+  const [changesByParam, setChangesByParam] = useState({});
   const [tasks, setTasks] = useState([]);
+  const [sortByDue, setSortByDue] = useState("");
+  const [fCategory, setFCategory] = useState("");
+  const [itemSort, setItemSort] = useState("lab");
+  const [remindFor, setRemindFor] = useState(null); // active item getting a reminder task
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
 
-  // A pitch-stage change waiting for its confirm step (optional comment; Added also asks for the cost).
+  // A status change waiting for its confirm step (comment required; Purchased also asks Priced / Trial).
   const [pending, setPending] = useState(null);
   // Filters (apply to both the task list and Pitch Reminders where it makes sense)
   const [fLab, setFLab] = useState("");
@@ -54,11 +60,14 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
     setLoading(true);
     setError(null);
     try {
-      const [adoption, pitch, tk] = await Promise.all([
-        fetchAllLabsAdoption(), fetchAllPitchStatus(), fetchAllTasks(invert(idByName)),
+      const [adoption, pitch, tk, ch] = await Promise.all([
+        fetchAllLabsAdoption(), fetchAllPitchStatus(), fetchAllTasks(invert(idByName)), fetchAllParamChanges().catch(() => []),
       ]);
+      const byParam = {};
+      ch.forEach((c) => { (byParam[`${c.lab_id}|${c.module_key}|${c.param_name}`] = byParam[`${c.lab_id}|${c.module_key}|${c.param_name}`] || []).push(c); });
       setAdoptionByLab(adoption);
       setPitchByLab(pitch);
+      setChangesByParam(byParam);
       setTasks(tk);
     } catch (err) {
       setError(err.message || "Failed to load tasks.");
@@ -81,10 +90,15 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
   const labOptions = [];
   computeLabRollup(labs).forEach((r) => { labOptions.push(r); r.children.forEach((c) => labOptions.push(c)); });
 
-  const pitchRows = buildActivePitchRows({ labs, modules, plans, adoptionByLab, pitchByLab })
+  const daysSince = (iso) => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)) : null);
+  const itemRows = buildActiveItemRows({ labs, modules, plans, adoptionByLab, pitchByLab, changesByParam })
     .filter((r) => !scopeCsm || r.csm === scopeCsm)
     .filter((r) => !fLab || r.labId === fLab)
-    .sort((a, b) => a.labName.localeCompare(b.labName));
+    .filter((r) => !fCategory || r.category === fCategory)
+    .map((r) => ({ ...r, days: daysSince(r.startedAt) }))
+    .sort((a, b) => itemSort === "days"
+      ? (b.days ?? -1) - (a.days ?? -1)
+      : a.labName.localeCompare(b.labName) || a.paramName.localeCompare(b.paramName));
 
   const filteredTasks = tasks.filter((t) => {
     if (fLab && t.labId !== fLab) return false;
@@ -102,19 +116,44 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
     catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
-  function handlePitchStatusChange(status, target) {
-    if (status === target.fromStatus) return;
-    // region rides along so the Added step asks for the cost in the lab's own currency (₹ or $).
-    setPending({ target: { ...target, region: labsById[target.labId]?.region }, from: target.fromStatus, to: status });
+  function handleItemStatusChange(r, status) {
+    if (status === r.status) return;
+    setPending({
+      row: r,
+      // region rides along so Purchased asks for the cost in the lab's own currency (₹ or $).
+      target: { labId: r.labId, moduleKey: r.moduleKey, paramName: r.paramName, level: "param", label: r.paramName, existingParamState: r.resolved.state, region: labsById[r.labId]?.region },
+      from: r.status, to: status,
+    });
   }
   async function confirmStageChange({ comment, amount, isTrial }) {
-    const { target: t, from, to } = pending;
+    const { row, target: t, from, to } = pending;
     try {
       const lab = labsById[t.labId];
-      const res = await applyPitchStageChange(t, { from, to, comment, amount, isTrial, csmId: idByName[lab?.csm], labMrr: lab?.mrr });
-      if (res.newMrr != null) onPatchLab?.(t.labId, { mrr: res.newMrr });
+      const csmId = idByName[lab?.csm];
+      let message;
+      if (row.category === "In-Plan" && to !== "Lost after Purchase") {
+        await setParamStatus(t.labId, row.resolved, to, comment, csmId);
+        message = `${t.label}: ${from} → ${to}.`;
+      } else {
+        const res = await applyPitchStageChange(t, { from, to, comment, amount, isTrial, csmId, labMrr: lab?.mrr });
+        if (res.newMrr != null) onPatchLab?.(t.labId, { mrr: res.newMrr });
+        message = res.message;
+      }
       setPending(null);
-      showToast(res.message);
+      showToast(message);
+      await loadAll();
+    } catch (err) { showToast(`⚠ ${err.message}`); }
+  }
+  async function saveReminder({ due, note }) {
+    const r = remindFor;
+    const owner = r.csm || currentCSM;
+    try {
+      await apiAddTask({
+        labId: r.labId, desc: `Reminder: ${r.paramName} (${r.moduleName}, ${r.category})${note ? ` — ${note}` : ""}`,
+        owners: [owner], type: "reminder", repeat: "none", due, idByName, assignedByName: currentCSM,
+      });
+      setRemindFor(null);
+      showToast(`Reminder set for ${new Date(due + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}.`);
       await loadAll();
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
@@ -122,7 +161,7 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
   return (
     <div>
       <h1 className="page-title">Tasks</h1>
-      <p className="page-sub">Everything on <b>{scopeLabel}</b>'s plate — personal to-dos, follow-ups, and open Expansion pitches — not just what's due today.</p>
+      <p className="page-sub">Everything on <b>{scopeLabel}</b>'s plate — personal to-dos, follow-ups, reminders, and Adoption / Expansion items in progress — not just what's due today.</p>
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
 
@@ -137,50 +176,95 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
           <option value="open">Open only</option>
           <option value="done">Done only</option>
         </select>
-        {(fLab || fType || fStatus) && <span className="clear" onClick={() => { setFLab(""); setFType(""); setFStatus(""); }}>Clear filters</span>}
+        <select value={sortByDue} onChange={(e) => setSortByDue(e.target.value)} title="How the task list is ordered">
+          <option value="">Group by Overdue / Today / …</option>
+          <option value="asc">Sort by due date (earliest first)</option>
+          <option value="desc">Sort by due date (latest first)</option>
+        </select>
+        {(fLab || fType || fStatus || sortByDue) && <span className="clear" onClick={() => { setFLab(""); setFType(""); setFStatus(""); setSortByDue(""); }}>Clear filters</span>}
       </div>
 
       <TasksPanel
         tasks={filteredTasks} scopeCsm={scopeCsm} onToggleDone={handleToggleDone} onAddTask={handleAddTask}
         onOpenLab={onOpenLab} isHead={isHead} currentCSM={currentCSM} csmNames={csmNames} labOptions={labOptions} labsById={labsById}
+        sortByDue={sortByDue}
       />
 
       <div style={{ marginTop: 26 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center" }}>
-          Pitch Reminders (Expansion) <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>({pitchRows.length}{fLab ? ", filtered to one lab" : ""})</span>
-          <InfoTip>Every Expansion feature still sitting at To Do / Pitching / In Progress across {teamAll ? "the team" : `${scopeCsm}'s`} labs. Change a status right here — it's the same pitch record My Portfolio's lab view edits, so either place stays in sync. Every stage change asks for an optional comment and is logged to Lab History. Picking <b>Added</b> also asks for the added cost (or trial/free), then moves the feature onto that lab's Adoption tab and creates a Collections entry automatically.</InfoTip>
+        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <span>Adoption &amp; Expansion items in progress <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>({itemRows.length}{fLab ? ", filtered to one lab" : ""})</span></span>
+          <InfoTip>An item shows up here once it moves past <b>To-Do</b> — In plan: In Discussion / Demo, Trial, Onboarding / Setup; Not in plan: Pitching, Trial, Onboarding / Setup. It leaves the list when it reaches a final status (Adopted, Purchased → In-plan To-Do, Not Required, …). Change the status right here (a comment is required, as on the lab's Adoption tab); "Remind me" adds a dated reminder to the task list above. "Days" = days since it got under way.</InfoTip>
+          <span style={{ marginLeft: "auto", display: "flex", gap: 8, fontWeight: 400 }}>
+            <select value={fCategory} onChange={(e) => setFCategory(e.target.value)} className="status-select">
+              <option value="">In-Plan &amp; Not-in-Plan</option>
+              <option value="In-Plan">In-Plan only</option>
+              <option value="Not-in-Plan">Not-in-Plan only</option>
+            </select>
+            <select value={itemSort} onChange={(e) => setItemSort(e.target.value)} className="status-select">
+              <option value="lab">Sort by lab</option>
+              <option value="days">Sort by days open (oldest first)</option>
+            </select>
+          </span>
         </div>
-        {!pitchRows.length ? (
-          <div className="table-card" style={{ padding: "18px 20px", color: "var(--text-faint)", fontSize: 12.5 }}>No open pitch items for {scopeLabel} right now.</div>
+        {!itemRows.length ? (
+          <div className="table-card" style={{ padding: "18px 20px", color: "var(--text-faint)", fontSize: 12.5 }}>Nothing in progress for {scopeLabel} right now.</div>
         ) : (
-          <div className="table-card"><Paginated items={pitchRows}>{(pageRows) => (<div className="table-scroll"><table className="child-mini">
-            <thead><tr><th>Lab</th><th>Pitch Item</th><th>CSM</th><th>Status</th></tr></thead>
-            <tbody>{pageRows.map((r, i) => (
-              <tr key={`${r.labId}-${r.moduleKey}-${r.paramName || ""}-${i}`}>
+          <div className="table-card"><Paginated items={itemRows}>{(pageRows) => (<div className="table-scroll"><table className="child-mini">
+            <thead><tr><th>Lab</th><th>Category</th><th>Item</th><th>Days</th><th>Status</th><th>CSM</th><th></th></tr></thead>
+            <tbody>{pageRows.map((r) => (
+              <tr key={`${r.labId}|${r.moduleKey}|${r.paramName}`}>
                 <td className="lab-name clickable" onClick={() => onOpenLab(r.labId)}>{r.labName}</td>
-                <td>{r.label}</td>
-                <td>{r.csm}</td>
+                <td><span className={`cat-tag cat-${r.category === "In-Plan" ? "Adoption" : "Expansion"}`}>{r.category}</span></td>
+                <td>{r.paramName}<div style={{ fontSize: 11, color: "var(--text-faint)" }}>{r.moduleName}</div></td>
+                <td style={{ fontWeight: 700, color: r.days == null ? "var(--text-faint)" : r.days > 30 ? "var(--bad)" : r.days > 14 ? "var(--warn)" : "var(--text)" }} title={r.startedAt ? `Under way since ${new Date(r.startedAt).toLocaleDateString()}` : "Start date not recorded"}>
+                  {r.days == null ? "—" : `${r.days}d`}
+                </td>
                 <td>
-                  <select
-                    className="status-select"
-                    value={r.status}
-                    onChange={(e) => handlePitchStatusChange(e.target.value, {
-                      labId: r.labId, moduleKey: r.moduleKey, paramName: r.paramName,
-                      level: r.level, label: r.label, existingParamState: r.existingParamState, fromStatus: r.status,
-                    })}
-                  >
-                    {PITCH_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  <select className="status-select" value={r.status} onChange={(e) => handleItemStatusChange(r, e.target.value)}>
+                    {(r.category === "In-Plan" ? STATUS_ORDER : pitchOptionsFor(false, r.status)).map((st) => <option key={st} value={st}>{st}</option>)}
                   </select>
                 </td>
+                <td>{r.csm}</td>
+                <td><button type="button" className="mark-purchased" onClick={() => setRemindFor(r)}>⏰ Remind me</button></td>
               </tr>
             ))}</tbody>
           </table></div>)}</Paginated></div>
         )}
       </div>
 
+      {remindFor && <ReminderModal item={remindFor} onClose={() => setRemindFor(null)} onSave={saveReminder} />}
       {pending && (
         <PitchStageModal target={pending.target} fromStatus={pending.from} toStatus={pending.to} onClose={() => setPending(null)} onConfirm={confirmStageChange} />
       )}
     </div>
+  );
+}
+
+function ReminderModal({ item, onClose, onSave }) {
+  const [due, setDue] = useState(todayISO());
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const field = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
+  async function save() {
+    if (!due) return;
+    setSaving(true);
+    try { await onSave({ due, note: note.trim() }); } finally { setSaving(false); }
+  }
+  return (
+    <Modal open title={`Reminder — ${item.paramName}`} onClose={saving ? () => {} : onClose} actions={[
+      { label: "Cancel", className: "btn-ghost", onClick: onClose, disabled: saving },
+      { label: saving ? "Saving…" : "Add reminder", className: "btn-primary", onClick: save, disabled: saving },
+    ]}>
+      <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>{item.labName} · {item.category} · {item.status}</div>
+      <div className="tmpl-field" style={{ marginBottom: 10 }}>
+        <label>Remind on</label>
+        <input type="date" style={field} value={due} min={todayISO()} onChange={(e) => setDue(e.target.value)} />
+      </div>
+      <div className="tmpl-field">
+        <label>Note (optional)</label>
+        <input style={field} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Check trial feedback with the lab head" />
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8 }}>Added to {item.csm || "the lab's CSM"}'s task list as a Reminder, due on that date.</div>
+    </Modal>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { slugifyModuleKey, scaleWeightsTo100, weightTotal } from "../lib/catalog";
+import { slugifyModuleKey, scaleWeightsTo100, weightTotal, weightValue } from "../lib/catalog";
+import Modal from "../components/Modal";
 import { planIncludesModule, planIncludesParam } from "../lib/plans";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fetchModuleResources } from "../lib/moduleResources";
@@ -20,7 +21,7 @@ export default function AdoptionTemplateView({
   modules, plans,
   onAddModule, onUpdateModule, onDeleteModule,
   onAddModuleParam, onUpdateModuleParam, onDeleteModuleParam,
-  onToggleModule, onToggleParam, onReorderModules,
+  onToggleModule, onToggleParam, onReorderModules, onReorderModuleParams,
   canEdit = true,
   myProfileId, isHead, showToast,
 }) {
@@ -44,6 +45,9 @@ export default function AdoptionTemplateView({
   const [saving, setSaving] = useState(false);
   const [expandedParam, setExpandedParam] = useState(null); // param name whose per-Plan chips are open
   const [descOpen, setDescOpen] = useState({}); // row index -> description box open
+  const [paramDrag, setParamDrag] = useState(null);     // index of the parameter row being dragged
+  const [paramDragOver, setParamDragOver] = useState(null);
+  const [makeRoom, setMakeRoom] = useState(null);       // { module, weights: { key: "12.5" } } — new module needing room
 
   function draftFrom(mod) {
     if (!mod) return null;
@@ -79,13 +83,20 @@ export default function AdoptionTemplateView({
   // ---- unsaved-changes tracking ----
   const paramChanged = (p) => !p._isNew && !p._deleted && (
     p.name.trim() !== p._orig.name || p.type !== p._orig.type || p.category !== p._orig.category
-    || Number(p.weight) !== Number(p._orig.weight) || (p.description || "").trim() !== (p._orig.description || "").trim()
+    || weightValue(p.weight) !== weightValue(p._orig.weight) || (p.description || "").trim() !== (p._orig.description || "").trim()
   );
+  // Parameter order changed by dragging (compares the saved parameters' order only).
+  const orderChanged = !!draft && !!selectedModule && (() => {
+    const now = draft.params.filter((p) => !p._isNew && !p._deleted).map((p) => p._origName);
+    const was = selectedModule.params.map((p) => p.name).filter((n) => now.includes(n));
+    return now.some((n, i) => n !== was[i]);
+  })();
   const isDirty = !!draft && !!selectedModule && (
     draft.name.trim() !== selectedModule.name
-    || Number(draft.weight) !== Number(selectedModule.weight)
+    || weightValue(draft.weight) !== weightValue(selectedModule.weight)
     || (draft.description || "").trim() !== (selectedModule.description || "").trim()
     || draft.params.some((p) => (p._isNew && p.name.trim()) || p._deleted || paramChanged(p))
+    || orderChanged
   );
   function confirmLeave() {
     return !isDirty || window.confirm(`You have unsaved changes to ${draft.name}. Discard them?`);
@@ -104,19 +115,39 @@ export default function AdoptionTemplateView({
   function submitAddModule() {
     const name = newModName.trim();
     const key = newModKey.trim();
-    const weight = Number(newModWeight);
+    const weight = Number(newModWeight || 0);
     if (!name) return setNewModError("Name is required.");
     if (!key) return setNewModError("Key is required.");
     if (modules.some((m) => m.key === key)) return setNewModError(`A module with key "${key}" already exists.`);
-    if (!Number.isFinite(weight) || weight <= 0) return setNewModError("Weight must be a positive number.");
-    onAddModule({ key, name, icon: newModIcon.trim() || "🧩", weight, description: "" });
+    if (!Number.isFinite(weight) || weight < 0 || weight > TARGET_TOTAL) return setNewModError(`Weight must be between 0 and ${TARGET_TOTAL}.`);
+    const mod = { key, name, icon: newModIcon.trim() || "🧩", weight, description: "" };
+    // No room left? Ask how much to take off the other modules (pre-filled proportionally) instead of
+    // leaving the total over 100.
+    if (weight > 0 && totalModuleWeight + weight > TARGET_TOTAL + 0.001 && modules.length) {
+      const scaled = scaleWeightsTo100(modules.map((m) => m.weight)) || modules.map(() => 0);
+      const room = (TARGET_TOTAL - weight) / TARGET_TOTAL;
+      setMakeRoom({ module: mod, weights: Object.fromEntries(modules.map((m, i) => [m.key, String(Math.round(scaled[i] * room * 100) / 100)])) });
+      return;
+    }
+    finishAddModule(mod);
+  }
+  function finishAddModule(mod) {
+    onAddModule(mod);
     setAddingModule(false);
-    setSelectedKey(key);
+    setSelectedKey(mod.key);
+  }
+  function confirmMakeRoom() {
+    modules.forEach((m) => {
+      const w = weightValue(makeRoom.weights[m.key]);
+      if (w !== Number(m.weight)) onUpdateModule(m.key, { weight: w });
+    });
+    finishAddModule(makeRoom.module);
+    setMakeRoom(null);
   }
 
   async function handleDeleteModuleClick() {
     if (!draft) return;
-    if (!window.confirm(`Delete the "${draft.name}" module? This fails safely if labs already have Collections recorded against it.`)) return;
+    if (!window.confirm(`Delete the "${draft.name}" module and its parameters for every lab? Collections entries recorded against it are kept (they just lose the link to the module). This can't be undone.`)) return;
     const ok = await onDeleteModule(draft.key, draft.name);
     if (ok) {
       const remaining = modules.filter((m) => m.key !== draft.key);
@@ -141,6 +172,13 @@ export default function AdoptionTemplateView({
   }
   function updateDraftParam(idx, patch) {
     setDraft((d) => ({ ...d, params: d.params.map((p, i) => (i === idx ? { ...p, ...patch } : p)) }));
+  }
+
+  // Drag a parameter row (or ▲▼) to reorder it — saved with Save Changes like every other draft edit.
+  function moveParam(from, to) {
+    if (from == null || to < 0 || to >= draft.params.length || from === to) return;
+    setDraft((d) => { const params = [...d.params]; const [row] = params.splice(from, 1); params.splice(to, 0, row); return { ...d, params }; });
+    setDescOpen({});
   }
 
   function addParamRow() {
@@ -173,7 +211,7 @@ export default function AdoptionTemplateView({
     try {
       const modPatch = {};
       if (draft.name.trim() !== selectedModule.name) modPatch.name = draft.name.trim();
-      if (Number(draft.weight) !== Number(selectedModule.weight)) modPatch.weight = Number(draft.weight) || 1;
+      if (weightValue(draft.weight) !== weightValue(selectedModule.weight)) modPatch.weight = weightValue(draft.weight);
       if ((draft.description || "").trim() !== (selectedModule.description || "").trim()) modPatch.description = draft.description.trim();
       if (Object.keys(modPatch).length) await onUpdateModule(draft.key, modPatch);
 
@@ -185,24 +223,27 @@ export default function AdoptionTemplateView({
           const name = p.name.trim();
           await onUpdateModuleParam(draft.key, p._origName, {
             newName: name !== p._origName ? name : undefined,
-            type: p.type, weight: Number(p.weight) || 1, category: p.category, description: (p.description || "").trim(),
+            type: p.type, weight: weightValue(p.weight), category: p.category, description: (p.description || "").trim(),
           });
         }
       }
       for (const p of draft.params) {
         if (p._isNew && p.name.trim()) {
-          await onAddModuleParam({ moduleKey: draft.key, name: p.name.trim(), type: p.type, weight: Number(p.weight) || 1, category: p.category, description: (p.description || "").trim() });
+          await onAddModuleParam({ moduleKey: draft.key, name: p.name.trim(), type: p.type, weight: weightValue(p.weight), category: p.category, description: (p.description || "").trim() });
         }
       }
+      // Save the parameter order whenever it was dragged or a parameter was added (new ones go where they sit).
+      const finalNames = live.map((p) => p.name.trim());
+      if (orderChanged || draft.params.some((p) => p._isNew && p.name.trim())) await onReorderModuleParams?.(draft.key, finalNames);
       // Everything now matches what was saved.
       setDraft((d) => ({
         ...d,
         name: d.name.trim(),
-        weight: Number(d.weight) || 1,
+        weight: weightValue(d.weight),
         params: d.params
           .filter((p) => !p._deleted && !(p._isNew && !p.name.trim()))
           .map((p) => {
-            const clean = { name: p.name.trim(), type: p.type, weight: Number(p.weight) || 1, category: p.category, description: (p.description || "").trim() };
+            const clean = { name: p.name.trim(), type: p.type, weight: weightValue(p.weight), category: p.category, description: (p.description || "").trim() };
             return { ...clean, _origName: clean.name, _orig: clean };
           }),
       }));
@@ -276,7 +317,7 @@ export default function AdoptionTemplateView({
                   value={newModKey}
                   onChange={(e) => { setNewModKey(slugifyModuleKey(e.target.value)); setNewModKeyTouched(true); }}
                 />
-                <input className="tw-input" type="number" min="1" value={newModWeight} onChange={(e) => setNewModWeight(e.target.value)} title="Weight" />
+                <input className="tw-input" type="number" min="0" value={newModWeight} onChange={(e) => setNewModWeight(e.target.value)} title="Weight" />
               </div>
               {newModError && <div style={{ color: "var(--bad)", fontSize: 11.5, marginBottom: 6 }}>{newModError}</div>}
               <div style={{ display: "flex", gap: 6 }}>
@@ -368,7 +409,7 @@ export default function AdoptionTemplateView({
                 </div>
                 <div className="tmpl-field">
                   <label>Weightage (% of overall score — all modules = {TARGET_TOTAL}%)</label>
-                  <input type="number" min="0.01" step="any" max={TARGET_TOTAL} value={draft.weight} onChange={(e) => updateDraft({ weight: e.target.value })} />
+                  <input type="number" min="0" step="any" max={TARGET_TOTAL} value={draft.weight} onChange={(e) => updateDraft({ weight: e.target.value })} />
                 </div>
               </div>
               <div className="tmpl-field" style={{ marginBottom: 16 }}>
@@ -384,11 +425,12 @@ export default function AdoptionTemplateView({
               <p style={{ fontSize: 11.5, color: "var(--text-faint)", margin: "0 0 10px", lineHeight: 1.5 }}>
                 Mandatory parameters drive the Mandatory Completion score; Optional ones only count toward Overall
                 Adoption. Category is the default — Adoption (base plan) or Expansion (add-on). Click "Plans" on a row
-                to include/exclude it for specific Plans; ⓘ adds a description shown on labs. Edits here are saved only
-                when you click Save Changes.
+                to include/exclude it for specific Plans; ⓘ adds a description shown on labs. Drag ⠿ to reorder
+                (labs follow this order). A weight can be 0. Edits here are saved only when you click Save Changes.
               </p>
 
               <div className="tparam-table-head">
+                {canEdit && <span style={{ width: 16 }}></span>}
                 <span style={{ width: 98 }}>Type</span>
                 <span className="pname">Parameter Name</span>
                 <span style={{ width: 104 }}>Category</span>
@@ -400,8 +442,18 @@ export default function AdoptionTemplateView({
               {draft.params.map((p, idx) => {
                 const includedCount = plansWithSelectedModule.filter((pl) => planIncludesParam(pl, draft.key, p._origName || p.name)).length;
                 return (
-                  <div key={p._isNew ? `new-${idx}` : p._origName} style={p._deleted ? { opacity: 0.45 } : undefined}>
+                  <div key={p._isNew ? `new-${idx}` : p._origName} style={p._deleted ? { opacity: 0.45 } : undefined}
+                    className={paramDragOver === idx && paramDrag !== idx ? "drag-over" : undefined}
+                    onDragOver={(e) => { if (paramDrag != null) { e.preventDefault(); setParamDragOver(idx); } }}
+                    onDrop={(e) => { e.preventDefault(); moveParam(paramDrag, idx); setParamDrag(null); setParamDragOver(null); }}>
                     <div className="tparam-row" style={p._isNew || paramChanged(p) ? { background: "var(--accent-dim)" } : undefined}>
+                      {canEdit && (
+                        <span className="drag-handle" title="Drag to reorder (or Alt+↑/↓ on this handle)" draggable tabIndex={0}
+                          onDragStart={(e) => { setParamDrag(idx); e.dataTransfer.effectAllowed = "move"; }}
+                          onDragEnd={() => { setParamDrag(null); setParamDragOver(null); }}
+                          onKeyDown={(e) => { if (e.altKey && e.key === "ArrowUp") { e.preventDefault(); moveParam(idx, idx - 1); } if (e.altKey && e.key === "ArrowDown") { e.preventDefault(); moveParam(idx, idx + 1); } }}
+                          style={{ width: 16, cursor: "grab" }}>⠿</span>
+                      )}
                       <select style={{ width: 98 }} className="tw-input" value={p.type} disabled={p._deleted} onChange={(e) => updateDraftParam(idx, { type: e.target.value })}>
                         {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
@@ -424,7 +476,7 @@ export default function AdoptionTemplateView({
                         className="tw-input"
                         style={{ width: 50 }}
                         type="number"
-                        min="0.01"
+                        min="0"
                         step="any"
                         max={TARGET_TOTAL}
                         value={p.weight}
@@ -534,6 +586,35 @@ export default function AdoptionTemplateView({
           )}
         </div>
       </div>
+
+      {makeRoom && (() => {
+        const total = weightTotal(modules.map((m) => ({ weight: makeRoom.weights[m.key] }))) + makeRoom.module.weight;
+        const ok = Math.abs(total - TARGET_TOTAL) < 0.005;
+        return (
+          <Modal open title={`Make room for ${makeRoom.module.name} (${makeRoom.module.weight}%)`} onClose={() => setMakeRoom(null)} actions={[
+            { label: "Cancel", className: "btn-ghost", onClick: () => setMakeRoom(null) },
+            { label: "Add without adjusting", className: "btn-ghost", onClick: () => { finishAddModule(makeRoom.module); setMakeRoom(null); } },
+            { label: "Apply & add module", className: "btn-primary", onClick: confirmMakeRoom, disabled: !ok },
+          ]}>
+            <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginBottom: 10 }}>
+              The modules already total {totalModuleWeight}%. Lower the others so everything totals {TARGET_TOTAL}% — these
+              are pre-filled by reducing each one in proportion; change any of them.
+            </div>
+            <div style={{ maxHeight: 320, overflowY: "auto" }}>
+              {modules.map((m) => (
+                <div key={m.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
+                  <span style={{ flex: 1 }}>{m.icon} {m.name} <span style={{ color: "var(--text-faint)", fontSize: 11 }}>(now {m.weight}%)</span></span>
+                  <input className="tw-input" type="number" min="0" step="any" style={{ width: 70 }} value={makeRoom.weights[m.key]}
+                    onChange={(e) => setMakeRoom((r) => ({ ...r, weights: { ...r.weights, [m.key]: e.target.value } }))} />
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 700, color: ok ? "var(--ok)" : "var(--bad)" }}>
+              Total with {makeRoom.module.name}: {Math.round(total * 100) / 100}% / {TARGET_TOTAL}%
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }

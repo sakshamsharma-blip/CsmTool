@@ -5,7 +5,7 @@ import { fetchLabContacts, addLabContact, updateLabContact, deleteLabContact } f
 const field = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
 const EMPTY = { name: "", designation: "", phone: "", email: "" };
 
-// Lab Details → "Points of Contact": the people at this lab a CSM deals with. These are what Log Check-in offers
+// Lab page → "Points of Contact" tab: the people at this lab a CSM deals with. These are what Log Check-in offers
 // under "Person Contacted".
 export default function LabContactsCard({ lab, csmId, showToast }) {
   const [contacts, setContacts] = useState([]);

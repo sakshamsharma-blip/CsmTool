@@ -8,7 +8,9 @@ import {
 
 // "Tasks for Today" — shared by Dashboard and My Portfolio. scopeCsm=null means "everyone in this
 // scope" (a Lead's Team View with no CSM filter); otherwise only that CSM's tasks show.
-export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, onOpenLab, isHead, currentCSM, csmNames, labOptions, labsById }) {
+// `sortByDue` ("asc" | "desc") swaps the Overdue/Today/… sections for one flat list ordered by due date (tasks with
+// no due date last).
+export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, onOpenLab, isHead, currentCSM, csmNames, labOptions, labsById, sortByDue }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [fLab, setFLab] = useState(""); // lab-wise filter
   const display = getTasksForPanel(tasks, scopeCsm).filter((t) => !fLab || t.labId === fLab);
@@ -37,10 +39,11 @@ export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, o
             <table className="child-mini">
               <thead><tr><th></th><th>Task</th><th>Lab</th><th>Type</th><th>Owner</th><th>Due</th></tr></thead>
               <tbody>
-                {TASK_SECTIONS.map(({ key, label }) => {
-                  const items = display.filter((t) => taskDisplayBucket(t) === key);
+                {(sortByDue ? [{ key: "__flat", label: sortByDue === "asc" ? "By due date — earliest first" : "By due date — latest first" }] : TASK_SECTIONS).map(({ key, label }) => {
+                  const items = sortByDue ? [...display] : display.filter((t) => taskDisplayBucket(t) === key);
                   if (!items.length) return null;
-                  items.sort((a, b) => (a.due || "").localeCompare(b.due || ""));
+                  const dir = sortByDue === "desc" ? -1 : 1;
+                  items.sort((a, b) => (a.due && b.due ? dir * a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : 0));
                   return (
                     <Fragment key={key}>
                       <tr className="task-section-row"><td colSpan="6">{label} <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>({items.length})</span></td></tr>

@@ -19,15 +19,18 @@ It is **live and in daily use** at `csm-tool-two.vercel.app`, and still being ac
 | **Plans** | LIMS Starter/Growth/Advance/Premium/Enterprise, each with a default scope |
 | **My Portfolio / Dashboard** | A CSM's own labs and KPIs; Leads/Admins can switch to Team View |
 | **Collections** | Invoices (PDF upload with auto-extraction), MRR, payments, trial→chargeable conversion |
-| **Expansion** | Upsell pitches (To Do → Pitching → In Progress → Added → Not Required / Lost in Expansion / Lost after Purchase) on My Portfolio, each change with an optional comment logged to Lab History; plus deal tracking with Pipeline/Lost/Live MRR |
+| **Adoption (per lab)** | Each parameter is In plan (To-Do → In Discussion / Demo → Trial → Onboarding / Setup → Adopted, or Not Required / Not Applicable / Did Not Meet Requirements) or Not in plan (To-Do → Pitching → Trial → Onboarding / Setup → Purchased, or Not Required / Not Applicable / Lost). A purchased add-on moves onto the In-plan list. Every change needs a comment |
+| **Expansion** | Deal tracking with Pipeline/Lost/Live MRR; add-on pitches are worked from My Portfolio, Tasks and each lab's Adoption tab |
 | **Visits & Meetings** | Offline (in-person) visits only: log a past visit, or plan a future one (becomes a task) |
 | **Log Check-in** | Calls, visits, emails, WhatsApp, notes — with sentiment, flagged modules and action items; action items and follow-ups become tasks |
-| **Tasks** | Follow-ups, linked back to the visit that created them |
+| **Tasks** | Follow-ups, action items, reminders, plus every Adoption / Expansion item that is under way (past To-Do) with days open and a status dropdown. Sort by due date; a WhatsApp-style counter on the sidebar shows new tasks |
+| **Feedback & NPS** | CSM-entered 1–5 ratings per lab, and testimonial video links per lab by designation |
+| **Resources** | The team's common documents and training material, plus every module's docs/training links |
 | **Lab History** | Activity log of everything that happens to a lab |
 | **Health, churn, reports** | Health tracking, stage tags, churn logging, reports |
 
-**Not real yet:** Zoho Books sync (Collections simulates it), full Plan CRUD, Support & Tickets,
-Feedback & NPS, KPI Management, Automation (greyed out as "Planned" in the sidebar).
+**Not real yet:** Zoho Books sync (Collections simulates it), full Plan CRUD, KPI Management, Automation (greyed
+out as "Planned" in the sidebar). Support & Tickets opens Flow, a separate tool.
 
 ## Who can see what
 

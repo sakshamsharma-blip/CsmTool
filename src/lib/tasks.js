@@ -67,6 +67,7 @@ export function taskTypeLabel(t) {
   if (t.type === "planned-visit") return "Planned Visit";
   if (t.type === "collection") return "Collection Due";
   if (t.type === "pitch") return "Pitch Reminder";
+  if (t.type === "reminder") return "Reminder";
   return t.repeat && t.repeat !== "none" ? "Recurring" : "Personal";
 }
 
@@ -118,6 +119,7 @@ function fromRow(r, nameById) {
     repeatAnchor: r.repeat_anchor,
     auto: r.auto,
     sourceVisitId: r.source_visit_id || null,
+    createdAt: r.created_at,
   };
 }
 
