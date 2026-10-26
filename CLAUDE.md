@@ -124,7 +124,8 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Financial Reports → MRR Breakdown** starts with "CSM share of the book": labs handled and MRR handled per CSM as %
   of the whole company.
 - **Resources** (sidebar, `views/ResourcesView.jsx`, table `resources`): team-wide docs / training links + a
-  roll-up of every module's links.
+  roll-up of every module's links. Each resource has a **Region** — All / Domestic / ROW (0041); the region filter
+  for Domestic or ROW also shows "All regions" resources.
 - **Total Labs**: default sort MRR high → low (in INR); columns Lab ID, Lab Name, Type, CSM Name, MRR, Segment,
   Region, Status, Health, Lab Health, City, State, Country; the first columns stay frozen when scrolling sideways.
   No Consolidated / Per-Branch label in the list (it lives on the lab's Child Labs tab).
@@ -191,7 +192,8 @@ with the same context and follows the same rules. Read it fully before making ch
   `#fff` or light greys for backgrounds, or that spot stays white in dark mode. Dark values live under
   `:root[data-theme="dark"]`.
 - **Plans** are a real named entity (LIMS Starter/Growth/Advance/Premium/Enterprise), each with a
-  default module/param set. A lab's Plan only decides each parameter's DEFAULT In plan / Not in plan; the lab's
+  default module/param set. **A newly created module joins every Plan** (`handleAddModule` in App.jsx), so its
+  Adoption-category parameters default to In plan; a Lead / Admin can untick Plans in "Apply Rules". A lab's Plan only decides each parameter's DEFAULT In plan / Not in plan; the lab's
   CSM can change any parameter (with a comment) without renaming or forking the Plan.
 - **Purchasing an Expansion feature** ("Added" stage, or "Mark purchased" on the Adoption tab) asks
   **Priced or Trial** (+ monthly charge if priced), marks it purchased (it stays Not in plan, now tracked by
@@ -249,7 +251,7 @@ with the same context and follows the same rules. Read it fully before making ch
   manual), full Plan CRUD beyond toggling module/param membership, KPI Management,
   Automation (still "Planned" and greyed out in the sidebar). **Support & Tickets** is a sidebar link that opens
   Flow (https://creliohealthflow.vercel.app/, the CS ↔ Product escalation tracker) in a new tab.
-- Latest migration: `0040_live_stages_testimonial_dates.sql`; **0001–0040 are all applied** (Oct 26 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+- Latest migration: `0041_module_plans_resource_region.sql`; **0001–0041 are all applied** (Oct 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).

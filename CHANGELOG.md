@@ -2,6 +2,13 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 2026 — new modules In plan by default, Resource regions
+**Database (applied):** `0041_module_plans_resource_region.sql`.
+- A new module is added to every Plan when it's created, so its Adoption-category parameters show **In plan** by
+  default for every lab (untick a Plan in Apply Rules if needed). 0041 does the same for the two modules created
+  before this (Contract / Order Form, Finance Management); anything a CSM set by hand is kept.
+- Resources: new **Region** field (All regions / Domestic / ROW), shown as a column, with a region filter.
+
 ## Oct 26 2026 — Live stages, stage analytics, Feedback & NPS round 2
 **Database (applied):** `0040_live_stages_testimonial_dates.sql`.
 - **Live stages:** In plan is now To-Do → In Discussion / Demo → Trial → Onboarding / Setup → Live 1 → Live 2 → Live 3

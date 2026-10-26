@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
-import { TEAM_RESOURCE_KINDS, fetchResources, addResource, updateResource, deleteResource } from "../lib/resources";
+import { TEAM_RESOURCE_KINDS, RESOURCE_REGIONS, REGION_LABEL, fetchResources, addResource, updateResource, deleteResource } from "../lib/resources";
 import { fetchModuleResources } from "../lib/moduleResources";
 
 const ICON = { Document: "📄", Training: "🎬", Other: "🔗", Documentation: "📄", "Training Video": "🎬" };
@@ -21,6 +21,7 @@ export default function ResourcesView({ modules, myProfileId, isHead, showToast 
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
   const [fKind, setFKind] = useState("");
+  const [fRegion, setFRegion] = useState(""); // "" = everything; Domestic / ROW also include "All regions" resources
 
   async function load() {
     const [r, m] = await Promise.all([fetchResources(), fetchModuleResources().catch(() => [])]);
@@ -41,7 +42,8 @@ export default function ResourcesView({ modules, myProfileId, isHead, showToast 
 
   const canManage = (r) => isHead || (myProfileId && r.addedBy === myProfileId);
   const ql = q.trim().toLowerCase();
-  const shown = items.filter((r) => (!fKind || r.kind === fKind) && (!ql || `${r.title} ${r.description}`.toLowerCase().includes(ql)));
+  const regionOk = (r) => !fRegion || r.region === fRegion || (fRegion !== "All" && r.region === "All");
+  const shown = items.filter((r) => (!fKind || r.kind === fKind) && regionOk(r) && (!ql || `${r.title} ${r.description}`.toLowerCase().includes(ql)));
   const modName = Object.fromEntries((modules || []).map((m) => [m.key, m.name]));
   const shownModuleLinks = moduleLinks.filter((r) => !ql || `${r.title} ${modName[r.moduleKey] || ""}`.toLowerCase().includes(ql));
 
@@ -71,13 +73,22 @@ export default function ResourcesView({ modules, myProfileId, isHead, showToast 
           <option value="">All types</option>
           {TEAM_RESOURCE_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
-        {!form && myProfileId && <button className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={() => setForm({ kind: "Document", title: "", url: "", description: "" })}>+ Add resource</button>}
+        <select value={fRegion} onChange={(e) => setFRegion(e.target.value)} aria-label="Filter by region">
+          <option value="">Any region</option>
+          <option value="Domestic">Domestic (incl. All regions)</option>
+          <option value="ROW">ROW (incl. All regions)</option>
+          <option value="All">Only "All regions"</option>
+        </select>
+        {!form && myProfileId && <button className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={() => setForm({ kind: "Document", region: "All", title: "", url: "", description: "" })}>+ Add resource</button>}
       </div>
 
       {form && (
         <div className="table-card" style={{ padding: 14, marginBottom: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
           <select style={input} value={form.kind} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value }))}>
             {TEAM_RESOURCE_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+          <select style={input} value={form.region} onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))} aria-label="Region" title="Which region this is useful for">
+            {RESOURCE_REGIONS.map((r) => <option key={r} value={r}>{REGION_LABEL[r]}</option>)}
           </select>
           <input style={{ ...input, flex: "1 1 180px" }} placeholder="Title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
           <input style={{ ...input, flex: "2 1 240px" }} type="url" placeholder="https://…" value={form.url} onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))} />
@@ -90,7 +101,7 @@ export default function ResourcesView({ modules, myProfileId, isHead, showToast 
       <div className="table-card" style={{ marginBottom: 22 }}>
         {!shown.length ? <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 12.5 }}>{items.length ? "Nothing matches." : "No resources yet — add the first one."}</div> : (
           <div className="table-scroll"><table className="child-mini">
-            <thead><tr><th>Resource</th><th>Type</th><th>Added</th><th></th></tr></thead>
+            <thead><tr><th>Resource</th><th>Type</th><th>Region</th><th>Added</th><th></th></tr></thead>
             <tbody>{shown.map((r) => (
               <tr key={r.id}>
                 <td>
@@ -98,9 +109,10 @@ export default function ResourcesView({ modules, myProfileId, isHead, showToast 
                   {r.description && <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2 }}>{r.description}</div>}
                 </td>
                 <td>{r.kind}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{REGION_LABEL[r.region] || r.region}</td>
                 <td style={{ whiteSpace: "nowrap" }}>{new Date(r.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</td>
                 <td style={{ whiteSpace: "nowrap" }}>{canManage(r) && (<>
-                  <span className="icon-btn" title="Edit" style={{ cursor: "pointer" }} onClick={() => setForm({ id: r.id, kind: r.kind, title: r.title, url: r.url, description: r.description })}>✎</span>{" "}
+                  <span className="icon-btn" title="Edit" style={{ cursor: "pointer" }} onClick={() => setForm({ id: r.id, kind: r.kind, region: r.region, title: r.title, url: r.url, description: r.description })}>✎</span>{" "}
                   <span className="icon-btn" title="Remove" style={{ cursor: "pointer" }} onClick={() => remove(r)}>🗑</span>
                 </>)}</td>
               </tr>

@@ -360,14 +360,19 @@ export default function App() {
   // immediately, right where it was created. There's no standalone Plans management screen —
   // Plans only surface as a starting template when creating a lab (AddLabDrawer) and as a label
   // for reporting; every lab's actual scope is fully editable on its own Adoption tab. ----
+  // A new module joins EVERY Plan (decision Oct 2026), so its Adoption-category parameters default to "In plan" for
+  // every lab. A Lead / Admin can untick a Plan afterwards in the Module Builder's "Apply Rules".
   async function handleAddModule({ key, name, icon, weight, description }) {
     const newModule = { key, name, icon, weight, description, params: [] };
     setModules((ms) => [...ms, newModule]);
+    setPlans((ps) => ps.map((p) => (p.modules.includes(key) ? p : { ...p, modules: [...p.modules, key] })));
     if (SUPABASE_CONFIGURED) {
       try { await addModule({ key, name, icon, weight, description, sortOrder: modules.length + 1 }); }
       catch (err) { console.error(err); showToast(`⚠ ${name} saved locally but NOT to the database — ${err.message}`); return; }
+      try { await Promise.all(plans.map((p) => setPlanModule(p.id, key, true))); }
+      catch (err) { console.error(err); showToast(`⚠ ${name} added, but not every Plan was saved — tick them in Apply Rules. ${err.message}`); return; }
     }
-    showToast(`${name} module added.`);
+    showToast(`${name} module added to every Plan — untick any in Apply Rules.`);
   }
 
   async function handleUpdateModule(key, patch) {

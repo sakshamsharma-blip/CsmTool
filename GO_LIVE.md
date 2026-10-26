@@ -94,6 +94,8 @@ Two things are worth knowing before you flip the switch:
    39. `migrations/0039_feedback_nps_responses.sql` — Feedback & NPS responses (NPS score, source, respondent, link).
    40. `migrations/0040_live_stages_testimonial_dates.sql` — Live 1–4 stages + timers, Expansion onboarding → Trial,
        testimonial collection date.
+   41. `migrations/0041_module_plans_resource_region.sql` — adds Contract / Order Form and Finance Management to every
+       plan; Region on Resources.
 3. **Settings → API**: copy the **Project URL** and the **`anon` public** key — you'll need both in step 3.
 4. **Authentication → Providers**: enable **Email**. Password is the right choice here (not magic link) —
    the login page now has a working "Forgot your password?" link that needs password auth to make sense.
