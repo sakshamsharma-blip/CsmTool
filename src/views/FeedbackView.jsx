@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import {
   FEEDBACK_SOURCES, npsBucket, npsSummary, fetchFeedback, addFeedback, updateFeedback, deleteFeedback,
@@ -49,18 +50,18 @@ function downloadCsv(name, header, lines) {
 //                  their labs), by lab and by designation; CSV export.
 // Filters: lab, CSM (My Labs / Team View), designation, source and date range.
 export default function FeedbackView({ labs, viewer, idByName, onOpenLab, showToast }) {
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
-  const [tab, setTab] = useState("responses");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "feedback");
+  const [tab, setTab] = useSessionState("feedback.tab", "responses");
   const [feedback, setFeedback] = useState([]);
   const [testimonials, setTestimonials] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
-  const [fLab, setFLab] = useState("");
-  const [fDesignation, setFDesignation] = useState("");
-  const [fSource, setFSource] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [fLab, setFLab] = useSessionState("feedback.fLab", "");
+  const [fDesignation, setFDesignation] = useSessionState("feedback.fDesignation", "");
+  const [fSource, setFSource] = useSessionState("feedback.fSource", "");
+  const [from, setFrom] = useSessionState("feedback.from", "");
+  const [to, setTo] = useSessionState("feedback.to", "");
   const [editing, setEditing] = useState(null);  // feedback response form (new or existing)
   const [tEditing, setTEditing] = useState(null); // testimonial form (new or existing)
   const [saving, setSaving] = useState(false);

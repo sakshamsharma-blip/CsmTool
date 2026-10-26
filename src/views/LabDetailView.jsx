@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtMoney, toINR, nativeCurrency, segmentFor, fmtDuration } from "../lib/format";
 import { labEngagementStats } from "../lib/labEngagement";
@@ -66,14 +67,14 @@ function statusPillClass(s) { return "status-" + (s || "").replace(" ", ""); }
 function healthPillClass(s) { return isHealthyStatus(s) ? "status-Active" : s === "Churn" ? "status-Inactive" : "status-AtRisk"; }
 function initials(name) { return (name || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
 
-export default function LabDetailView({ lab, labs, modules, plans, csmNames, viewer, idByName, onBack, onOpenLab, onReassignCsm, onChangePlan, onInvoiceMrrUpdate, onPatchLab, onLogCheckin, onAddChildLab, initialTab, showToast }) {
+export default function LabDetailView({ lab, labs, modules, plans, csmNames, viewer, idByName, onBack, onOpenLab, onReassignCsm, onChangePlan, onInvoiceMrrUpdate, onPatchLab, onLogCheckin, onAddChildLab, initialTab, onTabChange, showToast }) {
   const { currentCSM } = viewer;
   const [tab, setTab] = useState(initialTab || "details");
 
   const [activity, setActivity] = useState([]);
   const [loadingActivity, setLoadingActivity] = useState(SUPABASE_CONFIGURED);
   const [activityError, setActivityError] = useState(null);
-  const [activityKind, setActivityKind] = useState(""); // Lab History filter by entry type
+  const [activityKind, setActivityKind] = useSessionState("labHistory.kind", ""); // Lab History filter by entry type
 
   const [collItems, setCollItems] = useState([]);
   const [loadingColl, setLoadingColl] = useState(SUPABASE_CONFIGURED);
@@ -953,7 +954,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           <button
             key={t.key}
             className={`tabbtn${tab === t.key ? " active" : ""}`}
-            onClick={() => setTab(t.key)}
+            onClick={() => { setTab(t.key); onTabChange?.(t.key); }}
           >
             {t.label}
           </button>

@@ -119,6 +119,12 @@ with the same context and follows the same rules. Read it fully before making ch
 - **POC designation** is a dropdown (`POC_DESIGNATIONS` in `lib/labContacts.js`, `components/DesignationSelect.jsx`,
   with "Other…" to type one); older free-text values are kept until edited. Used on Points of Contact, Log Check-in
   and the Feedback "+ Add POC".
+- **Refresh keeps your place** (Oct 2026): the current screen is in the address bar (`#/tasks`, `#/lab/<id>/<tab>`,
+  `#/lab/<id>/<tab>/log-checkin` — `parseHash` / `hashFor` in App.jsx; Back/Forward work), and every screen's filters,
+  sorts, searches, sub-tabs and My Labs / Team View choice are kept in sessionStorage per browser tab
+  (`lib/useSessionState.js`, keys like `tasks.fLab`; `useScopedCsm(viewer, "<page>")`). New screens / filters should
+  use `useSessionState` for anything the user would expect to survive a refresh. Clicking Total Labs in the sidebar
+  still clears its search.
 - **SearchSelect** renders its list in a portal on `<body>` (fixed, re-measured every frame while open) so popups
   and scrolling cards can't clip it. Modals scroll when taller than the screen.
 - **Financial Reports → MRR Breakdown** starts with "CSM share of the book": labs handled and MRR handled per CSM as %

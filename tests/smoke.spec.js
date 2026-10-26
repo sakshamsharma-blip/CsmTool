@@ -199,3 +199,26 @@ test("Total Labs: highest MRR first, and the CSM column sits next to Type", asyn
   await expect(page.getByText("Consolidated", { exact: true })).toHaveCount(0);
   await expect(page.locator("select", { hasText: "MRR: high → low" })).toHaveValue("mrr-desc");
 });
+
+test("Refresh keeps the page, the lab tab and the filters", async ({ page }) => {
+  // Total Labs: a changed sort survives a refresh.
+  const sort = page.locator("select", { hasText: "MRR: high → low" });
+  await sort.selectOption("name");
+  await page.reload();
+  await expect(page.locator("select", { hasText: "MRR: high → low" })).toHaveValue("name");
+
+  // A lab's Adoption tab: the address bar records it, and a refresh reopens the same lab on the same tab.
+  await page.getByText("iGenetic Diagnostics", { exact: true }).click();
+  await page.getByRole("button", { name: "Adoption" }).click();
+  await expect(page).toHaveURL(/#\/lab\/.+\/adoption$/);
+  await page.reload();
+  await expect(page.locator(".adopt-score-head")).toBeVisible();
+
+  // Another screen, then Back returns to the lab.
+  await nav(page, "Adoption Template");
+  await expect(page).toHaveURL(/#\/adoption-template$/);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Adoption Template" })).toBeVisible();
+  await page.goBack();
+  await expect(page.locator(".adopt-score-head")).toBeVisible();
+});

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
 import { fetchChurnLog, quarterOf } from "../lib/churn";
@@ -15,13 +16,13 @@ const SEGMENTS = SEG_BANDS.map((b) => b.code);
 // reporting the old "CS Dashboard 2026" pivot tabs carried that Dashboard's simple bucket
 // counts didn't replace.
 export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
-  const [tab, setTab] = useState("churn");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "reports");
+  const [tab, setTab] = useSessionState("reports.tab", "churn");
 
   const [churnRows, setChurnRows] = useState([]);
   const [loadingChurn, setLoadingChurn] = useState(SUPABASE_CONFIGURED);
   const [churnError, setChurnError] = useState(null);
-  const [typeFilter, setTypeFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useSessionState("reports.typeFilter", "");
 
   async function loadChurn() {
     if (!SUPABASE_CONFIGURED) { setLoadingChurn(false); return; }

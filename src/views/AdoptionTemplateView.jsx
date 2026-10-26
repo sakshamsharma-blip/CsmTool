@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSessionState } from "../lib/useSessionState";
 import { slugifyModuleKey, rescaleKeeping, weightTotal, weightValue } from "../lib/catalog";
 import Modal from "../components/Modal";
 import { planIncludesModule, planIncludesParam } from "../lib/plans";
@@ -34,7 +35,9 @@ export default function AdoptionTemplateView({
     fetchModuleResources().then((r) => { if (!cancelled) setResources(r); }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
-  const [selectedKey, setSelectedKey] = useState(modules[0]?.key || null);
+  // Remembered across a refresh; falls back to the first module if the saved one no longer exists.
+  const [storedKey, setSelectedKey] = useSessionState("template.selectedKey", modules[0]?.key || null);
+  const selectedKey = modules.some((m) => m.key === storedKey) ? storedKey : modules[0]?.key || null;
   const selectedModule = modules.find((m) => m.key === selectedKey) || null;
 
   // draft = a locally-editable copy of the selected module (name/weight/description/params). NOTHING in it is

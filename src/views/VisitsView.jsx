@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllVisits, addVisit, updateVisit } from "../lib/visits";
@@ -22,7 +23,7 @@ function invert(m) { const out = {}; Object.entries(m || {}).forEach(([name, id]
 
 export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToast }) {
   const { currentCSM } = viewer;
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "visits");
 
   const [visits, setVisits] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -58,8 +59,8 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
   const [editFollowupReason, setEditFollowupReason] = useState("");
   const [editSentiment, setEditSentiment] = useState("");
   const [editSaving, setEditSaving] = useState(false);
-  const [fLab, setFLab] = useState("");
-  const [fCity, setFCity] = useState("");
+  const [fLab, setFLab] = useSessionState("visits.fLab", "");
+  const [fCity, setFCity] = useSessionState("visits.fCity", "");
   // Edit a planned visit (date + purpose)
   const [editPlan, setEditPlan] = useState(null); // { task, date, purpose }
 

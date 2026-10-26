@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR } from "../lib/format";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
@@ -13,7 +14,7 @@ import SearchSelect from "../components/SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
 
 export default function CollectionsView({ labs, viewer, idByName, onOpenLab, showToast }) {
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "collections");
 
   const [items, setItems] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -26,8 +27,8 @@ export default function CollectionsView({ labs, viewer, idByName, onOpenLab, sho
   const [addAmount, setAddAmount] = useState("");
   const [addTrial, setAddTrial] = useState(false);
   const [addError, setAddError] = useState(false);
-  const [fLab, setFLab] = useState("");
-  const [fBucket, setFBucket] = useState("");
+  const [fLab, setFLab] = useSessionState("collections.fLab", "");
+  const [fBucket, setFBucket] = useSessionState("collections.fBucket", "");
 
   async function loadAll() {
     if (!SUPABASE_CONFIGURED) { setLoading(false); return; }

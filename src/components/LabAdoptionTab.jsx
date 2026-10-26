@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtMoney, nativeCurrency } from "../lib/format";
 import {
@@ -36,7 +37,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
   const [error, setError] = useState(null);
   const [openModules, setOpenModules] = useState({});
   // Stage filter: "" = everything, otherwise "plan:<status>" (In-plan / purchased track) or "exp:<stage>".
-  const [stageFilter, setStageFilter] = useState("");
+  const [stageFilter, setStageFilter] = useSessionState("labAdoption.stageFilter", "");
 
   const [pendingComment, setPendingComment] = useState(null); // { title, change, apply(comment) }
   const [pendingPitch, setPendingPitch] = useState(null);     // { target, from, to }

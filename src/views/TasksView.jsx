@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup } from "../lib/labRollup";
 import { fetchAllLabsAdoption, fetchAllParamChanges, setParamStatus, statusOptions } from "../lib/adoption";
@@ -33,15 +34,15 @@ function taskTypeKey(t) {
 
 export default function TasksView({ labs, modules, plans, viewer, idByName, onOpenLab, onPatchLab, showToast }) {
   const { currentCSM } = viewer;
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "tasks");
 
   const [adoptionByLab, setAdoptionByLab] = useState({});
   const [pitchByLab, setPitchByLab] = useState({});
   const [changesByParam, setChangesByParam] = useState({});
   const [tasks, setTasks] = useState([]);
-  const [sortByDue, setSortByDue] = useState("");
-  const [fCategory, setFCategory] = useState("");
-  const [itemSort, setItemSort] = useState("lab");
+  const [sortByDue, setSortByDue] = useSessionState("tasks.sortByDue", "");
+  const [fCategory, setFCategory] = useSessionState("tasks.fCategory", "");
+  const [itemSort, setItemSort] = useSessionState("tasks.itemSort", "lab");
   const [remindFor, setRemindFor] = useState(null); // active item getting a reminder task
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
@@ -49,9 +50,9 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
   // A status change waiting for its confirm step (comment required; Purchased also asks Priced / Trial).
   const [pending, setPending] = useState(null);
   // Filters (apply to both the task list and Pitch Reminders where it makes sense)
-  const [fLab, setFLab] = useState("");
-  const [fType, setFType] = useState("");
-  const [fStatus, setFStatus] = useState("");
+  const [fLab, setFLab] = useSessionState("tasks.fLab", "");
+  const [fType, setFType] = useSessionState("tasks.fType", "");
+  const [fStatus, setFStatus] = useSessionState("tasks.fStatus", "");
 
   function invert(m) { const out = {}; Object.entries(m).forEach(([name, id]) => { out[id] = name; }); return out; }
 
@@ -184,7 +185,7 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
         {(fLab || fType || fStatus || sortByDue) && <span className="clear" onClick={() => { setFLab(""); setFType(""); setFStatus(""); setSortByDue(""); }}>Clear filters</span>}
       </div>
 
-      <TasksPanel
+      <TasksPanel persistKey="tasks"
         tasks={filteredTasks} scopeCsm={scopeCsm} onToggleDone={handleToggleDone} onAddTask={handleAddTask}
         onOpenLab={onOpenLab} isHead={isHead} currentCSM={currentCSM} csmNames={csmNames} labOptions={labOptions} labsById={labsById}
         sortByDue={sortByDue}

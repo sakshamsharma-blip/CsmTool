@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useSessionState } from "./useSessionState";
 import { hasLeadAccess } from "./roles";
 
 // The "My Labs / Team View" scoping pattern shared by Dashboard, My Portfolio, Collections,
@@ -11,11 +11,12 @@ import { hasLeadAccess } from "./roles";
 // its own comment there) so every view reads currentCSM's role the same way. Note this — like
 // every hasLeadAccess/isHead check in the app — only controls what the UI shows; it is not the
 // security boundary. See the comment on hasLeadAccess in roles.js for why.
-export function useScopedCsm(viewer) {
+// `page` keys the remembered My Labs / Team View choice per screen, so it survives a refresh (sessionStorage).
+export function useScopedCsm(viewer, page = "default") {
   const { csmDirectory, currentCSM } = viewer;
   const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
-  const [scope, setScope] = useState("mine");
-  const [csmFilter, setCsmFilter] = useState("");
+  const [scope, setScope] = useSessionState(`${page}.scope`, "mine");
+  const [csmFilter, setCsmFilter] = useSessionState(`${page}.csmFilter`, "");
   const csmNames = csmDirectory.map((c) => c.name);
 
   // Someone locked to their own labs (isHead === false) always resolves to currentCSM itself,

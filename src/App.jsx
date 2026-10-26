@@ -35,6 +35,25 @@ import ResourcesView from "./views/ResourcesView";
 import LogCheckinView from "./views/LogCheckinView";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 
+// ---- address-bar routing: "#/<screen>", "#/lab/<lab id>/<tab>", "#/lab/<lab id>/<tab>/log-checkin" ----
+const ROUTE_VIEWS = ["list", "dashboard", "portfolio", "collections", "expansion", "tasks", "visits", "adoption-template",
+  "reports", "feedback", "resources", "csm-setup"];
+function parseHash() {
+  const parts = (window.location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean).map((p) => {
+    try { return decodeURIComponent(p); } catch { return p; }
+  });
+  if (parts[0] === "lab" && parts[1]) {
+    return { view: parts[3] === "log-checkin" ? "log-checkin" : "lab-detail", detailLabId: parts[1], detailInitialTab: parts[2] || "details" };
+  }
+  return { view: ROUTE_VIEWS.includes(parts[0]) ? parts[0] : "list", detailLabId: null, detailInitialTab: "details" };
+}
+function hashFor({ view, detailLabId, detailInitialTab }) {
+  if ((view === "lab-detail" || view === "log-checkin") && detailLabId) {
+    return `#/lab/${encodeURIComponent(detailLabId)}/${encodeURIComponent(detailInitialTab || "details")}${view === "log-checkin" ? "/log-checkin" : ""}`;
+  }
+  return `#/${view || "list"}`;
+}
+
 export default function App() {
   const [authChecked, setAuthChecked] = useState(!SUPABASE_CONFIGURED);
   const [session, setSession] = useState(null);
@@ -56,15 +75,18 @@ export default function App() {
   // for an Admin's "preview as" (Sidebar). Not used at all in demo mode, where the old
   // switcher already lets anyone pick freely.
   const [myName, setMyName] = useState("");
-  const [view, setView] = useState("list");
+  // The screen you're on lives in the address bar (#/tasks, #/lab/<id>/adoption …) so a refresh — or a copied link —
+  // reopens the same page, lab and tab. Filters / searches on each screen are remembered separately
+  // (lib/useSessionState.js).
+  const [view, setView] = useState(() => parseHash().view);
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
   // Set when "+ Add Child Lab" is used from a parent lab's own Child Labs tab — preloads the
   // drawer straight into Child Lab mode with that parent (and its CSM/plan/region/billing
   // defaults) already filled in. Cleared whenever the drawer closes so a later generic
   // "+ Add New Lab" open (Sidebar/Total Labs) starts blank again.
   const [addDrawerPresetParent, setAddDrawerPresetParent] = useState(null);
-  const [detailLabId, setDetailLabId] = useState(null);
-  const [detailInitialTab, setDetailInitialTab] = useState("details");
+  const [detailLabId, setDetailLabId] = useState(() => parseHash().detailLabId);
+  const [detailInitialTab, setDetailInitialTab] = useState(() => parseHash().detailInitialTab);
   const detailLab = labs.find((l) => l.id === detailLabId) || null;
   // The top bar's search box is a shortcut into Total Labs' own search, not a separate
   // engine — typing here just jumps to the list view and seeds its filter with the same text.
@@ -77,7 +99,10 @@ export default function App() {
   // (or text a browser autofilled into the top bar) — so it starts from an empty query. Typing in the
   // top bar and pressing Enter still goes straight to the list with that text, via navigate() directly.
   function navigateFromSidebar(nextView, extra) {
-    if (nextView === "list") setGlobalSearchQuery("");
+    if (nextView === "list") {
+      setGlobalSearchQuery("");
+      try { sessionStorage.removeItem("csm.ui.labs.query"); } catch { /* storage unavailable */ }
+    }
     navigate(nextView, extra);
   }
 
@@ -104,12 +129,20 @@ export default function App() {
     setView(nextView);
     setDetailLabId(nextDetailLabId);
     setDetailInitialTab(nextDetailInitialTab);
-    window.history.pushState({ view: nextView, detailLabId: nextDetailLabId, detailInitialTab: nextDetailInitialTab }, "");
+    const state = { view: nextView, detailLabId: nextDetailLabId, detailInitialTab: nextDetailInitialTab };
+    window.history.pushState(state, "", hashFor(state));
+  }
+  // A tab switch inside a lab page only updates the address (no new history entry), so a refresh stays on that tab.
+  function handleLabTabChange(tab) {
+    setDetailInitialTab(tab);
+    const state = { view, detailLabId, detailInitialTab: tab };
+    window.history.replaceState(state, "", hashFor(state));
   }
   useEffect(() => {
-    window.history.replaceState({ view: "list", detailLabId: null, detailInitialTab: "details" }, "");
+    const start = parseHash();
+    window.history.replaceState(start, "", hashFor(start));
     function onPopState(e) {
-      const state = e.state || { view: "list", detailLabId: null, detailInitialTab: "details" };
+      const state = e.state || parseHash();
       setView(state.view || "list");
       setDetailLabId(state.detailLabId ?? null);
       setDetailInitialTab(state.detailInitialTab || "details");
@@ -145,11 +178,20 @@ export default function App() {
 
   // If an Admin previewing "as" a CSM (or any other state change) drops lead access
   // while Manage Users is open, back out of it rather than showing a blank pane.
+  // (Waits for the data to load, so a refresh on Manage Users isn't bounced before the role is known.)
   useEffect(() => {
-    if (view === "csm-setup" && !viewer.isHead) {
+    if (!loading && view === "csm-setup" && !viewer.isHead) {
       setView("list");
     }
-  }, [view, viewer]);
+  }, [loading, view, viewer]);
+  // A refreshed / shared lab link whose lab isn't visible (deleted, or not this person's) falls back to Total Labs.
+  useEffect(() => {
+    if (!loading && (view === "lab-detail" || view === "log-checkin") && labs.length && !detailLab) {
+      setView("list");
+      setDetailLabId(null);
+      window.history.replaceState({ view: "list", detailLabId: null, detailInitialTab: "details" }, "", "#/list");
+    }
+  }, [loading, view, labs, detailLab]);
   const [toastMsg, showToast] = useToast();
 
   useEffect(() => {
@@ -599,6 +641,7 @@ export default function App() {
               viewer={viewer}
               idByName={idByName}
               initialTab={detailInitialTab}
+              onTabChange={handleLabTabChange}
               onBack={() => navigate("list")}
               onOpenLab={openLabDetail}
               onReassignCsm={handleReassignCsm}

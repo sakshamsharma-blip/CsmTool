@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { TEAM_RESOURCE_KINDS, RESOURCE_REGIONS, REGION_LABEL, fetchResources, addResource, updateResource, deleteResource } from "../lib/resources";
 import { fetchModuleResources } from "../lib/moduleResources";
@@ -19,9 +20,9 @@ export default function ResourcesView({ modules, myProfileId, isHead, showToast 
   const [error, setError] = useState(null);
   const [form, setForm] = useState(null); // null | { id?, kind, title, url, description }
   const [saving, setSaving] = useState(false);
-  const [q, setQ] = useState("");
-  const [fKind, setFKind] = useState("");
-  const [fRegion, setFRegion] = useState(""); // "" = everything; Domestic / ROW also include "All regions" resources
+  const [q, setQ] = useSessionState("resources.q", "");
+  const [fKind, setFKind] = useSessionState("resources.fKind", "");
+  const [fRegion, setFRegion] = useSessionState("resources.fRegion", ""); // "" = everything; Domestic / ROW also include "All regions" resources
 
   async function load() {
     const [r, m] = await Promise.all([fetchResources(), fetchModuleResources().catch(() => [])]);

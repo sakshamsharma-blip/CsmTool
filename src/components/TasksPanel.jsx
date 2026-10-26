@@ -1,4 +1,5 @@
 import { Fragment, useState } from "react";
+import { useSessionState } from "../lib/useSessionState";
 import AddTaskModal from "./AddTaskModal";
 import SearchSelect from "./SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
@@ -8,11 +9,12 @@ import {
 
 // "Tasks for Today" — shared by Dashboard and My Portfolio. scopeCsm=null means "everyone in this
 // scope" (a Lead's Team View with no CSM filter); otherwise only that CSM's tasks show.
-// `sortByDue` ("asc" | "desc") swaps the Overdue/Today/… sections for one flat list ordered by due date (tasks with
+// `persistKey` names where this panel sits (dashboard / portfolio / tasks) so its lab filter is remembered across a
+// refresh per screen. `sortByDue` ("asc" | "desc") swaps the Overdue/Today/… sections for one flat list ordered by due date (tasks with
 // no due date last).
-export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, onOpenLab, isHead, currentCSM, csmNames, labOptions, labsById, sortByDue }) {
+export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, onOpenLab, isHead, currentCSM, csmNames, labOptions, labsById, sortByDue, persistKey }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const [fLab, setFLab] = useState(""); // lab-wise filter
+  const [fLab, setFLab] = useSessionState(`tasksPanel.${persistKey || "default"}.fLab`, ""); // lab-wise filter
   const display = getTasksForPanel(tasks, scopeCsm).filter((t) => !fLab || t.labId === fLab);
 
   const addBtn = (

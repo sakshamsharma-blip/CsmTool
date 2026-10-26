@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { useSessionState } from "../lib/useSessionState";
 import { fmtINR, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
 import { isHealthyStatus } from "../lib/pulse";
 import { computeLabRollup } from "../lib/labRollup";
@@ -61,18 +62,18 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
   // their own too but can flip to Team View. currentCSM already reflects whoever an Admin is
   // currently previewing as (Sidebar's "Preview as"), so this also closes the gap where Total
   // Labs used to leak everyone's labs even while an Admin was previewing a plain CSM.
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, scopeCsm } = useScopedCsm(viewer);
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, scopeCsm } = useScopedCsm(viewer, "labs");
 
   const [expanded, setExpanded] = useState({});
   const EMPTY_FILTERS = { csm: "", region: "", status: "", segment: "", country: "", state: "", city: "" };
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [filters, setFilters] = useSessionState("labs.filters", EMPTY_FILTERS);
   // Populated from whatever States actually exist on labs today — not the full geography
   // dataset — so this only ever offers choices that will actually match something.
   const stateOptions = useMemo(() => [...new Set(labs.map((l) => l.state).filter((v) => v && v !== "—"))].sort(), [labs]);
   const countryOptions = useMemo(() => [...new Set(labs.map((l) => l.country).filter((v) => v && v !== "—"))].sort(), [labs]);
   const cityOptions = useMemo(() => [...new Set(labs.map((l) => (l.city || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [labs]);
-  const [query, setQuery] = useState(initialQuery || "");
-  const [sortBy, setSortBy] = useState("mrr-desc"); // default: highest MRR first (compared in INR)
+  const [query, setQuery] = useSessionState("labs.query", initialQuery || "");
+  const [sortBy, setSortBy] = useSessionState("labs.sortBy", "mrr-desc"); // default: highest MRR first (compared in INR)
   const [visits, setVisits] = useState([]);
 
   // Lab Health (Sentiment) badge — fetched independently of `labs` (same pattern Dashboard/

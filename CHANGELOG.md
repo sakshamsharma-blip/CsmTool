@@ -2,6 +2,12 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 2026 — refresh keeps your place
+- A refresh now reopens the same screen (and the same lab and tab), with its filters, sorts, searches and My Labs /
+  Team View choice as they were — only the data is reloaded. The address bar shows where you are (e.g.
+  `#/lab/ABC123/adoption`), so links to a lab tab can be shared and the browser Back button works. Filters are
+  remembered per browser tab; a new tab starts fresh.
+
 ## Oct 2026 — new modules In plan by default, Resource regions
 **Database (applied):** `0041_module_plans_resource_region.sql`.
 - A new module is added to every Plan when it's created, so its Adoption-category parameters show **In plan** by

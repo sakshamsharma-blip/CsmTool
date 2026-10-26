@@ -17,7 +17,7 @@ import InfoTip from "../components/InfoTip";
 
 export default function DashboardView({ labs, modules, plans, viewer, idByName, onOpenLab, showToast }) {
   const { currentCSM } = viewer;
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer);
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "dashboard");
 
   const [adoptionByLab, setAdoptionByLab] = useState({});
   const [pitchByLab, setPitchByLab] = useState({}); // pitch stages feed the adoption score (lib/adoption.js)
@@ -216,7 +216,7 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
 
       <h3 style={{ fontSize: 14, margin: "18px 0 8px" }}>Tasks for Today</h3>
       <div style={{ marginBottom: 8 }}>
-        <TasksPanel tasks={tasks} scopeCsm={teamAll ? null : scopeCsm} onToggleDone={handleToggleDone} onAddTask={handleAddTask}
+        <TasksPanel persistKey="dashboard" tasks={tasks} scopeCsm={teamAll ? null : scopeCsm} onToggleDone={handleToggleDone} onAddTask={handleAddTask}
           onOpenLab={onOpenLab} isHead={isHead} currentCSM={currentCSM} csmNames={csmNames} labOptions={labOptions} labsById={labsById} />
       </div>
 
