@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { slugifyModuleKey, scaleWeightsTo100, weightTotal, weightValue } from "../lib/catalog";
+import { slugifyModuleKey, rescaleKeeping, weightTotal, weightValue } from "../lib/catalog";
 import Modal from "../components/Modal";
 import { planIncludesModule, planIncludesParam } from "../lib/plans";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
@@ -13,8 +13,9 @@ const TYPE_OPTIONS = [
 const CATEGORY_OPTIONS = ["Adoption", "Expansion"];
 // Weights are percentages of a whole: all modules together, and all parameters inside one module, must
 // each total exactly 100%. Edits are allowed while someone is working (e.g. adding a new parameter), but any
-// total that isn't 100 is flagged in red with a one-click "Rescale to 100%" that scales every weight in that
-// group by the same factor (ratios kept). Nothing is rescaled without that click.
+// total that isn't 100 is flagged in red with "Rescale to 100%". Rescale KEEPS the weights you just added or
+// changed and scales the untouched ones in their current ratio to fill the rest (rescaleKeeping in lib/catalog.js),
+// shown first as an editable preview. Nothing is rescaled without that click.
 const TARGET_TOTAL = 100;
 
 export default function AdoptionTemplateView({
@@ -47,7 +48,11 @@ export default function AdoptionTemplateView({
   const [descOpen, setDescOpen] = useState({}); // row index -> description box open
   const [paramDrag, setParamDrag] = useState(null);     // index of the parameter row being dragged
   const [paramDragOver, setParamDragOver] = useState(null);
-  const [makeRoom, setMakeRoom] = useState(null);       // { module, weights: { key: "12.5" } } — new module needing room
+  // Rescale preview: { kind: "params" | "modules", title, intro, rows: [{ key, label, old, value, fixed }],
+  // newModule? (being added, fixed, not editable), error? }
+  const [rescale, setRescale] = useState(null);
+  // Modules whose weight was added or changed in this visit — Rescale keeps those as they are.
+  const [touchedModules, setTouchedModules] = useState([]);
 
   function draftFrom(mod) {
     if (!mod) return null;
@@ -124,25 +129,65 @@ export default function AdoptionTemplateView({
     // No room left? Ask how much to take off the other modules (pre-filled proportionally) instead of
     // leaving the total over 100.
     if (weight > 0 && totalModuleWeight + weight > TARGET_TOTAL + 0.001 && modules.length) {
-      const scaled = scaleWeightsTo100(modules.map((m) => m.weight)) || modules.map(() => 0);
-      const room = (TARGET_TOTAL - weight) / TARGET_TOTAL;
-      setMakeRoom({ module: mod, weights: Object.fromEntries(modules.map((m, i) => [m.key, String(Math.round(scaled[i] * room * 100) / 100)])) });
+      openModuleRescale(mod);
       return;
     }
     finishAddModule(mod);
   }
   function finishAddModule(mod) {
     onAddModule(mod);
+    setTouchedModules((t) => [...t, mod.key]);
     setAddingModule(false);
     setSelectedKey(mod.key);
   }
-  function confirmMakeRoom() {
-    modules.forEach((m) => {
-      const w = weightValue(makeRoom.weights[m.key]);
-      if (w !== Number(m.weight)) onUpdateModule(m.key, { weight: w });
+
+  // ---- Rescale to 100%: keep what was just added / changed, scale the rest in ratio, preview first ----
+  function buildRows(items, fixedFlags, extraFixed = 0) {
+    const { next, error } = rescaleKeeping([...items.map((x) => x.weight), extraFixed], [...fixedFlags, extraFixed > 0]);
+    return { rows: items.map((x, i) => ({ ...x, value: String(next ? next[i] : x.weight), fixed: fixedFlags[i] })), error };
+  }
+  function openParamRescale() {
+    const live = draft.params.map((p, i) => ({ p, i })).filter(({ p }) => !p._deleted);
+    const items = live.map(({ p, i }) => ({ key: String(i), label: p.name || "(new parameter)", old: p._isNew ? null : weightValue(p._orig.weight), weight: weightValue(p.weight) }));
+    const fixed = live.map(({ p }) => !!p._isNew || weightValue(p.weight) !== weightValue(p._orig.weight));
+    const { rows, error } = buildRows(items, fixed);
+    setRescale({ kind: "params", title: `Rescale ${draft.name}'s parameters to ${TARGET_TOTAL}%`, rows, error });
+  }
+  // Module weights: the ones added / changed this visit (and the open module's unsaved weight) stay; the rest scale.
+  function openModuleRescale(newModule) {
+    const draftChanged = draft && !newModule && weightValue(draft.weight) !== weightValue(selectedModule?.weight);
+    const items = modules.map((m) => ({
+      key: m.key, label: `${m.icon || ""} ${m.name}`.trim(), old: weightValue(m.weight),
+      weight: draftChanged && m.key === draft.key ? weightValue(draft.weight) : weightValue(m.weight),
+    }));
+    const fixed = modules.map((m) => touchedModules.includes(m.key) || (draftChanged && m.key === draft.key));
+    const { rows, error } = buildRows(items, fixed, newModule ? newModule.weight : 0);
+    setRescale({
+      kind: "modules", newModule, rows, error,
+      title: newModule ? `Make room for ${newModule.name} (${newModule.weight}%)` : `Rescale module weights to ${TARGET_TOTAL}%`,
     });
-    finishAddModule(makeRoom.module);
-    setMakeRoom(null);
+  }
+  function applyRescale() {
+    const { kind, rows, newModule } = rescale;
+    if (kind === "params") {
+      setDraft((d) => {
+        const params = d.params.slice();
+        rows.forEach((r) => { params[Number(r.key)] = { ...params[Number(r.key)], weight: weightValue(r.value) }; });
+        return { ...d, params };
+      });
+    } else {
+      rows.forEach((r) => {
+        const m = modules.find((x) => x.key === r.key);
+        const w = weightValue(r.value);
+        if (m && w !== weightValue(m.weight)) onUpdateModule(m.key, { weight: w });
+      });
+      if (draft) {
+        const own = rows.find((r) => r.key === draft.key);
+        if (own) setDraft((d) => ({ ...d, weight: weightValue(own.value) }));
+      }
+      if (newModule) finishAddModule(newModule);
+    }
+    setRescale(null);
   }
 
   async function handleDeleteModuleClick() {
@@ -214,6 +259,7 @@ export default function AdoptionTemplateView({
       if (weightValue(draft.weight) !== weightValue(selectedModule.weight)) modPatch.weight = weightValue(draft.weight);
       if ((draft.description || "").trim() !== (selectedModule.description || "").trim()) modPatch.description = draft.description.trim();
       if (Object.keys(modPatch).length) await onUpdateModule(draft.key, modPatch);
+      if (modPatch.weight !== undefined) setTouchedModules((t) => (t.includes(draft.key) ? t : [...t, draft.key]));
 
       for (const p of draft.params) {
         if (p._deleted && !p._isNew) await onDeleteModuleParam(draft.key, p._origName);
@@ -256,29 +302,6 @@ export default function AdoptionTemplateView({
   const paramWeightTotal = weightTotal(liveParams);
   const paramsOff = liveParams.length > 0 && paramWeightTotal !== TARGET_TOTAL;
 
-  // One click: scale every module weight by the same factor so they total exactly 100 (ratios kept). Module
-  // weights live in the list on the left, so this applies straight away (it isn't part of one module's draft).
-  function rescaleModules() {
-    if (!window.confirm(`Rescale all module weights so they total exactly ${TARGET_TOTAL}% (same proportions)?`)) return;
-    const next = scaleWeightsTo100(modules.map((m) => m.weight));
-    if (!next) return;
-    modules.forEach((m, i) => { if (Number(m.weight) !== next[i]) onUpdateModule(m.key, { weight: next[i] }); });
-    if (draft) {
-      const i = modules.findIndex((m) => m.key === draft.key);
-      if (i >= 0) setDraft((d) => ({ ...d, weight: next[i] }));
-    }
-  }
-  // Rescales this module's parameters in the DRAFT — saved with everything else on "Save Changes".
-  function rescaleParams() {
-    const rows = draft.params.map((p, i) => ({ p, i })).filter(({ p }) => !p._deleted);
-    const next = scaleWeightsTo100(rows.map(({ p }) => p.weight));
-    if (!next) return;
-    setDraft((d) => {
-      const params = d.params.slice();
-      rows.forEach(({ i }, k) => { params[i] = { ...params[i], weight: next[k] }; });
-      return { ...d, params };
-    });
-  }
   const plansWithSelectedModule = draft ? plans.filter((p) => planIncludesModule(p, draft.key)) : [];
 
   return (
@@ -365,7 +388,7 @@ export default function AdoptionTemplateView({
             <div style={{ padding: "8px 14px 12px", fontSize: 11.5, color: "var(--bad)", lineHeight: 1.45 }}>
               Module weights total {totalModuleWeight}% — they must total exactly {TARGET_TOTAL}%.
               {canEdit && (
-                <button className="btn btn-ghost" style={{ display: "block", marginTop: 6, fontSize: 11.5, padding: "5px 10px" }} onClick={rescaleModules}>
+                <button className="btn btn-ghost" style={{ display: "block", marginTop: 6, fontSize: 11.5, padding: "5px 10px" }} onClick={() => openModuleRescale(null)}>
                   Rescale to {TARGET_TOTAL}%
                 </button>
               )}
@@ -546,7 +569,7 @@ export default function AdoptionTemplateView({
                 <div style={{ color: "var(--bad)", fontSize: 11.5, marginTop: 4, textAlign: "right" }}>
                   {draft.name}'s parameters total {paramWeightTotal}% — they must total exactly {TARGET_TOTAL}%.
                   {canEdit && (
-                    <button className="btn btn-ghost" style={{ marginLeft: 8, fontSize: 11.5, padding: "4px 10px" }} onClick={rescaleParams}>
+                    <button className="btn btn-ghost" style={{ marginLeft: 8, fontSize: 11.5, padding: "4px 10px" }} onClick={openParamRescale}>
                       Rescale to {TARGET_TOTAL}%
                     </button>
                   )}
@@ -587,30 +610,38 @@ export default function AdoptionTemplateView({
         </div>
       </div>
 
-      {makeRoom && (() => {
-        const total = weightTotal(modules.map((m) => ({ weight: makeRoom.weights[m.key] }))) + makeRoom.module.weight;
+      {rescale && (() => {
+        const total = weightTotal(rescale.rows.map((r) => ({ weight: r.value }))) + (rescale.newModule ? rescale.newModule.weight : 0);
         const ok = Math.abs(total - TARGET_TOTAL) < 0.005;
+        const what = rescale.kind === "params" ? "parameters" : "modules";
         return (
-          <Modal open title={`Make room for ${makeRoom.module.name} (${makeRoom.module.weight}%)`} onClose={() => setMakeRoom(null)} actions={[
-            { label: "Cancel", className: "btn-ghost", onClick: () => setMakeRoom(null) },
-            { label: "Add without adjusting", className: "btn-ghost", onClick: () => { finishAddModule(makeRoom.module); setMakeRoom(null); } },
-            { label: "Apply & add module", className: "btn-primary", onClick: confirmMakeRoom, disabled: !ok },
+          <Modal open title={rescale.title} onClose={() => setRescale(null)} actions={[
+            { label: "Cancel", className: "btn-ghost", onClick: () => setRescale(null) },
+            ...(rescale.newModule ? [{ label: "Add without adjusting", className: "btn-ghost", onClick: () => { finishAddModule(rescale.newModule); setRescale(null); } }] : []),
+            { label: rescale.newModule ? "Apply & add module" : rescale.kind === "params" ? "Apply to draft" : "Apply", className: "btn-primary", onClick: applyRescale, disabled: !ok },
           ]}>
             <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginBottom: 10 }}>
-              The modules already total {totalModuleWeight}%. Lower the others so everything totals {TARGET_TOTAL}% — these
-              are pre-filled by reducing each one in proportion; change any of them.
+              🔒 = {rescale.newModule ? "the new module and " : ""}{what} you added or changed — kept as you set them. The others are
+              scaled in their current ratio to fill the rest. Change any number before applying.
+              {rescale.kind === "params" && " This updates the draft; click Save Changes to keep it."}
             </div>
-            <div style={{ maxHeight: 320, overflowY: "auto" }}>
-              {modules.map((m) => (
-                <div key={m.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
-                  <span style={{ flex: 1 }}>{m.icon} {m.name} <span style={{ color: "var(--text-faint)", fontSize: 11 }}>(now {m.weight}%)</span></span>
-                  <input className="tw-input" type="number" min="0" step="any" style={{ width: 70 }} value={makeRoom.weights[m.key]}
-                    onChange={(e) => setMakeRoom((r) => ({ ...r, weights: { ...r.weights, [m.key]: e.target.value } }))} />
+            {rescale.error && <div className="warn-banner" style={{ marginBottom: 10 }}>{rescale.error}</div>}
+            <div style={{ maxHeight: 340, overflowY: "auto" }}>
+              <div className="rescale-row rescale-head"><span>{rescale.kind === "params" ? "Parameter" : "Module"}</span><span>Now</span><span>New</span></div>
+              {rescale.newModule && (
+                <div className="rescale-row"><span>🔒 {rescale.newModule.icon} {rescale.newModule.name} <i>(new)</i></span><span>—</span><b>{rescale.newModule.weight}%</b></div>
+              )}
+              {rescale.rows.map((r, idx) => (
+                <div key={r.key} className="rescale-row">
+                  <span>{r.fixed ? "🔒 " : ""}{r.label}{r.old == null ? <i> (new)</i> : null}</span>
+                  <span>{r.old == null ? "—" : `${r.old}%`}</span>
+                  <input className="tw-input" type="number" min="0" step="any" value={r.value}
+                    onChange={(e) => setRescale((x) => ({ ...x, rows: x.rows.map((y, j) => (j === idx ? { ...y, value: e.target.value } : y)) }))} />
                 </div>
               ))}
             </div>
             <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 700, color: ok ? "var(--ok)" : "var(--bad)" }}>
-              Total with {makeRoom.module.name}: {Math.round(total * 100) / 100}% / {TARGET_TOTAL}%
+              Total: {Math.round(total * 100) / 100}% / {TARGET_TOTAL}%
             </div>
           </Modal>
         );

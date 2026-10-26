@@ -1,8 +1,22 @@
 import { supabase } from "../supabaseClient";
 import { logActivity } from "./activity";
 
-// Points of contact (POCs) per lab — migration 0032. Managed on Lab Details; offered as a dropdown under
-// "Person Contacted" in Log Check-in.
+// Points of contact (POCs) per lab — migration 0032. Managed on the lab page's Points of Contact tab; offered as a
+// dropdown under "Person Contacted" in Log Check-in and "Given by" in Feedback & NPS.
+
+// Designation choices (decision Oct 26 2026). Stored as plain text, so POCs saved before this keep their own wording
+// until edited; "Other" lets someone type a designation that isn't listed.
+export const POC_DESIGNATIONS = [
+  "Owner / Director", "Pathologist / Pathology Head", "Lab Manager", "Operations Head", "Finance / Accounts",
+  "IT / Systems", "Front Desk / Reception", "Technician",
+];
+
+// Every POC across the labs this person can see (one query) — used by Feedback & NPS.
+export async function fetchAllLabContacts() {
+  const { data, error } = await supabase.from("lab_contacts").select("*").order("name");
+  if (error) throw error;
+  return (data || []).map(mapRow);
+}
 function mapRow(r) {
   return { id: r.id, labId: r.lab_id, name: r.name, designation: r.designation || "", phone: r.phone || "", email: r.email || "", createdAt: r.created_at };
 }

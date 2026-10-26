@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtMoney, nativeCurrency } from "../lib/format";
 import {
-  STATUS_ORDER, fetchLabAdoption, computeLabScores, fetchParamChanges, setParamInPlan, setParamStatus,
+  STATUS_ORDER, fetchLabAdoption, computeLabScores, fetchParamChanges, setParamInPlan, setParamStatus, statusOptions,
 } from "../lib/adoption";
 import { fetchLabPitchStatus, applyPitchStageChange, pitchOptionsFor, PITCH_STATUSES } from "../lib/pitch";
 import { fetchAllCollectionsItems, convertItemToChargeable } from "../lib/collections";
@@ -105,7 +105,9 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
     if (r.status === status) return;
     setPendingComment({
       title: `${r.def.name}: ${r.status} → ${status}`,
-      apply: async (comment) => { await setParamStatus(lab.id, r, status, comment, csmId); await afterChange(`${r.def.name}: ${status}.`); },
+      label: status === "Adopted" ? "Adoption note — how it's being used after the month of Live monitoring" : undefined,
+      hint: status === "Live 1" ? "Live starts a month of monitoring: Live 2, 3 and 4 each unlock a week after the previous one, and Adopted 30 days after Live 1." : undefined,
+      apply: async (comment) => { await setParamStatus(lab.id, r, status, comment, csmId, { canStepBack: isHead }); await afterChange(`${r.def.name}: ${status}.`); },
     });
   }
   function askPitch(r, to, mod) {
@@ -127,25 +129,11 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
 
   return (
     <div>
-      <div className="adopt-summary">
-        <div className="adopt-ring-card">
-          <div className="ring" style={{ background: `conic-gradient(${barColor(scores.overallPct)} ${scores.overallPct * 3.6}deg, var(--surface-3) 0deg)` }}>
-            <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>
-              {Math.round(scores.overallPct)}%
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--text-dim)", display: "flex", alignItems: "center" }}>
-              Adoption score
-              <InfoTip>Out of 100 = everything purchased and fully adopted. Per parameter: In plan / purchased → To-Do 70, In Discussion / Demo 75, Trial 80, Onboarding / Setup 90, Adopted 100. Not in plan → To-Do 0, Pitching 10, Trial 30, Onboarding / Setup 50; Purchased moves it onto the In-plan list (70). Not Required, Did Not Meet Requirements and Lost = 0; Not Applicable is left out of the score. Modules average their parameters (by weight); the lab averages its modules (by weight).</InfoTip>
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>
-              Mandatory: <b style={{ color: "var(--text)" }}>{Math.round(scores.mandatoryPct)}%</b>
-            </div>
-          </div>
-        </div>
-        <AdoptionPies moduleResults={scores.moduleResults} />
+      <div className="adopt-score-head">
+        <span>Adoption score <b>{Math.round(scores.overallPct)}%</b> · Mandatory <b>{Math.round(scores.mandatoryPct)}%</b></span>
+        <InfoTip>Out of 100 = everything purchased and fully adopted. Per parameter: In plan / purchased → To-Do 70, In Discussion / Demo 75, Trial 80, Onboarding / Setup 90, Live 1 92, Live 2 94, Live 3 96, Live 4 98, Adopted 100. Not in plan → To-Do 0, Pitching 10, Trial 30; Purchased moves it onto the In-plan list (70). Not Required, Did Not Meet Requirements and Lost = 0; Not Applicable is left out of the score. Modules average their parameters (by weight); the lab averages its modules (by weight). The In-plan list moves one step at a time: each Live step unlocks 7 days after the previous one, and Adopted 30 days after Live 1 started.</InfoTip>
       </div>
+      <AdoptionPies moduleResults={scores.moduleResults} />
 
       <div className="adopt-note" style={{ margin: "0 0 12px" }}>
         {lab.name} is on <b>{plan?.name || "—"}</b>. Every template parameter is listed; mark each <b>In plan</b> or <b>Not in plan</b>.
@@ -210,7 +198,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
                       <span className={`cat-tag cat-${r.category}`}>{r.category}</span>
                       {(r.inPlan || r.purchased) && !lost ? (
                         <select className="status-select" value={r.status} onChange={(e) => askStatus(r, e.target.value)} title="In-plan status">
-                          {STATUS_ORDER.map((st) => <option key={st} value={st}>{st}</option>)}
+                          {statusOptions(r, { canStepBack: isHead }).map((o) => <option key={o.value} value={o.value} disabled={o.disabled}>{o.value}{o.note ? ` — ${o.note}` : ""}</option>)}
                         </select>
                       ) : null}
                       {!r.inPlan && (
@@ -246,6 +234,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
         <CommentRequiredModal
           title={pendingComment.title}
           hint={pendingComment.hint}
+          label={pendingComment.label}
           onClose={() => setPendingComment(null)}
           onConfirm={async (comment) => {
             try { await pendingComment.apply(comment); setPendingComment(null); }
@@ -295,7 +284,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
   );
 }
 
-function CommentRequiredModal({ title, hint, onClose, onConfirm }) {
+function CommentRequiredModal({ title, hint, label, onClose, onConfirm }) {
   const [comment, setComment] = useState("");
   const [error, setError] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -311,7 +300,7 @@ function CommentRequiredModal({ title, hint, onClose, onConfirm }) {
     ]}>
       {hint && <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>{hint}</div>}
       <div className="tmpl-field">
-        <label>Comment <span style={{ color: "var(--bad)" }}>*</span></label>
+        <label>{label || "Comment"} <span style={{ color: "var(--bad)" }}>*</span></label>
         <textarea rows="3" autoFocus style={{ ...field, resize: "vertical" }} value={comment} onChange={(e) => { setComment(e.target.value); setError(false); }}
           placeholder="Why is this changing?" />
       </div>

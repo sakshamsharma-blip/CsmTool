@@ -2,6 +2,31 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 26 2026 — Live stages, stage analytics, Feedback & NPS round 2
+**Database (applied):** `0040_live_stages_testimonial_dates.sql`.
+- **Live stages:** In plan is now To-Do → In Discussion / Demo → Trial → Onboarding / Setup → Live 1 → Live 2 → Live 3
+  → Live 4 → Adopted, strictly one step at a time (Lead / Admin can step back). Each Live step unlocks a week after
+  the previous one; Adopted unlocks a month after Live 1 and needs an adoption note. Not Required / Not Applicable /
+  Did Not Meet Requirements can still be set from any stage. Scores: Live 1–4 = 92 / 94 / 96 / 98.
+- **Expansion:** "Onboarding / Setup" removed (onboarding happens after Purchased); those add-ons moved to Trial.
+- **Adoption tab:** four pies — Overall, Mandatory, In plan, Not in plan. Stages in shades of one colour (light =
+  early, dark = adopted; Expansion orange; closed grey), % on each slice, centre = adoption score, a full legend with
+  count and %, hover any slice for the exact stages and parameters, plus a count-per-stage table.
+- **My Portfolio analytics:** KPI row (avg adoption, labs at 85%+, parameters adopted, in Live, add-ons to pitch,
+  purchased), Labs by adoption band, Pitch pipeline, Adoption by module split by stage (weakest first, table view) —
+  hover anything for the labs / features / parameters behind it. New "Live monitoring" list (which lab is in which
+  Live step, and when the next step unlocks).
+- **Feedback & NPS:** parent labs only; tabs Responses → Testimonials → Report; sources Google Form / Email / WhatsApp;
+  "Given by" picked from the lab's POCs (or add one from the form); testimonials in the same table format with the
+  date collected; Average NPS shown out of 10; By CSM adds total labs, labs with feedback and coverage; new By
+  designation report; designation filter.
+- **POC designation** is now a dropdown (with "Other…").
+- **Rescale to 100% keeps what you set:** new or changed weights stay as typed and only the untouched ones are scaled,
+  in their current ratio (e.g. 40/30/30 + a new 20 → 32/24/24/20). Shown first as an editable preview — parameters
+  and modules alike (the "Make room" window when adding a module works the same way).
+- **Financial Reports:** CSM share of total labs and total revenue.
+- Fix: dropdowns inside popups (e.g. the lab picker when recording feedback) were cut off; popups now scroll.
+
 ## Oct 23 2026 — Feedback & NPS reworked
 **Database (applied):** `0039_feedback_nps_responses.sql`.
 - Feedback & NPS is now a place to RECORD responses collected offline (call, visit, Google Form, email, WhatsApp):

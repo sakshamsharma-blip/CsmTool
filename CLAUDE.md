@@ -70,15 +70,28 @@ with the same context and follows the same rules. Read it fully before making ch
   sees the whole template (no module/parameter "In scope" switches). Per lab, per parameter: **In plan** (=
   Adoption, tracked by rollout status) or **Not in plan** (= Expansion: pitch stages → purchased → rollout).
   Default: In plan when the lab's Plan includes it AND its template category is Adoption (`param_states.in_plan`
-  NULL = default). **Status lists (Oct 23 2026, migration 0038)** — In plan (`param_states.status`, `STATUS_ORDER`):
-  To-Do 70 · In Discussion / Demo 75 · Trial 80 · Onboarding / Setup 90 · Adopted 100 · Not Required 0 · Not
-  Applicable (left OUT of the score) · Did Not Meet Requirements 0. Not in plan (`pitch_status.status`,
-  `PITCH_STATUSES`): To-Do 0 · Pitching 10 · Trial 30 · Onboarding / Setup 50 · Purchased · Not Required 0 · Not
-  Applicable (left out) · Lost in Expansion 0 · Lost after Purchase 0. **Purchased moves the feature onto the In-plan
+  NULL = default). **Status lists (migrations 0038 + 0040)** — In plan (`param_states.status`, `STATUS_ORDER`):
+  To-Do 70 · In Discussion / Demo 75 · Trial 80 · Onboarding / Setup 90 · Live 1 92 · Live 2 94 · Live 3 96 · Live 4
+  98 · Adopted 100 · Not Required 0 · Not Applicable (left OUT of the score) · Did Not Meet Requirements 0. **The
+  In-plan list is strictly one step forward** (`statusOptions` / `setParamStatus` in `lib/adoption.js`, used by the
+  Adoption tab and Tasks): each Live step unlocks 7 days after the previous one (`param_states.status_changed_at`),
+  Adopted unlocks 30 days after Live 1 started (`param_states.live_started_at`) and its comment is the adoption note;
+  Not Required / Not Applicable / Did Not Meet Requirements can be set from any stage; only a CSM Lead / Admin can step
+  back (UI-enforced, not a DB trigger). Not in plan (`pitch_status.status`, `PITCH_STATUSES`): To-Do 0 · Pitching 10 ·
+  Trial 30 · Purchased · Not Required 0 · Not Applicable (left out) · Lost in Expansion 0 · Lost after Purchase 0
+  (Expansion "Onboarding / Setup" removed Oct 26 2026; 0040 moved those rows to Trial). **Purchased moves the feature onto the In-plan
   list** (it starts at To-Do = 70 and climbs to Adopted 100; data-wise it stays `in_plan=false, included=true`).
-  Old names (Not Started / In Progress / To Do / Added) are mapped on read (`normalizeStatus` / `normalizePitch`).
-  Module = weighted avg of params; lab = weighted avg of modules. The Adoption tab shows two pies (In plan vs Not
-  in plan, Mandatory vs Optional — `components/AdoptionPies.jsx`, `groupAdoption`) and a stage filter. Every change
+  Old names (Not Started / In Progress / To Do / Added / Expansion Onboarding) are mapped on read (`normalizeStatus` /
+  `normalizePitch`). Module = weighted avg of params; lab = weighted avg of modules. The Adoption tab shows four pies
+  — Overall, Mandatory, In plan, Not in plan — sliced by stage group (`STAGE_GROUPS` / `EXPANSION_GROUPS` /
+  `stageGroupOf`), slice = parameter COUNT, centre = weighted adoption score; hover a slice or legend row for the exact
+  stages and parameters; "Show details" = count-per-stage table (`components/AdoptionPies.jsx`); plus a stage filter.
+  My Portfolio analytics live in `components/PortfolioCharts.jsx`: KPI row, Labs by adoption band, Pitch pipeline and
+  Adoption by module (stage-split bars, weakest first, chart/table toggle) — every mark has a hover card with the
+  labs / parameters behind it (`lib/useChartTooltip.jsx` + `components/ChartTooltip.jsx`). A "Live monitoring" list
+  shows every item in Live 1–4 by lab with when its next step unlocks. **Chart colours** are CSS variables
+  (`--stg-plan-1…5` blue ramp for In-plan stages light→dark, `--stg-exp-1…3` orange for Expansion, `--stg-closed`
+  grey, each with a `-ink` label colour) defined for light AND dark in `index.css`, validated as ordinal ramps. Every change
   on a lab's Adoption tab needs a comment and saves immediately (`param_changes` audit trail; newest comment
   shown under the parameter; click the name for the history). The Adoption tab lives in
   `components/LabAdoptionTab.jsx`. Log Check-in's Adoption Snapshot marks modules and/or parameters as
@@ -91,16 +104,25 @@ with the same context and follows the same rules. Read it fully before making ch
   edit/remove (DB-enforced).
 - "Tasks for Today" (Dashboard / My Portfolio) and the Tasks page both have a lab filter.
 - **Tasks page** (Oct 23 2026): lists every Adoption/Expansion item that is UNDER WAY — In plan: In Discussion /
-  Demo, Trial, Onboarding / Setup; Not in plan: Pitching, Trial, Onboarding / Setup (`buildActiveItemRows` in
+  Demo, Trial, Onboarding / Setup, Live 1–4; Not in plan: Pitching, Trial (`buildActiveItemRows` in
   `lib/pitch.js`). Items at To-Do are NOT tasks. Each row: lab, In-Plan / Not-in-Plan, item, days since it got under
   way (from `param_changes`), status dropdown, "Remind me" (creates a `tasks.type='reminder'` task). The task list
   can be sorted by due date. Sidebar Tasks shows a green unread count of the signed-in person's tasks created since
   they last opened Tasks (`lib/taskNotifications.js`, remembered per browser).
 - **Feedback & NPS** (sidebar, `views/FeedbackView.jsx`, `lib/feedback.js`, tables `lab_feedback` / `lab_testimonials`):
-  labs give feedback OFFLINE (call, visit, Google Form, email…) and the CSM records each response manually — NPS
-  0–10 and/or rating 1–5 (at least one), given by + designation, source, comment, optional supporting link (0039).
-  Tabs: Responses (edit/delete), Report (NPS = % promoters 9–10 − % detractors 0–6, avg rating, by CSM, by lab, CSV
-  export), Testimonials (video links per lab by designation). Filters: lab, CSM scope, source, date range.
+  labs give feedback OFFLINE (Google Form, Email, WhatsApp — the sources offered) and the CSM records each response
+  manually — NPS 0–10 and/or rating 1–5 (at least one), given by (picked from the lab's POCs, or a new POC added from
+  the form), source, comment, optional supporting link. PARENT labs only (child-lab rows count under the parent).
+  Tabs in order: Responses, Testimonials (same format, with `collected_on` date — 0040), Report (Average NPS out of
+  10, promoters 9–10 / passives 7–8 / detractors 0–6, avg rating; By CSM with total labs + labs with feedback +
+  coverage; By designation; By lab; CSV export). Filters: lab, CSM scope, designation, source, date range.
+- **POC designation** is a dropdown (`POC_DESIGNATIONS` in `lib/labContacts.js`, `components/DesignationSelect.jsx`,
+  with "Other…" to type one); older free-text values are kept until edited. Used on Points of Contact, Log Check-in
+  and the Feedback "+ Add POC".
+- **SearchSelect** renders its list in a portal on `<body>` (fixed, re-measured every frame while open) so popups
+  and scrolling cards can't clip it. Modals scroll when taller than the screen.
+- **Financial Reports → MRR Breakdown** starts with "CSM share of the book": labs handled and MRR handled per CSM as %
+  of the whole company.
 - **Resources** (sidebar, `views/ResourcesView.jsx`, table `resources`): team-wide docs / training links + a
   roll-up of every module's links.
 - **Total Labs**: default sort MRR high → low (in INR); columns Lab ID, Lab Name, Type, CSM Name, MRR, Segment,
@@ -123,8 +145,11 @@ with the same context and follows the same rules. Read it fully before making ch
   opens "Make room" (other modules pre-reduced proportionally, editable). Parameters can be dragged into order
   (`module_params.sort_order`, saved with Save Changes). Deleting a module keeps its Collections entries (FK set
   null, 0038). Edits are allowed while working (e.g. adding a parameter), but any
-  group that isn't 100 shows a red warning with a one-click "Rescale to 100%" (same ratios). Nothing is
-  rescaled automatically. Only a CSM Lead / Admin can edit the template (view-only for CSMs; DB: 0024).
+  group that isn't 100 shows a red warning with "Rescale to 100%". **Rescale keeps what you touched** (decision
+  Oct 26 2026): parameters added or whose weight was changed in the current draft — and, for modules, modules added or
+  re-weighted this visit — stay exactly as set (🔒); the untouched ones are scaled in their current ratio to fill the
+  rest (`rescaleKeeping` in `lib/catalog.js`; e.g. 40/30/30 + new 20 → 32/24/24/20). It opens an editable preview
+  first (parameters apply to the draft; modules apply on Apply). Nothing is rescaled automatically. Only a CSM Lead / Admin can edit the template (view-only for CSMs; DB: 0024).
 - **Pitch-stage changes** (My Portfolio, Tasks → Pitch Reminders, and each lab's own Adoption tab —
   all three go through `applyPitchStageChange` in `lib/pitch.js`, so they always agree) open a confirm
   dialog with a **required** comment, and every change is written to Lab History as a check-in-sourced
@@ -224,7 +249,7 @@ with the same context and follows the same rules. Read it fully before making ch
   manual), full Plan CRUD beyond toggling module/param membership, KPI Management,
   Automation (still "Planned" and greyed out in the sidebar). **Support & Tickets** is a sidebar link that opens
   Flow (https://creliohealthflow.vercel.app/, the CS ↔ Product escalation tracker) in a new tab.
-- Latest migration: `0039_feedback_nps_responses.sql`; **0001–0039 are all applied** (Oct 23 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+- Latest migration: `0040_live_stages_testimonial_dates.sql`; **0001–0040 are all applied** (Oct 26 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).

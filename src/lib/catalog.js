@@ -85,6 +85,35 @@ export async function reorderModuleParams(moduleKey, namesInOrder) {
   if (failed) throw failed.error;
 }
 
+// Rescale to 100 while KEEPING some weights as they are (decision Oct 26 2026): the `fixed` ones — weights someone just
+// added or changed — stay exactly as typed, and the rest are scaled in their CURRENT RATIO to fill what's left
+// (100 − the fixed total). Rounded to hundredths with the leftover hundredths going to the largest remainders, so the
+// total is exactly 100.00. Nothing fixed → every weight is scaled (scaleWeightsTo100). Returns { next } or { error }.
+export function rescaleKeeping(weights, fixed) {
+  const nums = weights.map((w) => Math.max(0, Number(w) || 0));
+  if (!fixed.some(Boolean)) {
+    const next = scaleWeightsTo100(nums);
+    return next ? { next } : { error: "Every weight is 0 — there's nothing to scale." };
+  }
+  const fixedTotal = Math.round(nums.reduce((s, w, i) => s + (fixed[i] ? w : 0), 0) * 100);
+  const room = 10000 - fixedTotal; // in hundredths of a percent
+  if (room < 0) return { error: `The weights you set already total ${fixedTotal / 100}% — lower one of them first.` };
+  const free = nums.map((w, i) => (fixed[i] ? 0 : w));
+  const freeTotal = free.reduce((s, w) => s + w, 0);
+  if (freeTotal <= 0) {
+    if (room === 0) return { next: nums.map((w, i) => (fixed[i] ? w : 0)) };
+    return { error: `The other weights are all 0, so they can't be scaled to fill the remaining ${room / 100}%.` };
+  }
+  const raw = free.map((w) => (w * room) / freeTotal);
+  const base = raw.map(Math.floor);
+  let leftover = room - base.reduce((s, b, i) => s + (fixed[i] ? 0 : b), 0);
+  raw.map((r, i) => ({ i, frac: r - base[i] }))
+    .filter(({ i }) => !fixed[i] && free[i] > 0)
+    .sort((a, b) => b.frac - a.frac || a.i - b.i)
+    .forEach(({ i }) => { if (leftover > 0) { base[i] += 1; leftover -= 1; } });
+  return { next: nums.map((w, i) => (fixed[i] ? w : base[i] / 100)) };
+}
+
 // A weight as typed: blank/invalid → 0. Zero is allowed (a module or parameter can count for nothing).
 export function weightValue(w) {
   const n = Number(w);

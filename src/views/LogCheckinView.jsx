@@ -8,6 +8,7 @@ import { fetchAllVisits, addVisit } from "../lib/visits";
 import { addTask } from "../lib/tasks";
 import { todayISO, daysFromTodayISO } from "../lib/dates";
 import { fetchLabContacts, addLabContact } from "../lib/labContacts";
+import DesignationSelect from "../components/DesignationSelect";
 
 const CHECKIN_TYPES = [
   { key: "Call", icon: "📞" },
@@ -304,7 +305,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
                   {contacts.map((c) => <option key={c.id} value={c.name}>{c.designation}</option>)}
                 </datalist>
               </div>
-              <div className="tmpl-field" style={{ flex: "1 1 160px" }}><label>Designation</label><input style={fieldStyle} value={personDesignation} onChange={(e) => setPersonDesignation(e.target.value)} placeholder="e.g. Lab Manager" /></div>
+              <div className="tmpl-field" style={{ flex: "1 1 160px" }}><label>Designation</label><DesignationSelect style={fieldStyle} value={personDesignation} onChange={setPersonDesignation} /></div>
             </div>
           </div>
 

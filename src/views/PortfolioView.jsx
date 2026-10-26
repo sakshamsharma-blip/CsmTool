@@ -2,31 +2,22 @@ import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
-import { fetchAllLabsAdoption, computeSavedLabScores } from "../lib/adoption";
+import { fetchAllLabsAdoption, computeSavedLabScores, LIVE_STAGES, LIVE_STEP_DAYS, LIVE_MONITOR_DAYS } from "../lib/adoption";
+import Paginated from "../components/Pager";
 import {
-  fetchAllPitchStatus, applyPitchStageChange, PITCH_OPEN_STATUSES, PITCH_STATUSES, pitchOptionsFor,
+  fetchAllPitchStatus, applyPitchStageChange, PITCH_OPEN_STATUSES, pitchOptionsFor,
 } from "../lib/pitch";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask } from "../lib/tasks";
 import { fetchAllCollectionsItems } from "../lib/collections";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
-import BarChart from "../components/BarChart";
+import PortfolioCharts from "../components/PortfolioCharts";
 import TasksPanel from "../components/TasksPanel";
 import PitchStageModal from "../components/PitchStageModal";
 import InfoTip from "../components/InfoTip";
 
 const SEG_LABELS = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 
-const SCORE_BANDS = [
-  { key: "hi", label: "85–100%", min: 85, max: Infinity, color: "var(--ok)" },
-  { key: "mid", label: "70–84%", min: 70, max: 85, color: "var(--accent)" },
-  { key: "low", label: "30–69%", min: 30, max: 70, color: "var(--warn)" },
-  { key: "bad", label: "Below 30%", min: -Infinity, max: 30, color: "var(--bad)" },
-];
-const PITCH_COLORS = {
-  "To-Do": "var(--text-faint)", Pitching: "var(--warn)", Trial: "var(--purple-text)", "Onboarding / Setup": "var(--accent)",
-  Purchased: "var(--ok)", "Lost in Expansion": "var(--bad)", "Lost after Purchase": "var(--bad)",
-};
 
 export default function PortfolioView({ labs, modules, plans, viewer, idByName, onOpenLab, onPatchLab, showToast }) {
   const { currentCSM } = viewer;
@@ -87,20 +78,20 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
   rows.forEach((lab) => { scoresByLab[lab.id] = computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id], pitchByLab[lab.id]); });
   const allParamsOf = (lab) => scoresByLab[lab.id].moduleResults.flatMap((m) => m.params);
 
-  // Pitch Pipeline — every Not-in-plan parameter in this portfolio, bucketed by its stage.
-  const pitchCounts = Object.fromEntries(PITCH_STATUSES.map((st) => [st, 0]));
-  rows.forEach((lab) => {
-    allParamsOf(lab).forEach((r) => { if (!r.inPlan && pitchCounts[r.pitch] != null) pitchCounts[r.pitch]++; });
-  });
-
-  // Avg Adoption by Module — the average, plus the % of labs in each score band for that module.
-  const moduleAvgs = modules.map((mod) => {
-    const vals = rows.map((lab) => scoresByLab[lab.id].moduleResults.find((m) => m.mod.key === mod.key)?.overallPct).filter((v) => v != null);
-    if (!vals.length) return null;
-    const avg = Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
-    const bands = SCORE_BANDS.map((b) => ({ ...b, pct: (vals.filter((v) => v >= b.min && v < b.max).length / vals.length) * 100 }));
-    return { label: mod.name, value: avg, labs: vals.length, bands };
-  }).filter(Boolean).sort((a, b) => a.value - b.value);
+  // Live monitoring — every In-plan / purchased parameter in Live 1–4, with when its next step unlocks.
+  const liveRows = [];
+  rows.forEach((lab) => scoresByLab[lab.id].moduleResults.forEach(({ mod, params }) => params.forEach((r) => {
+    if (!(r.inPlan || r.purchased) || r.lost || !LIVE_STAGES.includes(r.status)) return;
+    const st = r.state || {};
+    const last = r.status === "Live 4";
+    const from = last ? st.liveStartedAt : st.statusChangedAt;
+    const unlock = from ? new Date(from).getTime() + (last ? LIVE_MONITOR_DAYS : LIVE_STEP_DAYS) * 86400000 : null;
+    liveRows.push({
+      labId: lab.id, labName: lab.name, module: mod.name, param: r.def.name, stage: r.status, liveSince: st.liveStartedAt,
+      nextLabel: last ? "Adopted" : LIVE_STAGES[LIVE_STAGES.indexOf(r.status) + 1], unlock, ready: !unlock || Date.now() >= unlock,
+    });
+  })));
+  liveRows.sort((a, b) => (a.unlock || 0) - (b.unlock || 0));
 
   async function handleToggleDone(task) {
     try { await apiToggleTaskDone(task); await loadAll(); } catch (err) { showToast(`⚠ ${err.message}`); }
@@ -140,33 +131,33 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, margin: "0 0 18px" }}>
-        <div className="table-card" style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Pitch Pipeline (Expansion features)</div>
-          <BarChart labelWidth={125} data={PITCH_STATUSES.map((st) => ({ label: st, value: pitchCounts[st], color: PITCH_COLORS[st] || "var(--text-dim)" }))} />
-        </div>
-        <div className="table-card" style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center" }}>
-            Avg Adoption by Module
-            <InfoTip>The number is the module's average adoption across these labs. The bar splits the labs by their score for that module — hover a segment for the exact share.</InfoTip>
-          </div>
-          <div className="modseg-legend">
-            {SCORE_BANDS.map((b) => <span key={b.key}><i style={{ background: b.color }} />{b.label}</span>)}
-          </div>
-          {!moduleAvgs.length ? <div style={{ color: "var(--text-faint)", fontSize: 12, padding: "8px 0" }}>No data yet.</div> : moduleAvgs.map((m) => (
-            <div key={m.label} className="modseg-row">
-              <span className="modseg-label" title={m.label}>{m.label}</span>
-              <div className="modseg-bar">
-                {m.bands.map((b) => b.pct > 0 && (
-                  <div key={b.key} style={{ width: `${b.pct}%`, background: b.color }} title={`${b.label}: ${Math.round(b.pct)}% of ${m.labs} lab(s)`}>
-                    {b.pct >= 14 ? `${Math.round(b.pct)}%` : ""}
-                  </div>
-                ))}
-              </div>
-              <b className="modseg-val">{m.value}%</b>
-            </div>
-          ))}
-        </div>
+      <PortfolioCharts labs={rows} scoresByLab={scoresByLab} />
+
+      <h3 style={{ fontSize: 14, margin: "18px 0 8px", display: "flex", alignItems: "center" }}>
+        Live monitoring
+        <InfoTip>Every In-plan (or purchased) parameter now in Live 1–4, lab by lab. Each Live step unlocks 7 days after the previous one; Adopted unlocks 30 days after Live 1 started and needs an adoption note.</InfoTip>
+      </h3>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+        {LIVE_STAGES.map((st) => <span key={st} className="cat-tag cat-Adoption">{st}: {liveRows.filter((r) => r.stage === st).length}</span>)}
+      </div>
+      <div className="table-card" style={{ marginBottom: 18 }}>
+        {!liveRows.length ? <div style={{ padding: "14px 18px", color: "var(--text-faint)", fontSize: 12.5 }}>Nothing is in Live right now.</div> : (
+          <Paginated items={liveRows}>{(page) => (
+            <div className="table-scroll"><table className="child-mini">
+              <thead><tr><th>Lab</th><th>Module</th><th>Parameter</th><th>Stage</th><th>Live since</th><th>Next step</th></tr></thead>
+              <tbody>{page.map((r) => (
+                <tr key={`${r.labId}|${r.module}|${r.param}`}>
+                  <td className="lab-name clickable" onClick={() => onOpenLab(r.labId)}>{r.labName}</td>
+                  <td>{r.module}</td><td>{r.param}</td><td><b>{r.stage}</b></td>
+                  <td style={{ whiteSpace: "nowrap" }}>{r.liveSince ? new Date(r.liveSince).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "—"}</td>
+                  <td style={{ whiteSpace: "nowrap", color: r.ready ? "var(--ok)" : "var(--text-dim)", fontWeight: r.ready ? 700 : 400 }}>
+                    {r.nextLabel} {r.ready ? "— ready" : r.unlock ? `— from ${new Date(r.unlock).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}</Paginated>
+        )}
       </div>
 
       <h3 style={{ fontSize: 14, margin: "18px 0 8px" }}>Tasks for Today</h3>
@@ -177,7 +168,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
 
       <h3 style={{ fontSize: 14, margin: "0 0 8px", display: "flex", alignItems: "center" }}>
         Labs
-        <InfoTip>Each module lists this lab's add-ons — the parameters marked <b>Not in plan</b> on its Adoption tab. Move them through the Expansion stages (To-Do → Pitching → Trial → Onboarding / Setup → Purchased, or Not Required / Not Applicable / Lost); every change needs a comment and is logged to Lab History. <b>Purchased</b> asks Priced or Trial, creates a Collections entry and moves the feature onto the In-plan list. <b>Lost after Purchase</b> lowers MRR by the feature's charge. The adoption % uses the same 0–100 ladder as the lab's Adoption tab.</InfoTip>
+        <InfoTip>Each module lists this lab's add-ons — the parameters marked <b>Not in plan</b> on its Adoption tab. Move them through the Expansion stages (To-Do → Pitching → Trial → Purchased, or Not Required / Not Applicable / Lost); every change needs a comment and is logged to Lab History. <b>Purchased</b> asks Priced or Trial, creates a Collections entry and moves the feature onto the In-plan list. <b>Lost after Purchase</b> lowers MRR by the feature's charge. The adoption % uses the same 0–100 ladder as the lab's Adoption tab.</InfoTip>
       </h3>
       {!rows.length ? (
         <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>No labs assigned to {scopeLabel} yet.</div>

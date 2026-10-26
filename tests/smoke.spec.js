@@ -79,6 +79,12 @@ test("Adoption Template: totals must be 100% and Rescale fixes them", async ({ p
   await firstWeight.blur();
   await expect(page.getByText(/they must total exactly 100%/)).toBeVisible();
   await page.getByRole("button", { name: "Rescale to 100%" }).click();
+  // Preview: the weight we just changed is kept (🔒 90), the others share the remaining 10% in their old ratio.
+  const dialog = page.locator(".modal-box.show");
+  await expect(dialog.locator(".rescale-row input").first()).toHaveValue("90");
+  await expect(dialog.getByText("Total: 100% / 100%")).toBeVisible();
+  await dialog.getByRole("button", { name: "Apply to draft" }).click();
+  await expect(firstWeight).toHaveValue("90");
   await expect(page.getByText("Parameters total: 100% / 100%")).toBeVisible();
 });
 
@@ -116,7 +122,7 @@ test("Total Labs: city filter narrows the list", async ({ page }) => {
 test("Lab Adoption tab: every parameter is In plan / Not in plan and changes need a comment", async ({ page }) => {
   await page.getByText("iGenetic Diagnostics", { exact: true }).click();
   await page.getByRole("button", { name: "Adoption" }).click();
-  await expect(page.getByText("Adoption score")).toBeVisible();
+  await expect(page.locator(".adopt-score-head", { hasText: "Adoption score" })).toBeVisible();
   await page.locator(".module-head").first().click();
   const firstParam = page.locator(".param-block").first();
   await expect(firstParam.getByRole("button", { name: "In plan", exact: true })).toBeVisible();
@@ -136,15 +142,27 @@ test("Support & Tickets opens Flow in a new tab", async ({ page }) => {
   await expect(link).toHaveAttribute("target", "_blank");
 });
 
-test("Lab Adoption tab: adoption pies, new status lists and the stage filter", async ({ page }) => {
+test("Lab Adoption tab: stage pies, one-way In-plan list and the stage filter", async ({ page }) => {
   await page.getByText("iGenetic Diagnostics", { exact: true }).click();
   await page.getByRole("button", { name: "Adoption" }).click();
-  for (const label of ["In-Plan Adoption", "Not-in-Plan Adoption", "Mandatory Adoption", "Optional Adoption"]) {
-    await expect(page.locator(".pie-card", { hasText: label })).toBeVisible();
+  for (const title of ["Overall", "Mandatory", "In plan", "Not in plan"]) {
+    await expect(page.locator(".pie-card .pie-title", { hasText: new RegExp(`^${title} ·`) })).toBeVisible();
   }
+  // Hovering a slice shows which stage and which parameters it holds.
+  await page.locator(".adopt-pies .pie-card").first().locator(".pie-leg-row:not(.zero)").first().hover();
+  await expect(page.locator(".chart-tip")).toBeVisible();
+  await page.mouse.move(0, 0);
+  await page.getByRole("button", { name: /Show details/ }).click();
+  await expect(page.getByText("Total parameters")).toBeVisible();
   await page.locator(".module-head").first().click();
-  const statusSelect = page.locator(".param-block select.status-select").first();
-  await expect(statusSelect.locator("option", { hasText: "Onboarding / Setup" })).toHaveCount(1);
+  // In-plan list is one step at a time: Live stages exist, but you can't jump ahead from To-Do.
+  const inPlanSelect = page.locator('.param-block select[title="In-plan status"]').first();
+  await expect(inPlanSelect.locator("option", { hasText: "Live 1" })).toHaveCount(1);
+  const current = await inPlanSelect.inputValue();
+  if (current === "To-Do") {
+    await expect(inPlanSelect.locator('option[value="In Discussion / Demo"]')).toBeEnabled();
+    await expect(inPlanSelect.locator('option[value="Adopted"]')).toBeDisabled();
+  }
   // Filter to one stage: only matching parameters stay listed.
   const filter = page.getByLabel("Filter by stage");
   await filter.selectOption("plan:Did Not Meet Requirements");
@@ -167,7 +185,7 @@ test("Adoption Template: a weight can be 0, and adding a module past 100% asks t
   await page.locator(".tmpl-list-card").getByRole("button", { name: "Save" }).click();
   const dialog = page.locator(".modal-box.show");
   await expect(dialog.getByText(/Make room for Smoke Module/)).toBeVisible();
-  await expect(dialog.getByText("Total with Smoke Module: 100% / 100%")).toBeVisible();
+  await expect(dialog.getByText("Total: 100% / 100%")).toBeVisible();
   await dialog.getByRole("button", { name: "Apply & add module" }).click();
   await expect(page.locator(".tmpl-list-foot")).toContainText("100%");
   await expect(page.locator(".tmpl-list .tlname", { hasText: "Smoke Module" })).toBeVisible();

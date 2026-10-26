@@ -11,9 +11,10 @@ import { todayISO } from "./dates";
 // the In-plan track (see markFeatureAdded below). The two Lost stages are kept at the end: "Lost in Expansion" =
 // the pitch never converted (recorded + logged only). "Lost after Purchase" = it was bought and then lost: the
 // lab's MRR drops by that feature's charge and it's logged as a Contraction (see markLostAfterPurchase).
-export const PITCH_STATUSES = ["To-Do", "Pitching", "Trial", "Onboarding / Setup", "Purchased", "Not Required", "Not Applicable", "Lost in Expansion", "Lost after Purchase"];
+// (Onboarding / Setup was removed from this list Oct 26 2026 — onboarding happens on the In-plan list after Purchased.)
+export const PITCH_STATUSES = ["To-Do", "Pitching", "Trial", "Purchased", "Not Required", "Not Applicable", "Lost in Expansion", "Lost after Purchase"];
 // Stages that mean work is under way — these show up in Tasks (with STATUS_ACTIVE for In-plan items).
-export const PITCH_ACTIVE_STATUSES = ["Pitching", "Trial", "Onboarding / Setup"];
+export const PITCH_ACTIVE_STATUSES = ["Pitching", "Trial"];
 // Still open (not bought, not closed) — what My Portfolio lists as "to pitch".
 export const PITCH_OPEN_STATUSES = ["To-Do", ...PITCH_ACTIVE_STATUSES];
 export const PITCH_LOST_STATUSES = ["Lost in Expansion", "Lost after Purchase"];
@@ -103,8 +104,8 @@ export async function setParamPitchStatus(labId, moduleKey, paramName, status, c
 }
 
 // Every item that is UNDER WAY across a set of labs — what Tasks lists (decision Oct 23 2026: an item becomes a task
-// only once it moves past To-Do). In plan / purchased: In Discussion / Demo, Trial, Onboarding / Setup. Not in plan:
-// Pitching, Trial, Onboarding / Setup. `changesByParam` ("<lab>|<module>|<param>" → ascending param_changes rows)
+// only once it moves past To-Do). In plan / purchased: In Discussion / Demo, Trial, Onboarding / Setup, Live 1–4.
+// Not in plan: Pitching, Trial. `changesByParam` ("<lab>|<module>|<param>" → ascending param_changes rows)
 // gives the date it got under way: the start of its latest unbroken run of active stages (null if unrecorded).
 export function buildActiveItemRows({ labs, modules, plans, adoptionByLab, pitchByLab, changesByParam = {} }) {
   const rows = [];

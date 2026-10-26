@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 // A dropdown you can also type into — pick from the list, or start typing and it filters as you go
 // (so with hundreds of labs you never scroll; "f" narrows to every lab matching "f"). Drop-in for a
@@ -30,10 +31,41 @@ export default function SearchSelect({
   useEffect(() => {
     if (!open) return;
     function onDocDown(e) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) close();
+      if (wrapRef.current && !wrapRef.current.contains(e.target) && !(listRef.current && listRef.current.contains(e.target))) close();
     }
     document.addEventListener("mousedown", onDocDown);
     return () => document.removeEventListener("mousedown", onDocDown);
+  }, [open]);
+
+  // The list is rendered into <body> (a portal) in a fixed layer positioned under (or, near the bottom of the screen,
+  // above) the input, so a parent that scrolls or clips — a popup, a table card — can never cut it off.
+  const [pos, setPos] = useState(null);
+  function measure() {
+    const el = wrapRef.current;
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom;
+    const up = below < 250 && r.top > below;
+    return {
+      left: r.left, width: Math.max(r.width, 200),
+      ...(up ? { top: "auto", bottom: window.innerHeight - r.top + 3 } : { top: r.bottom + 3, bottom: "auto" }),
+      maxHeight: Math.max(120, Math.min(240, (up ? r.top : below) - 12)),
+    };
+  }
+  useEffect(() => {
+    if (!open) return undefined;
+    // Re-measure every frame while open (cheap; only re-renders when the spot actually moved) — this also covers a
+    // drawer or popup that is still sliding in when the list opens, and any scroll or resize.
+    let raf = 0;
+    let last = "";
+    const follow = () => {
+      const next = measure();
+      const sig = JSON.stringify(next);
+      if (sig !== last) { last = sig; setPos(next); }
+      raf = requestAnimationFrame(follow);
+    };
+    raf = requestAnimationFrame(follow);
+    return () => cancelAnimationFrame(raf);
   }, [open]);
 
   useEffect(() => {
@@ -43,6 +75,7 @@ export default function SearchSelect({
   }, [active, open]);
 
   function openList() {
+    setPos(measure());
     setOpen(true);
     setActive(0);
   }
@@ -83,12 +116,12 @@ export default function SearchSelect({
         aria-expanded={open}
         onFocus={() => { if (!disabled && !open) openList(); }}
         onClick={() => { if (!disabled && !open) openList(); }}
-        onChange={(e) => { setQuery(e.target.value); setActive(0); if (!open) setOpen(true); }}
+        onChange={(e) => { setQuery(e.target.value); setActive(0); if (!open) { setPos(measure()); setOpen(true); } }}
         onKeyDown={onKeyDown}
       />
       <span className="ss-caret" aria-hidden="true">▾</span>
-      {open && !disabled && (
-        <div className="ss-list" ref={listRef} role="listbox">
+      {open && !disabled && createPortal(
+        <div className="ss-list ss-floating" ref={listRef} role="listbox" style={pos || undefined}>
           {rows.length === 0 ? (
             <div className="ss-empty">No match for “{query}”</div>
           ) : rows.map((r, i) => (
@@ -104,7 +137,8 @@ export default function SearchSelect({
               {r.hint && <span className="ss-hint">{r.hint}</span>}
             </div>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

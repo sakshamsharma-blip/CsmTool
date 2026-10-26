@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup } from "../lib/labRollup";
-import { fetchAllLabsAdoption, fetchAllParamChanges, setParamStatus, STATUS_ORDER } from "../lib/adoption";
+import { fetchAllLabsAdoption, fetchAllParamChanges, setParamStatus, statusOptions } from "../lib/adoption";
 import {
   fetchAllPitchStatus, buildActiveItemRows, applyPitchStageChange, pitchOptionsFor,
 } from "../lib/pitch";
@@ -132,7 +132,7 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
       const csmId = idByName[lab?.csm];
       let message;
       if (row.category === "In-Plan" && to !== "Lost after Purchase") {
-        await setParamStatus(t.labId, row.resolved, to, comment, csmId);
+        await setParamStatus(t.labId, row.resolved, to, comment, csmId, { canStepBack: isHead });
         message = `${t.label}: ${from} → ${to}.`;
       } else {
         const res = await applyPitchStageChange(t, { from, to, comment, amount, isTrial, csmId, labMrr: lab?.mrr });
@@ -193,7 +193,7 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
       <div style={{ marginTop: 26 }}>
         <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           <span>Adoption &amp; Expansion items in progress <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>({itemRows.length}{fLab ? ", filtered to one lab" : ""})</span></span>
-          <InfoTip>An item shows up here once it moves past <b>To-Do</b> — In plan: In Discussion / Demo, Trial, Onboarding / Setup; Not in plan: Pitching, Trial, Onboarding / Setup. It leaves the list when it reaches a final status (Adopted, Purchased → In-plan To-Do, Not Required, …). Change the status right here (a comment is required, as on the lab's Adoption tab); "Remind me" adds a dated reminder to the task list above. "Days" = days since it got under way.</InfoTip>
+          <InfoTip>An item shows up here once it moves past <b>To-Do</b> — In plan: In Discussion / Demo, Trial, Onboarding / Setup, Live 1–4; Not in plan: Pitching, Trial. In-plan items move one step at a time (Live steps a week apart, Adopted a month after Live 1). It leaves the list when it reaches a final status (Adopted, Purchased → In-plan To-Do, Not Required, …). Change the status right here (a comment is required, as on the lab's Adoption tab); "Remind me" adds a dated reminder to the task list above. "Days" = days since it got under way.</InfoTip>
           <span style={{ marginLeft: "auto", display: "flex", gap: 8, fontWeight: 400 }}>
             <select value={fCategory} onChange={(e) => setFCategory(e.target.value)} className="status-select">
               <option value="">In-Plan &amp; Not-in-Plan</option>
@@ -221,7 +221,9 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
                 </td>
                 <td>
                   <select className="status-select" value={r.status} onChange={(e) => handleItemStatusChange(r, e.target.value)}>
-                    {(r.category === "In-Plan" ? STATUS_ORDER : pitchOptionsFor(false, r.status)).map((st) => <option key={st} value={st}>{st}</option>)}
+                    {r.category === "In-Plan"
+                      ? statusOptions(r.resolved, { canStepBack: isHead }).map((o) => <option key={o.value} value={o.value} disabled={o.disabled}>{o.value}{o.note ? ` — ${o.note}` : ""}</option>)
+                      : pitchOptionsFor(false, r.status).map((st) => <option key={st} value={st}>{st}</option>)}
                   </select>
                 </td>
                 <td>{r.csm}</td>

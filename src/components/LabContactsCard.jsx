@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Modal from "./Modal";
+import DesignationSelect from "./DesignationSelect";
 import { fetchLabContacts, addLabContact, updateLabContact, deleteLabContact } from "../lib/labContacts";
 
 const field = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
@@ -85,10 +86,12 @@ export default function LabContactsCard({ lab, csmId, showToast }) {
       >
         {editing && (
           <>
-            {[["name", "Name *", "e.g. Dr. Mehta"], ["designation", "Designation", "e.g. Lab Manager"], ["phone", "Phone", ""], ["email", "Email", ""]].map(([k, label, ph]) => (
+            {[["name", "Name *", "e.g. Dr. Mehta"], ["designation", "Designation", ""], ["phone", "Phone", ""], ["email", "Email", ""]].map(([k, label, ph]) => (
               <div key={k} className="tmpl-field" style={{ marginBottom: 10 }}>
                 <label>{label}</label>
-                <input style={field} value={editing.f[k]} placeholder={ph} onChange={(e) => setEditing((x) => ({ ...x, f: { ...x.f, [k]: e.target.value } }))} />
+                {k === "designation"
+                  ? <DesignationSelect style={field} value={editing.f.designation} onChange={(v) => setEditing((x) => ({ ...x, f: { ...x.f, designation: v } }))} />
+                  : <input style={field} value={editing.f[k]} placeholder={ph} onChange={(e) => setEditing((x) => ({ ...x, f: { ...x.f, [k]: e.target.value } }))} />}
               </div>
             ))}
           </>

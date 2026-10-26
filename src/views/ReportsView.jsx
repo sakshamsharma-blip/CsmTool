@@ -98,6 +98,23 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
     return { cols, grid, colTotals, grandTotal, countGrid, countColTotals, countGrandTotal };
   }, [breakdownLabs, csmNames, teamAll, isHead, scopeCsm]);
 
+  // CSM share of the whole book: labs handled (parents + children, by each lab's own CSM) and revenue handled (each
+  // client's group MRR, by the parent's CSM — same numbers as the segment matrix), as % of the company total. The
+  // percentages are always against the WHOLE company, even when the view is narrowed to one CSM.
+  const csmShare = useMemo(() => {
+    const allRollup = computeLabRollup(labs);
+    const totalLabs = labs.length;
+    const totalMrr = allRollup.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
+    const names = [...new Set(labs.map((l) => l.csm).filter(Boolean))].sort();
+    const rows = names.map((name) => {
+      const labCount = labs.filter((l) => l.csm === name).length;
+      const clients = allRollup.filter((r) => r.csm === name);
+      const mrr = clients.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
+      return { name, labCount, clients: clients.length, mrr, labPct: totalLabs ? labCount / totalLabs : 0, mrrPct: totalMrr ? mrr / totalMrr : 0 };
+    }).filter((r) => !scopeCsm || r.name === scopeCsm);
+    return { rows, totalLabs, totalMrr };
+  }, [labs, scopeCsm]);
+
   const regionBreakdown = useMemo(() => {
     const byRegion = {};
     breakdownLabs.forEach((l) => {
@@ -182,6 +199,27 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
 
       {tab === "mrr" && (
         <>
+          <div className="table-card" style={{ marginBottom: 18 }}>
+            <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>CSM share of the book <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>— % of all {csmShare.totalLabs} labs and of total MRR {fmtINR(csmShare.totalMrr)}</span></div>
+            <div className="table-scroll">
+              <table className="child-mini">
+                <thead><tr><th>CSM</th><th>Labs handled</th><th>% of total labs</th><th>Clients (parent labs)</th><th>MRR handled</th><th>% of total revenue</th><th>ARR handled</th></tr></thead>
+                <tbody>
+                  {csmShare.rows.map((r) => (
+                    <tr key={r.name}>
+                      <td>{r.name}</td>
+                      <td>{r.labCount}</td>
+                      <td><b>{(r.labPct * 100).toFixed(1)}%</b></td>
+                      <td>{r.clients}</td>
+                      <td className="mrr-cell">{fmtINR(r.mrr)}</td>
+                      <td><b>{(r.mrrPct * 100).toFixed(1)}%</b></td>
+                      <td className="mrr-cell">{fmtINR(r.mrr * 12)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
           <div className="table-card" style={{ marginBottom: 18 }}>
             <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>MRR by Segment{segByCsm.cols.length > 1 ? " × CSM" : ""} <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>— per client (parent lab), group MRR</span></div>
             <div className="table-scroll">

@@ -19,12 +19,12 @@ It is **live and in daily use** at `csm-tool-two.vercel.app`, and still being ac
 | **Plans** | LIMS Starter/Growth/Advance/Premium/Enterprise, each with a default scope |
 | **My Portfolio / Dashboard** | A CSM's own labs and KPIs; Leads/Admins can switch to Team View |
 | **Collections** | Invoices (PDF upload with auto-extraction), MRR, payments, trial→chargeable conversion |
-| **Adoption (per lab)** | Each parameter is In plan (To-Do → In Discussion / Demo → Trial → Onboarding / Setup → Adopted, or Not Required / Not Applicable / Did Not Meet Requirements) or Not in plan (To-Do → Pitching → Trial → Onboarding / Setup → Purchased, or Not Required / Not Applicable / Lost). A purchased add-on moves onto the In-plan list. Every change needs a comment |
+| **Adoption (per lab)** | Each parameter is In plan (To-Do → In Discussion / Demo → Trial → Onboarding / Setup → Live 1–4 → Adopted, one step at a time with a month of Live monitoring, or Not Required / Not Applicable / Did Not Meet Requirements) or Not in plan (To-Do → Pitching → Trial → Purchased, or Not Required / Not Applicable / Lost). A purchased add-on moves onto the In-plan list. Every change needs a comment |
 | **Expansion** | Deal tracking with Pipeline/Lost/Live MRR; add-on pitches are worked from My Portfolio, Tasks and each lab's Adoption tab |
 | **Visits & Meetings** | Offline (in-person) visits only: log a past visit, or plan a future one (becomes a task) |
 | **Log Check-in** | Calls, visits, emails, WhatsApp, notes — with sentiment, flagged modules and action items; action items and follow-ups become tasks |
 | **Tasks** | Follow-ups, action items, reminders, plus every Adoption / Expansion item that is under way (past To-Do) with days open and a status dropdown. Sort by due date; a WhatsApp-style counter on the sidebar shows new tasks |
-| **Feedback & NPS** | CSMs record feedback collected offline or via Google Form (NPS 0–10, 1–5 rating, who, source, comment, link) and get an NPS report by CSM / lab; plus testimonial video links per lab |
+| **Feedback & NPS** | CSMs record feedback collected via Google Form, email or WhatsApp (NPS 0–10, 1–5 rating, given by a lab POC, comment, link) and testimonial videos; report by CSM, designation and lab (parent labs) |
 | **Resources** | The team's common documents and training material, plus every module's docs/training links |
 | **Lab History** | Activity log of everything that happens to a lab |
 | **Health, churn, reports** | Health tracking, stage tags, churn logging, reports |
