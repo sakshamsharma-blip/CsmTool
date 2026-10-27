@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
-import { fetchAllLabsAdoption, computeSavedLabScores, LIVE_STAGES, LIVE_STEP_DAYS, LIVE_MONITOR_DAYS } from "../lib/adoption";
+import { fetchAllLabsAdoption, computeSavedLabScores, LIVE_STAGES } from "../lib/adoption";
 import Paginated from "../components/Pager";
 import {
   fetchAllPitchStatus, applyPitchStageChange, PITCH_OPEN_STATUSES, pitchOptionsFor,
@@ -78,20 +78,17 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
   rows.forEach((lab) => { scoresByLab[lab.id] = computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id], pitchByLab[lab.id]); });
   const allParamsOf = (lab) => scoresByLab[lab.id].moduleResults.flatMap((m) => m.params);
 
-  // Live monitoring — every In-plan / purchased parameter in Live 1–4, with when its next step unlocks.
+  // Live monitoring — every In-plan / purchased parameter in Live 1–4, with how long it has been live (longest first).
   const liveRows = [];
   rows.forEach((lab) => scoresByLab[lab.id].moduleResults.forEach(({ mod, params }) => params.forEach((r) => {
     if (!(r.inPlan || r.purchased) || r.lost || !LIVE_STAGES.includes(r.status)) return;
     const st = r.state || {};
-    const last = r.status === "Live 4";
-    const from = last ? st.liveStartedAt : st.statusChangedAt;
-    const unlock = from ? new Date(from).getTime() + (last ? LIVE_MONITOR_DAYS : LIVE_STEP_DAYS) * 86400000 : null;
+    const days = st.liveStartedAt ? Math.max(0, Math.floor((Date.now() - new Date(st.liveStartedAt).getTime()) / 86400000)) : null;
     liveRows.push({
-      labId: lab.id, labName: lab.name, module: mod.name, param: r.def.name, stage: r.status, liveSince: st.liveStartedAt,
-      nextLabel: last ? "Adopted" : LIVE_STAGES[LIVE_STAGES.indexOf(r.status) + 1], unlock, ready: !unlock || Date.now() >= unlock,
+      labId: lab.id, labName: lab.name, module: mod.name, param: r.def.name, stage: r.status, liveSince: st.liveStartedAt, days,
     });
   })));
-  liveRows.sort((a, b) => (a.unlock || 0) - (b.unlock || 0));
+  liveRows.sort((a, b) => (b.days ?? -1) - (a.days ?? -1));
 
   async function handleToggleDone(task) {
     try { await apiToggleTaskDone(task); await loadAll(); } catch (err) { showToast(`⚠ ${err.message}`); }
@@ -135,7 +132,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
 
       <h3 style={{ fontSize: 14, margin: "18px 0 8px", display: "flex", alignItems: "center" }}>
         Live monitoring
-        <InfoTip>Every In-plan (or purchased) parameter now in Live 1–4, lab by lab. Each Live step unlocks 7 days after the previous one; Adopted unlocks 30 days after Live 1 started and needs an adoption note.</InfoTip>
+        <InfoTip>Every In-plan (or purchased) parameter now in Live 1–4, lab by lab, longest in Live first. Move it on to Adopted from the lab's Adoption tab (or Tasks) whenever it's being used; that step asks for an adoption note.</InfoTip>
       </h3>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
         {LIVE_STAGES.map((st) => <span key={st} className="cat-tag cat-Adoption">{st}: {liveRows.filter((r) => r.stage === st).length}</span>)}
@@ -144,15 +141,13 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
         {!liveRows.length ? <div style={{ padding: "14px 18px", color: "var(--text-faint)", fontSize: 12.5 }}>Nothing is in Live right now.</div> : (
           <Paginated items={liveRows}>{(page) => (
             <div className="table-scroll"><table className="child-mini">
-              <thead><tr><th>Lab</th><th>Module</th><th>Parameter</th><th>Stage</th><th>Live since</th><th>Next step</th></tr></thead>
+              <thead><tr><th>Lab</th><th>Module</th><th>Parameter</th><th>Stage</th><th>Live since</th><th>Days in Live</th></tr></thead>
               <tbody>{page.map((r) => (
                 <tr key={`${r.labId}|${r.module}|${r.param}`}>
                   <td className="lab-name clickable" onClick={() => onOpenLab(r.labId)}>{r.labName}</td>
                   <td>{r.module}</td><td>{r.param}</td><td><b>{r.stage}</b></td>
                   <td style={{ whiteSpace: "nowrap" }}>{r.liveSince ? new Date(r.liveSince).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "—"}</td>
-                  <td style={{ whiteSpace: "nowrap", color: r.ready ? "var(--ok)" : "var(--text-dim)", fontWeight: r.ready ? 700 : 400 }}>
-                    {r.nextLabel} {r.ready ? "— ready" : r.unlock ? `— from ${new Date(r.unlock).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}
-                  </td>
+                  <td style={{ fontWeight: 700 }}>{r.days == null ? "—" : `${r.days}d`}</td>
                 </tr>
               ))}</tbody>
             </table></div>

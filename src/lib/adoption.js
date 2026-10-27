@@ -23,11 +23,12 @@ import { logActivity } from "./activity";
 // modules (module weights). "Mandatory completion" = the same calculation using only Mandatory parameters.
 // The numbers below are the single place to tune the ladder (lists and their order: decisions Oct 23 & 26 2026).
 //
-// The In-plan list is STRICTLY one step forward at a time (decision Oct 26 2026, migration 0040): To-Do → In
-// Discussion / Demo → Trial → Onboarding / Setup → Live 1 → Live 2 → Live 3 → Live 4 → Adopted. Each Live step
-// unlocks 7 days after the previous one; Adopted unlocks 30 days after Live 1 started (a month of monitoring) and
-// its comment is the adoption note. Not Required / Not Applicable / Did Not Meet Requirements can be set from any
-// stage. Only a CSM Lead / Admin can step an item back. See statusOptions / setParamStatus.
+// The In-plan list only moves FORWARD: To-Do → In Discussion / Demo → Trial → Onboarding / Setup → Live 1 → Live 2 →
+// Live 3 → Live 4 → Adopted. Anyone may skip ahead (decision Oct 28 2026 — new labs need their current stage set
+// directly). There are no waiting times — Live steps and Adopted can be set whenever the CSM decides (the 7-day and
+// 30-day waits were removed Oct 28 2026); the Adopted comment is the adoption note. Not Required / Not Applicable /
+// Did Not Meet Requirements can be set from any stage. Only a CSM Lead / Admin can step an item back. See statusOptions /
+// setParamStatus.
 // ============================================================================================================
 
 export const LIVE_STAGES = ["Live 1", "Live 2", "Live 3", "Live 4"];
@@ -39,8 +40,6 @@ export const ROLLOUT_SCORE = {
   "Live 1": 92, "Live 2": 94, "Live 3": 96, "Live 4": 98, Adopted: 100,
   "Not Required": 0, "Not Applicable": null, "Did Not Meet Requirements": 0,
 };
-export const LIVE_STEP_DAYS = 7;       // each Live step waits this long after the previous one
-export const LIVE_MONITOR_DAYS = 30;   // Adopted waits this long after Live 1 started
 // In-plan statuses that mean work is under way — these (and PITCH_ACTIVE_STATUSES) are what Tasks lists.
 export const STATUS_ACTIVE = ["In Discussion / Demo", "Trial", "Onboarding / Setup", ...LIVE_STAGES];
 export const PITCH_SCORE = {
@@ -48,14 +47,10 @@ export const PITCH_SCORE = {
   "Lost in Expansion": 0, "Lost after Purchase": 0,
 };
 
-const DAY_MS = 86400000;
-const shortDate = (ms) => new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-
 // The In-plan status choices for one resolved parameter: every status, each with `disabled` + a `note` saying why
-// (e.g. "unlocks 3 Nov"). `canStepBack` = the viewer is a CSM Lead / Admin.
-export function statusOptions(r, { canStepBack = false, now = Date.now() } = {}) {
+// (e.g. "can't go back"). `canStepBack` = the viewer is a CSM Lead / Admin.
+export function statusOptions(r, { canStepBack = false } = {}) {
   const cur = r.status;
-  const st = r.state || {};
   const i = STATUS_PROGRESS.indexOf(cur);
   return STATUS_ORDER.map((value) => {
     if (value === cur) return { value, disabled: false, note: "" };
@@ -63,16 +58,7 @@ export function statusOptions(r, { canStepBack = false, now = Date.now() } = {})
     const j = STATUS_PROGRESS.indexOf(value);
     if (i < 0) return canStepBack ? { value, disabled: false, note: "" } : { value, disabled: true, note: "Lead / Admin only" };
     if (j < i) return canStepBack ? { value, disabled: false, note: "step back" } : { value, disabled: true, note: "can't go back" };
-    if (j > i + 1) return { value, disabled: true, note: "one step at a time" };
-    // j === i + 1 — the next step; Live and Adopted have waiting periods.
-    if (LIVE_STAGES.includes(cur) && value !== "Adopted" && st.statusChangedAt) {
-      const at = new Date(st.statusChangedAt).getTime() + LIVE_STEP_DAYS * DAY_MS;
-      if (now < at) return { value, disabled: true, note: `unlocks ${shortDate(at)}` };
-    }
-    if (value === "Adopted" && st.liveStartedAt) {
-      const at = new Date(st.liveStartedAt).getTime() + LIVE_MONITOR_DAYS * DAY_MS;
-      if (now < at) return { value, disabled: true, note: `unlocks ${shortDate(at)} (1 month of Live)` };
-    }
+    // Forward — any later stage, skipping allowed, no waiting.
     return { value, disabled: false, note: "" };
   });
 }
@@ -303,8 +289,10 @@ export async function setParamStatus(labId, resolved, status, comment, csmId, { 
   const nowIso = new Date().toISOString();
   const liveIdx = STATUS_PROGRESS.indexOf("Live 1");
   const toIdx = STATUS_PROGRESS.indexOf(status);
-  // Live 1 starts the month of monitoring; stepping back before Live clears it; anything else keeps it.
-  const liveStartedAt = status === "Live 1" ? nowIso
+  // Entering Live (at any Live step) records when it went live (shown in My Portfolio's Live monitoring); stepping
+  // back before Live clears it; moving between Live steps or on to Adopted keeps it.
+  const enteringLive = LIVE_STAGES.includes(status) && !LIVE_STAGES.includes(resolved.status);
+  const liveStartedAt = enteringLive ? nowIso
     : toIdx >= 0 && toIdx < liveIdx ? null
       : base.liveStartedAt || null;
   await upsertParamState(labId, moduleKey, def.name, {

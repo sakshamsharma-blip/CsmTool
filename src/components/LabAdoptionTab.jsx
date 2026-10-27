@@ -106,8 +106,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
     if (r.status === status) return;
     setPendingComment({
       title: `${r.def.name}: ${r.status} → ${status}`,
-      label: status === "Adopted" ? "Adoption note — how it's being used after the month of Live monitoring" : undefined,
-      hint: status === "Live 1" ? "Live starts a month of monitoring: Live 2, 3 and 4 each unlock a week after the previous one, and Adopted 30 days after Live 1." : undefined,
+      label: status === "Adopted" ? "Adoption note — how it's being used" : undefined,
       apply: async (comment) => { await setParamStatus(lab.id, r, status, comment, csmId, { canStepBack: isHead }); await afterChange(`${r.def.name}: ${status}.`); },
     });
   }
@@ -132,7 +131,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
     <div>
       <div className="adopt-score-head">
         <span>Adoption score <b>{Math.round(scores.overallPct)}%</b> · Mandatory <b>{Math.round(scores.mandatoryPct)}%</b></span>
-        <InfoTip>Out of 100 = everything purchased and fully adopted. Per parameter: In plan / purchased → To-Do 70, In Discussion / Demo 75, Trial 80, Onboarding / Setup 90, Live 1 92, Live 2 94, Live 3 96, Live 4 98, Adopted 100. Not in plan → To-Do 0, Pitching 10, Trial 30; Purchased moves it onto the In-plan list (70). Not Required, Did Not Meet Requirements and Lost = 0; Not Applicable is left out of the score. Modules average their parameters (by weight); the lab averages its modules (by weight). The In-plan list moves one step at a time: each Live step unlocks 7 days after the previous one, and Adopted 30 days after Live 1 started.</InfoTip>
+        <InfoTip>Out of 100 = everything purchased and fully adopted. Per parameter: In plan / purchased → To-Do 70, In Discussion / Demo 75, Trial 80, Onboarding / Setup 90, Live 1 92, Live 2 94, Live 3 96, Live 4 98, Adopted 100. Not in plan → To-Do 0, Pitching 10, Trial 30; Purchased moves it onto the In-plan list (70). Not Required, Did Not Meet Requirements and Lost = 0; Not Applicable is left out of the score. Modules average their parameters (by weight); the lab averages its modules (by weight). The In-plan list only moves forward (skipping steps is fine); only a CSM Lead or Admin can move an item back.</InfoTip>
       </div>
       <AdoptionPies moduleResults={scores.moduleResults} />
 

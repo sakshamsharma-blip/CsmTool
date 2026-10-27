@@ -73,9 +73,11 @@ with the same context and follows the same rules. Read it fully before making ch
   NULL = default). **Status lists (migrations 0038 + 0040)** — In plan (`param_states.status`, `STATUS_ORDER`):
   To-Do 70 · In Discussion / Demo 75 · Trial 80 · Onboarding / Setup 90 · Live 1 92 · Live 2 94 · Live 3 96 · Live 4
   98 · Adopted 100 · Not Required 0 · Not Applicable (left OUT of the score) · Did Not Meet Requirements 0. **The
-  In-plan list is strictly one step forward** (`statusOptions` / `setParamStatus` in `lib/adoption.js`, used by the
-  Adoption tab and Tasks): each Live step unlocks 7 days after the previous one (`param_states.status_changed_at`),
-  Adopted unlocks 30 days after Live 1 started (`param_states.live_started_at`) and its comment is the adoption note;
+  In-plan list only moves forward** (`statusOptions` / `setParamStatus` in `lib/adoption.js`, used by the Adoption tab
+  and Tasks). Since Oct 28 2026 anyone may **skip ahead** (new labs need their current stage set directly) and there
+  are **no waiting times** (the 7-day Live steps and the 30-day wait before Adopted were removed). Adopted's comment is
+  the adoption note; `param_states.live_started_at` (set when an item first enters any Live step) only feeds My
+  Portfolio's Live monitoring ("days in Live");
   Not Required / Not Applicable / Did Not Meet Requirements can be set from any stage; only a CSM Lead / Admin can step
   back (UI-enforced, not a DB trigger). Not in plan (`pitch_status.status`, `PITCH_STATUSES`): To-Do 0 · Pitching 10 ·
   Trial 30 · Purchased · Not Required 0 · Not Applicable (left out) · Lost in Expansion 0 · Lost after Purchase 0

@@ -19,7 +19,7 @@ It is **live and in daily use** at `csm-tool-two.vercel.app`, and still being ac
 | **Plans** | LIMS Starter/Growth/Advance/Premium/Enterprise, each with a default scope |
 | **My Portfolio / Dashboard** | A CSM's own labs and KPIs; Leads/Admins can switch to Team View |
 | **Collections** | Invoices (PDF upload with auto-extraction), MRR, payments, trial→chargeable conversion |
-| **Adoption (per lab)** | Each parameter is In plan (To-Do → In Discussion / Demo → Trial → Onboarding / Setup → Live 1–4 → Adopted, one step at a time with a month of Live monitoring, or Not Required / Not Applicable / Did Not Meet Requirements) or Not in plan (To-Do → Pitching → Trial → Purchased, or Not Required / Not Applicable / Lost). A purchased add-on moves onto the In-plan list. Every change needs a comment |
+| **Adoption (per lab)** | Each parameter is In plan (To-Do → In Discussion / Demo → Trial → Onboarding / Setup → Live 1–4 → Adopted, forward only, skipping allowed, no waiting times, or Not Required / Not Applicable / Did Not Meet Requirements) or Not in plan (To-Do → Pitching → Trial → Purchased, or Not Required / Not Applicable / Lost). A purchased add-on moves onto the In-plan list. Every change needs a comment |
 | **Expansion** | Deal tracking with Pipeline/Lost/Live MRR; add-on pitches are worked from My Portfolio, Tasks and each lab's Adoption tab |
 | **Visits & Meetings** | Offline (in-person) visits only: log a past visit, or plan a future one (becomes a task) |
 | **Log Check-in** | Calls, visits, emails, WhatsApp, notes — with sentiment, flagged modules and action items; action items and follow-ups become tasks |

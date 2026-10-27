@@ -2,6 +2,12 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 28 2026 — adoption stages: skip ahead, no Live waits
+- In-plan stages can now be moved forward to any later stage (skipping is allowed), so a new lab's current stages can
+  be set directly. All waiting times are removed: no 7 days between Live steps and no 30 days before Adopted (Adopted
+  still asks for an adoption note). Moving back stays Lead / Admin only. My Portfolio's Live monitoring now shows days
+  in Live, longest first.
+
 ## Oct 27 2026 — chart colours, city lists, state / city reports
 - **Chart colours:** stages now run To-Do pale blue → Discussion / Trial indigo → Onboarding teal → **Live light
   green** → **Adopted dark green**; Not in plan coral; closed grey (pies, module bars, portfolio charts; light and dark).

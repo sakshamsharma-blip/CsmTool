@@ -148,7 +148,7 @@ test("Support & Tickets opens Flow in a new tab", async ({ page }) => {
   await expect(link).toHaveAttribute("target", "_blank");
 });
 
-test("Lab Adoption tab: stage pies, one-way In-plan list and the stage filter", async ({ page }) => {
+test("Lab Adoption tab: stage pies, forward-only In-plan list and the stage filter", async ({ page }) => {
   await page.getByText("iGenetic Diagnostics", { exact: true }).click();
   await page.getByRole("button", { name: "Adoption" }).click();
   for (const title of ["Overall", "Mandatory", "In plan", "Not in plan"]) {
@@ -161,13 +161,13 @@ test("Lab Adoption tab: stage pies, one-way In-plan list and the stage filter", 
   await page.getByRole("button", { name: /Show details/ }).click();
   await expect(page.getByText("Total parameters")).toBeVisible();
   await page.locator(".module-head").first().click();
-  // In-plan list is one step at a time: Live stages exist, but you can't jump ahead from To-Do.
+  // In-plan list moves forward and may skip ahead (new labs set their current stage directly).
   const inPlanSelect = page.locator('.param-block select[title="In-plan status"]').first();
   await expect(inPlanSelect.locator("option", { hasText: "Live 1" })).toHaveCount(1);
   const current = await inPlanSelect.inputValue();
   if (current === "To-Do") {
-    await expect(inPlanSelect.locator('option[value="In Discussion / Demo"]')).toBeEnabled();
-    await expect(inPlanSelect.locator('option[value="Adopted"]')).toBeDisabled();
+    await expect(inPlanSelect.locator('option[value="Live 3"]')).toBeEnabled();
+    await expect(inPlanSelect.locator('option[value="Adopted"]')).toBeEnabled();
   }
   // Filter to one stage: only matching parameters stay listed.
   const filter = page.getByLabel("Filter by stage");
