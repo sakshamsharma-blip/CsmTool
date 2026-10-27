@@ -21,7 +21,8 @@ import { syncFollowupTaskForVisit, addTask } from "../lib/tasks";
 import { todayISO, dueDateFor } from "../lib/dates";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { CHURN_TYPES, logChurn } from "../lib/churn";
-import { getCountryNames, getStatesForCountry, cityOptionsFor } from "../lib/geography";
+import { getCountryNames, getStatesForCountry } from "../lib/geography";
+import CityPicker from "../components/CityPicker";
 
 const COUNTRY_NAMES = getCountryNames();
 import Modal from "../components/Modal";
@@ -1036,11 +1037,8 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                   );
                 })())}
                 {row("City", lab.city || "—", (
-                  <div>
-                    <input value={editCity} onChange={(e) => setEditCity(e.target.value)} style={inputStyle} list="lab-city-suggestions" />
-                    <datalist id="lab-city-suggestions">
-                      {cityOptionsFor(labs, editState).map((c) => <option key={c} value={c} />)}
-                    </datalist>
+                  <div style={{ maxWidth: 320 }}>
+                    <CityPicker country={editCountry} state={editState} value={editCity} onChange={setEditCity} labs={labs} inputStyle={inputStyle} />
                   </div>
                 ))}
                 {row("Client Segment", `${seg.code} — ${SEG_NAME[seg.code]}`)}

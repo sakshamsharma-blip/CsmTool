@@ -17,7 +17,7 @@ import InfoTip from "../components/InfoTip";
 
 export default function DashboardView({ labs, modules, plans, viewer, idByName, onOpenLab, showToast }) {
   const { currentCSM } = viewer;
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "dashboard");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "dashboard");
 
   const [adoptionByLab, setAdoptionByLab] = useState({});
   const [pitchByLab, setPitchByLab] = useState({}); // pitch stages feed the adoption score (lib/adoption.js)
@@ -149,7 +149,7 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
       <h1 className="page-title">Dashboard</h1>
       <p className="page-sub">Viewing: <b>{scopeLabel}</b></p>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
 
       <div className="summary-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 8 }}>
         <div className="stile"><div className="sval">{totalLabs}</div><div className="slabel">Total Labs</div></div>

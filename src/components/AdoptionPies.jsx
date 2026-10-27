@@ -7,8 +7,8 @@ import { useChartTooltip } from "../lib/useChartTooltip";
 import { TipCard } from "./ChartTooltip";
 
 // A lab's adoption analytics as four pies (decision Oct 26 2026): Overall, Mandatory, In plan, Not in plan.
-//   • Slice size = how many of that group's parameters sit at each stage. In-plan stages are an ordered progression,
-//     drawn in one blue ramp (To-Do lightest → Adopted darkest); Not-in-plan add-ons orange; closed items grey.
+//   • Slice size = how many of that group's parameters sit at each stage. In-plan stages run pale blue (To-Do) →
+//     indigo → teal → light green (Live) → dark green (Adopted); Not-in-plan add-ons coral / orange; closed grey.
 //   • Centre = the group's adoption SCORE (weighted the same way as the lab score — groupAdoption), which is why it
 //     can differ from the share of the "Adopted" slice.
 //   • Slices of 8%+ carry their % on the slice; the legend lists every stage (same order and colour in all four

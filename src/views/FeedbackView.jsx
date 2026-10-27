@@ -50,7 +50,7 @@ function downloadCsv(name, header, lines) {
 //                  their labs), by lab and by designation; CSV export.
 // Filters: lab, CSM (My Labs / Team View), designation, source and date range.
 export default function FeedbackView({ labs, viewer, idByName, onOpenLab, showToast }) {
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "feedback");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "feedback");
   const [tab, setTab] = useSessionState("feedback.tab", "responses");
   const [feedback, setFeedback] = useState([]);
   const [testimonials, setTestimonials] = useState([]);
@@ -178,7 +178,7 @@ export default function FeedbackView({ labs, viewer, idByName, onOpenLab, showTo
       <p className="page-sub">Record the feedback and NPS your labs give you — through a Google Form, by email or on WhatsApp — so it can be reported on. Viewing <b>{teamAll ? "the whole team" : scopeCsm}</b>'s labs.</p>
       {error && <div className="error-banner">{error}</div>}
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
 
       <div className="tabs" style={{ marginBottom: 12, width: "fit-content" }}>
         {[["responses", `Responses (${responses.length})`], ["testimonials", `Testimonials (${tRows.length})`], ["report", "Report"]].map(([k, l]) => (

@@ -175,18 +175,19 @@ export function computeLabScores(modules, plan, adoption, pitchForLab) {
   return { overallPct, mandatoryPct, moduleResults };
 }
 // ---- stage groups (analytics) ----
-// Where each parameter currently sits, bucketed for the Adoption-tab pies and My Portfolio's charts. The In-plan
-// stages are an ORDERED progression, so they use one blue ramp light → dark (To-Do lightest, Adopted darkest);
-// Not-in-plan stages use an orange ramp; closed items are neutral grey. Colours are CSS variables (index.css,
-// --stg-*) so dark mode gets its own validated steps. Order = legend / pie order.
+// Where each parameter currently sits, bucketed for the Adoption-tab pies and My Portfolio's charts. Colours (decision
+// Oct 27 2026): the In-plan progression runs pale blue (To-Do) → indigo → teal → LIGHT GREEN (Live) → DARK GREEN
+// (Adopted); Not-in-plan add-ons coral; closed grey. They are CSS variables (index.css, --stg-*) with separate
+// dark-mode steps, checked for colour-blind separation. "Closed" sits between Adopted and Not in plan so green and
+// coral are never next to each other. Order = legend / pie / bar order.
 export const STAGE_GROUPS = [
   { key: "todo", label: "To-Do", color: "var(--stg-plan-1)", ink: "var(--stg-plan-1-ink)" },
   { key: "progress", label: "Discussion / Trial", color: "var(--stg-plan-2)", ink: "var(--stg-plan-2-ink)" },
   { key: "onboarding", label: "Onboarding", color: "var(--stg-plan-3)", ink: "var(--stg-plan-3-ink)" },
   { key: "live", label: "Live 1–4", color: "var(--stg-plan-4)", ink: "var(--stg-plan-4-ink)" },
   { key: "adopted", label: "Adopted", color: "var(--stg-plan-5)", ink: "var(--stg-plan-5-ink)" },
-  { key: "notinplan", label: "Not in plan (not bought)", color: "var(--stg-exp-2)", ink: "var(--stg-exp-2-ink)" },
   { key: "closed", label: "Closed (Not Required / N/A / Lost)", color: "var(--stg-closed)", ink: "var(--stg-closed-ink)" },
+  { key: "notinplan", label: "Not in plan (not bought)", color: "var(--stg-notin)", ink: "var(--stg-notin-ink)" },
 ];
 // The Not-in-plan pie splits the add-ons that haven't been bought by Expansion stage.
 export const EXPANSION_GROUPS = [

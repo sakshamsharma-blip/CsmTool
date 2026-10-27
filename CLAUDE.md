@@ -89,9 +89,11 @@ with the same context and follows the same rules. Read it fully before making ch
   My Portfolio analytics live in `components/PortfolioCharts.jsx`: KPI row, Labs by adoption band, Pitch pipeline and
   Adoption by module (stage-split bars, weakest first, chart/table toggle) — every mark has a hover card with the
   labs / parameters behind it (`lib/useChartTooltip.jsx` + `components/ChartTooltip.jsx`). A "Live monitoring" list
-  shows every item in Live 1–4 by lab with when its next step unlocks. **Chart colours** are CSS variables
-  (`--stg-plan-1…5` blue ramp for In-plan stages light→dark, `--stg-exp-1…3` orange for Expansion, `--stg-closed`
-  grey, each with a `-ink` label colour) defined for light AND dark in `index.css`, validated as ordinal ramps. Every change
+  shows every item in Live 1–4 by lab with when its next step unlocks. **Chart colours** (Oct 27 2026) are CSS
+  variables defined for light AND dark in `index.css`: To-Do pale blue (`--stg-plan-1`) → Discussion / Trial indigo →
+  Onboarding teal → **Live light green** (`--stg-plan-4`) → **Adopted dark green** (`--stg-plan-5`); Not in plan coral
+  (`--stg-notin`); closed grey; the Not-in-plan pie uses the orange `--stg-exp-1…3`. Each has a `-ink` label colour.
+  Checked for colour-blind separation; Closed sits between Adopted and Not in plan so green and coral never touch. Every change
   on a lab's Adoption tab needs a comment and saves immediately (`param_changes` audit trail; newest comment
   shown under the parameter; click the name for the history). The Adoption tab lives in
   `components/LabAdoptionTab.jsx`. Log Check-in's Adoption Snapshot marks modules and/or parameters as
@@ -125,6 +127,16 @@ with the same context and follows the same rules. Read it fully before making ch
   (`lib/useSessionState.js`, keys like `tasks.fLab`; `useScopedCsm(viewer, "<page>")`). New screens / filters should
   use `useSessionState` for anything the user would expect to survive a refresh. Clicking Total Labs in the sidebar
   still clears its search.
+- **Team View's CSM dropdown** (and Total Labs' CSM filter) lists only people who have labs (`viewer.csmsWithLabs`,
+  `teamNames` from `useScopedCsm`).
+- **InfoTip** (ⓘ) bubbles render in a portal on `<body>` (fixed, flip above near the bottom, long text scrolls), so
+  a module row or card can't cut them off.
+- **City** (Add Lab / Lab Details) is a type-to-filter dropdown that follows the State (`components/CityPicker.jsx`):
+  India from the built-in `lib/indiaCities.js`, other countries from countriesnow.space (`fetchCities` in
+  `lib/geography.js`, cached, 6s timeout), always plus cities already on our labs; any typed city is allowed.
+  Changing Country / State clears City.
+- **Financial Reports → MRR Breakdown** has State and City filters (narrow every table except CSM share) and
+  "MRR by State" / "MRR by City" tables (clients, labs, MRR, % of MRR, avg per client, ARR).
 - **SearchSelect** renders its list in a portal on `<body>` (fixed, re-measured every frame while open) so popups
   and scrolling cards can't clip it. Modals scroll when taller than the screen.
 - **Financial Reports → MRR Breakdown** starts with "CSM share of the book": labs handled and MRR handled per CSM as %

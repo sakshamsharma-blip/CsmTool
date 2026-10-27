@@ -2,6 +2,16 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 27 2026 — chart colours, city lists, state / city reports
+- **Chart colours:** stages now run To-Do pale blue → Discussion / Trial indigo → Onboarding teal → **Live light
+  green** → **Adopted dark green**; Not in plan coral; closed grey (pies, module bars, portfolio charts; light and dark).
+- **Add Lab / Lab Details:** City is a dropdown that follows the chosen State (Indian cities built in; other countries
+  looked up online), still allowing any city to be typed. Changing Country or State clears City.
+- **Financial Reports:** State and City filters, plus MRR by State and MRR by City (clients, labs, MRR, %, average per
+  client, ARR).
+- **Team View** only lists people who have labs.
+- Fix: ⓘ descriptions were cut off / hidden behind the next module row — they now float above the page.
+
 ## Oct 2026 — refresh keeps your place
 - A refresh now reopens the same screen (and the same lab and tab), with its filters, sorts, searches and My Labs /
   Team View choice as they were — only the data is reloaded. The address bar shows where you are (e.g.

@@ -26,5 +26,8 @@ export function useScopedCsm(viewer, page = "default") {
   const teamAll = isHead && scope === "team" && !csmFilter;
   const scopeCsm = isHead && scope === "team" ? (csmFilter || null) : currentCSM;
 
-  return { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll };
+  // Team View's CSM dropdown only lists people who actually have labs (an Admin or a new CSM with none isn't offered).
+  const teamNames = viewer.csmsWithLabs ? csmNames.filter((n) => viewer.csmsWithLabs.includes(n)) : csmNames;
+
+  return { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll };
 }

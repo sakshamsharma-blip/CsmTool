@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 // (e.g. a Lab ID next to a lab name). `emptyLabel` adds a leading "clear" row for optional fields.
 export default function SearchSelect({
   value, onChange, options, placeholder = "Select…", emptyLabel, disabled = false, style, className, inputStyle, autoFocus = false,
+  allowCustom = false, // also accept text that isn't in the list ("Use “…”" row) — e.g. a city we don't have listed
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -15,7 +16,7 @@ export default function SearchSelect({
   const wrapRef = useRef(null);
   const listRef = useRef(null);
 
-  const selected = options.find((o) => o.value === value) || null;
+  const selected = options.find((o) => o.value === value) || (allowCustom && value ? { value, label: value } : null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -24,9 +25,12 @@ export default function SearchSelect({
   }, [options, query]);
 
   // Rows shown = optional "clear" row + the filtered options.
+  const typed = query.trim();
+  const customRow = allowCustom && typed && !options.some((o) => o.label.toLowerCase() === typed.toLowerCase())
+    ? [{ value: typed, label: `Use “${typed}”`, isCustom: true }] : [];
   const rows = emptyLabel !== undefined && !query.trim()
     ? [{ value: "", label: emptyLabel, isEmpty: true }, ...filtered]
-    : filtered;
+    : [...filtered, ...customRow];
 
   useEffect(() => {
     if (!open) return;
@@ -126,7 +130,7 @@ export default function SearchSelect({
             <div className="ss-empty">No match for “{query}”</div>
           ) : rows.map((r, i) => (
             <div
-              key={r.isEmpty ? "__empty" : r.value}
+              key={r.isEmpty ? "__empty" : r.isCustom ? "__custom" : r.value}
               role="option"
               aria-selected={r.value === value}
               className={`ss-row${i === active ? " active" : ""}${r.value === value && !r.isEmpty ? " selected" : ""}${r.isEmpty ? " empty-row" : ""}`}

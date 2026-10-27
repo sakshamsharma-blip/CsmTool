@@ -21,7 +21,7 @@ const SEG_LABELS = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard",
 
 export default function PortfolioView({ labs, modules, plans, viewer, idByName, onOpenLab, onPatchLab, showToast }) {
   const { currentCSM } = viewer;
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "portfolio");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "portfolio");
 
   const [adoptionByLab, setAdoptionByLab] = useState({});
   const [pitchByLab, setPitchByLab] = useState({});
@@ -129,7 +129,7 @@ export default function PortfolioView({ labs, modules, plans, viewer, idByName, 
       <h1 className="page-title">My Portfolio</h1>
       <p className="page-sub">Labs assigned to <b>{scopeLabel}</b> — open a lab's row to see which modules are worth pitching as an upsell after initial setup.</p>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
 
       <PortfolioCharts labs={rows} scoresByLab={scoresByLab} />
 

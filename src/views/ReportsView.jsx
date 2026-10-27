@@ -6,6 +6,8 @@ import { fetchChurnLog, quarterOf } from "../lib/churn";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import { computeLabRollup } from "../lib/labRollup";
 import ScopeToggle from "../components/ScopeToggle";
+import SearchSelect from "../components/SearchSelect";
+import Paginated from "../components/Pager";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const SEGMENTS = SEG_BANDS.map((b) => b.code);
@@ -16,7 +18,7 @@ const SEGMENTS = SEG_BANDS.map((b) => b.code);
 // reporting the old "CS Dashboard 2026" pivot tabs carried that Dashboard's simple bucket
 // counts didn't replace.
 export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "reports");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "reports");
   const [tab, setTab] = useSessionState("reports.tab", "churn");
 
   const [churnRows, setChurnRows] = useState([]);
@@ -61,10 +63,33 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
   // One row per client (parent lab) with its billed MRR from computeLabRollup — the same numbers Total
   // Labs and Dashboard show. Summing every lab's raw mrr double-counted groups: a Per-Branch parent's own
   // mrr is ignored in its group total, and so are the children of a Consolidated parent.
-  const breakdownLabs = useMemo(() => {
+  // State / City filters (remembered across a refresh) narrow every breakdown below except "CSM share of the book".
+  const [fState, setFState] = useSessionState("reports.fState", "");
+  const [fCity, setFCity] = useSessionState("reports.fCity", "");
+  const scopedClients = useMemo(() => {
     const rows = computeLabRollup(labs);
     return scopeCsm ? rows.filter((r) => r.csm === scopeCsm || r.children.some((c) => c.csm === scopeCsm)) : rows;
   }, [labs, scopeCsm]);
+  const breakdownLabs = useMemo(() => scopedClients
+    .filter((r) => !fState || r.state === fState)
+    .filter((r) => !fCity || (r.city || "").trim().toLowerCase() === fCity.toLowerCase()), [scopedClients, fState, fCity]);
+  const stateOptions = [...new Set(scopedClients.map((r) => r.state).filter((v) => v && v !== "—"))].sort();
+  const cityOptions = [...new Set(scopedClients.filter((r) => !fState || r.state === fState).map((r) => (r.city || "").trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+
+  // MRR by State / by City — per client (parent lab), group MRR in INR; labs = the client plus its child labs.
+  function geoBreakdown(keyOf) {
+    const groups = {};
+    breakdownLabs.forEach((r) => {
+      const k = keyOf(r);
+      const g = (groups[k] = groups[k] || { key: k, clients: 0, labs: 0, mrr: 0 });
+      g.clients += 1; g.labs += 1 + r.children.length; g.mrr += toINR(r.mrr, r.region);
+    });
+    const total = Object.values(groups).reduce((sum, g) => sum + g.mrr, 0);
+    return Object.values(groups).map((g) => ({ ...g, pct: total ? g.mrr / total : 0 })).sort((a, b) => b.mrr - a.mrr);
+  }
+  const stateBreakdown = geoBreakdown((r) => (r.state && r.state !== "—" ? r.state : "Not set"));
+  const cityBreakdown = geoBreakdown((r) => `${(r.city || "").trim() || "Not set"}${r.state && r.state !== "—" ? `, ${r.state}` : ""}`);
 
   const segByCsm = useMemo(() => {
     const csmsInScope = teamAll || !isHead ? csmNames.filter((n) => teamAll || n === scopeCsm) : [scopeCsm].filter(Boolean);
@@ -147,7 +172,7 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
       </div>
 
       <div style={{ marginTop: 16 }}>
-        <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames.filter((n) => labs.some((l) => l.csm === n))} />
+        <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
       </div>
 
       {tab === "churn" && (
@@ -200,6 +225,12 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
 
       {tab === "mrr" && (
         <>
+          <div className="filters">
+            <span style={{ minWidth: 200 }}><SearchSelect value={fState} onChange={(v) => { setFState(v); setFCity(""); }} options={stateOptions.map((n) => ({ value: n, label: n }))} emptyLabel="All states" placeholder="All states" /></span>
+            <span style={{ minWidth: 200 }}><SearchSelect value={fCity} onChange={setFCity} options={cityOptions.map((n) => ({ value: n, label: n }))} emptyLabel="All cities" placeholder="All cities" /></span>
+            {(fState || fCity) && <span className="clear" onClick={() => { setFState(""); setFCity(""); }}>Clear filters</span>}
+            <span style={{ fontSize: 12, color: "var(--text-dim)" }}>State / City narrow every table below except "CSM share of the book".</span>
+          </div>
           <div className="table-card" style={{ marginBottom: 18 }}>
             <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>CSM share of the book <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>— % of all {csmShare.totalLabs} labs and of total MRR {fmtINR(csmShare.totalMrr)}</span></div>
             <div className="table-scroll">
@@ -305,6 +336,35 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
                 ))}</tbody>
               </table></div>
             </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 18 }}>
+            {[["MRR by State", "State", stateBreakdown], ["MRR by City", "City", cityBreakdown]].map(([title, col, rows]) => (
+              <div key={title} className="table-card" style={{ flex: "1 1 420px" }}>
+                <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>{title} <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>— highest MRR first</span></div>
+                {!rows.length ? <div style={{ padding: "10px 18px 16px", color: "var(--text-faint)", fontSize: 12.5 }}>No labs in this view.</div> : (
+                  <Paginated items={rows}>{(page) => (
+                    <div className="table-scroll"><table className="child-mini">
+                      <thead><tr><th>{col}</th><th>Clients</th><th>Labs</th><th>MRR</th><th>% of MRR</th><th>Avg MRR / client</th><th>ARR</th></tr></thead>
+                      <tbody>{page.map((g) => (
+                        <tr key={g.key}>
+                          <td>{g.key}</td>
+                          <td>{g.clients}</td>
+                          <td>{g.labs}</td>
+                          <td className="mrr-cell">{fmtINR(g.mrr)}</td>
+                          <td style={{ minWidth: 120 }}>
+                            <span className="pct-bar"><span style={{ width: `${Math.max(g.pct * 100, g.mrr > 0 ? 2 : 0)}%` }} /></span>
+                            <b>{(g.pct * 100).toFixed(1)}%</b>
+                          </td>
+                          <td className="mrr-cell">{fmtINR(g.clients ? g.mrr / g.clients : 0)}</td>
+                          <td className="mrr-cell">{fmtINR(g.mrr * 12)}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table></div>
+                  )}</Paginated>
+                )}
+              </div>
+            ))}
           </div>
         </>
       )}

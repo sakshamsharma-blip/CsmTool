@@ -54,7 +54,7 @@ function exportLabsCsv(labs, allLabs) {
   URL.revokeObjectURL(url);
 }
 
-export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOpenLab, initialQuery }) {
+export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, initialQuery }) {
   // Same "My Labs vs. Team View" scoping every other screen (Dashboard, My Portfolio,
   // Collections, Tasks, Visits, Reports) already has — Total Labs was the one screen that
   // skipped it and showed the full company list to everyone, CSM included. A plain CSM is
@@ -62,7 +62,7 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
   // their own too but can flip to Team View. currentCSM already reflects whoever an Admin is
   // currently previewing as (Sidebar's "Preview as"), so this also closes the gap where Total
   // Labs used to leak everyone's labs even while an Admin was previewing a plain CSM.
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, scopeCsm } = useScopedCsm(viewer, "labs");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm } = useScopedCsm(viewer, "labs");
 
   const [expanded, setExpanded] = useState({});
   const EMPTY_FILTERS = { csm: "", region: "", status: "", segment: "", country: "", state: "", city: "" };
@@ -186,7 +186,7 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
         </div>
       </div>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
 
       <div className="tiles">
         {tiles.map(([label, val, cls]) => (
@@ -223,7 +223,7 @@ export default function LabsView({ labs, csmNames, viewer, onOpenAddDrawer, onOp
         {isHead && (
           <select value={filters.csm} onChange={(e) => setFilters((f) => ({ ...f, csm: e.target.value }))}>
             <option value="">All CSMs</option>
-            {csmNames.map((n) => <option key={n}>{n}</option>)}
+            {teamNames.map((n) => <option key={n}>{n}</option>)}
           </select>
         )}
         <select value={filters.segment} onChange={(e) => setFilters((f) => ({ ...f, segment: e.target.value }))}>

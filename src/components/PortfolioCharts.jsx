@@ -12,12 +12,13 @@ import InfoTip from "./InfoTip";
 //   • Pitch pipeline — Not-in-plan add-ons by Expansion stage; hover lists lab · feature.
 //   • Adoption by module — each module's parameters (across these labs) split by stage, weakest module first; hover a
 //     segment for the stage count, share and which labs; hover the module name for its best / worst labs.
-// Colours: the In-plan stages are one blue ramp (light → dark), Expansion orange, closed grey (see STAGE_GROUPS).
+// Colours: the In-plan stages run pale blue → indigo → teal → light green (Live) → dark green (Adopted); Not in plan
+// coral; closed grey (see STAGE_GROUPS in lib/adoption.js).
 const LIST_MAX = 8;
 const BANDS = [
   { key: "b1", label: "Below 30%", min: -Infinity, max: 30, color: "var(--stg-plan-1)" },
   { key: "b2", label: "30–69%", min: 30, max: 70, color: "var(--stg-plan-2)" },
-  { key: "b3", label: "70–84%", min: 70, max: 85, color: "var(--stg-plan-3)" },
+  { key: "b3", label: "70–84%", min: 70, max: 85, color: "var(--stg-plan-4)" },
   { key: "b4", label: "85–100%", min: 85, max: Infinity, color: "var(--stg-plan-5)" },
 ];
 const PITCH_COLOR = {

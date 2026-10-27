@@ -173,8 +173,10 @@ export default function App() {
       role,
       isHead: hasLeadAccess(role),
       isAdmin: csmDirectory.find((c) => c.name === myName)?.role === "Admin",
+      // People who own at least one lab — the only names offered in Team View's CSM dropdown.
+      csmsWithLabs: [...new Set(labs.map((l) => l.csm).filter(Boolean))],
     };
-  }, [currentCSM, myName, csmDirectory]);
+  }, [currentCSM, myName, csmDirectory, labs]);
 
   // If an Admin previewing "as" a CSM (or any other state change) drops lead access
   // while Manage Users is open, back out of it rather than showing a blank pane.

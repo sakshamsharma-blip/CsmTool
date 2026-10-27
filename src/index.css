@@ -14,12 +14,16 @@
     --surface-2:#fafbfc; --surface-3:#eef0f3; --surface-hover:#f7f9fc;
     --indigo-bg:#eef2ff; --indigo-text:#4338ca; --purple-bg:#f3ecff; --purple-text:#7c3aed;
     --bad-text:#b42318; --brand-border:#bfe8cf;
-    /* Stage colours for charts (validated: ordinal blue ramp for In-plan stages, orange ramp for Expansion) */
-    --stg-plan-1:#86b6ef; --stg-plan-2:#5598e7; --stg-plan-3:#2a78d6; --stg-plan-4:#1c5cab; --stg-plan-5:#0d366b;
-    --stg-exp-1:#f3a17f; --stg-exp-2:#eb6834; --stg-exp-3:#b4471c; --stg-closed:#9aa3ae;
+    /* Stage colours for charts (Oct 27 2026; validated for colour-blind separation): To-Do pale blue → Discussion /
+       Trial indigo → Onboarding teal → Live LIGHT GREEN → Adopted DARK GREEN; Not in plan coral; closed grey.
+       The Not-in-plan pie's own stages use the orange ramp (--stg-exp-*). */
+    --stg-plan-1:#a8bddf; --stg-plan-2:#6656d8; --stg-plan-3:#0d9db0; --stg-plan-4:#7fd48a; --stg-plan-5:#157a3c;
+    --stg-notin:#ef8560; --stg-closed:#7c8594;
+    --stg-exp-1:#f3a17f; --stg-exp-2:#eb6834; --stg-exp-3:#b4471c;
     /* text drawn on top of each stage colour */
-    --stg-plan-1-ink:#0b1b33; --stg-plan-2-ink:#0b1b33; --stg-plan-3-ink:#fff; --stg-plan-4-ink:#fff; --stg-plan-5-ink:#fff;
-    --stg-exp-1-ink:#0b1b33; --stg-exp-2-ink:#fff; --stg-exp-3-ink:#fff; --stg-closed-ink:#0b1b33;
+    --stg-plan-1-ink:#0b1b33; --stg-plan-2-ink:#fff; --stg-plan-3-ink:#fff; --stg-plan-4-ink:#0b2a14; --stg-plan-5-ink:#fff;
+    --stg-notin-ink:#2b1208; --stg-closed-ink:#fff;
+    --stg-exp-1-ink:#0b1b33; --stg-exp-2-ink:#fff; --stg-exp-3-ink:#fff;
     color-scheme: light;
   }
 
@@ -36,11 +40,13 @@
     --indigo-bg:#1e2350; --indigo-text:#a5b4fc; --purple-bg:#2a1f4a; --purple-text:#c4b5fd;
     --shadow-card:0 1px 2px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.3);
     --shadow-card-hover:0 2px 4px rgba(0,0,0,.4), 0 6px 16px rgba(0,0,0,.35);
-    /* dark steps run the other way (more = lighter), each validated against the dark surface */
-    --stg-plan-1:#184f95; --stg-plan-2:#256abf; --stg-plan-3:#3987e5; --stg-plan-4:#6da7ec; --stg-plan-5:#b7d3f6;
-    --stg-exp-1:#9a3f17; --stg-exp-2:#d95926; --stg-exp-3:#f29a6e; --stg-closed:#4b5568;
-    --stg-plan-1-ink:#fff; --stg-plan-2-ink:#fff; --stg-plan-3-ink:#fff; --stg-plan-4-ink:#0b1b33; --stg-plan-5-ink:#0b1b33;
-    --stg-exp-1-ink:#fff; --stg-exp-2-ink:#fff; --stg-exp-3-ink:#0b1b33; --stg-closed-ink:#fff;
+    /* dark-mode steps of the same stage colours, each checked against the dark surface */
+    --stg-plan-1:#4d6c9c; --stg-plan-2:#8379ee; --stg-plan-3:#1fb0c4; --stg-plan-4:#8ee39a; --stg-plan-5:#1f8f4c;
+    --stg-notin:#e8805f; --stg-closed:#6b7486;
+    --stg-exp-1:#9a3f17; --stg-exp-2:#d95926; --stg-exp-3:#f29a6e;
+    --stg-plan-1-ink:#fff; --stg-plan-2-ink:#fff; --stg-plan-3-ink:#0b1b33; --stg-plan-4-ink:#0b2a14; --stg-plan-5-ink:#fff;
+    --stg-notin-ink:#2b1208; --stg-closed-ink:#fff;
+    --stg-exp-1-ink:#fff; --stg-exp-2-ink:#fff; --stg-exp-3-ink:#0b1b33;
     color-scheme: dark;
   }
   :root[data-theme="dark"] .banner .badge{color:#0b1220;}
@@ -201,7 +207,7 @@
     padding:10px 12px; box-shadow:0 8px 24px rgba(16,24,40,.25);
   }
   .info-tip-content b{font-weight:700;}
-  .info-tip:hover .info-tip-content, .info-tip:focus-within .info-tip-content{display:block;}
+  .info-tip-content.info-tip-floating{display:block; position:fixed; z-index:400; overflow-y:auto;}
 
   h1.page-title{font-size:21px; margin:0 0 3px;}
   .page-sub{color:var(--text-dim); font-size:13px; margin:0 0 18px;}
@@ -455,6 +461,8 @@
   .rescale-row i{color:var(--text-faint); font-style:normal; font-size:11px;}
   .rescale-row span:nth-child(2){color:var(--text-faint); text-align:right;}
   .rescale-head{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-faint); border-bottom:1px solid var(--border);}
+  .pct-bar{display:inline-block; vertical-align:middle; width:60px; height:8px; margin-right:7px; border-radius:4px; background:var(--surface-3); overflow:hidden;}
+  .pct-bar span{display:block; height:100%; background:var(--accent); border-radius:4px;}
   .pie-card{background:var(--surface); border:1px solid var(--border); border-radius:11px; padding:12px 14px; box-shadow:var(--shadow-card);}
   .pie-title{font-size:11.5px; font-weight:700; color:var(--text-dim); margin-bottom:6px;}
   .pie-body{display:flex; align-items:center; gap:14px;}

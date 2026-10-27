@@ -68,6 +68,12 @@ test("Add Lab: country and state are type-to-filter dropdowns", async ({ page })
   await state.fill("maha");
   await page.locator(".ss-row", { hasText: "Maharashtra" }).click();
   await expect(state).toHaveValue("Maharashtra");
+  // City follows the state (built-in India list), and an unlisted city can still be used.
+  const city = page.getByPlaceholder("Search a city…");
+  await city.click();
+  await city.fill("pun");
+  await page.locator(".ss-row", { hasText: /^Pune$/ }).click();
+  await expect(city).toHaveValue("Pune");
 });
 
 test("Adoption Template: totals must be 100% and Rescale fixes them", async ({ page }) => {
@@ -221,4 +227,13 @@ test("Refresh keeps the page, the lab tab and the filters", async ({ page }) => 
   await expect(page.getByRole("heading", { name: "Adoption Template" })).toBeVisible();
   await page.goBack();
   await expect(page.locator(".adopt-score-head")).toBeVisible();
+});
+
+test("Info pop-ups float above the page instead of being clipped", async ({ page }) => {
+  await page.getByText("iGenetic Diagnostics", { exact: true }).click();
+  await page.getByRole("button", { name: "Adoption" }).click();
+  await page.locator(".adopt-score-head .info-tip-icon").hover();
+  const bubble = page.locator("body > .info-tip-floating");
+  await expect(bubble).toBeVisible();
+  await expect(bubble).toContainText("Out of 100");
 });

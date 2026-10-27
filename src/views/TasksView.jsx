@@ -34,7 +34,7 @@ function taskTypeKey(t) {
 
 export default function TasksView({ labs, modules, plans, viewer, idByName, onOpenLab, onPatchLab, showToast }) {
   const { currentCSM } = viewer;
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "tasks");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "tasks");
 
   const [adoptionByLab, setAdoptionByLab] = useState({});
   const [pitchByLab, setPitchByLab] = useState({});
@@ -164,7 +164,7 @@ export default function TasksView({ labs, modules, plans, viewer, idByName, onOp
       <h1 className="page-title">Tasks</h1>
       <p className="page-sub">Everything on <b>{scopeLabel}</b>'s plate — personal to-dos, follow-ups, reminders, and Adoption / Expansion items in progress — not just what's due today.</p>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
 
       <div className="filters">
         <SearchSelect value={fLab} onChange={setFLab} options={labSelectOptions(labOptions)} emptyLabel="All labs" placeholder="All labs" />

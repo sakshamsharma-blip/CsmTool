@@ -23,7 +23,7 @@ function invert(m) { const out = {}; Object.entries(m || {}).forEach(([name, id]
 
 export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToast }) {
   const { currentCSM } = viewer;
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "visits");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "visits");
 
   const [visits, setVisits] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -257,7 +257,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
       </h1>
       <p className="page-sub">Planned and logged offline visits for <b>{scopeLabel}</b>.</p>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <div className="filters" style={{ marginBottom: 0 }}>

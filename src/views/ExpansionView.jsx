@@ -24,7 +24,7 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
   // Same CSM/Manager split every other portfolio-wide screen (Collections, Dashboard, Tasks…)
   // uses — a plain CSM sees only their own deals, a Lead/Admin defaults to their own but can
   // flip to Team View for the consolidated picture across every CSM.
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, scopeCsm, teamAll } = useScopedCsm(viewer, "expansion");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "expansion");
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
@@ -156,7 +156,7 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
       </h1>
       <p className="page-sub">Expansion opportunities for <b>{scopeLabel}</b>.</p>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={csmNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
 
       <div className="summary-grid" style={{ gridTemplateColumns: "repeat(5,1fr)", marginBottom: 18 }}>
         <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Onboarding }}>{fmtINR(onboardingMRR)}</div><div className="slabel">Onboarding MRR</div></div>

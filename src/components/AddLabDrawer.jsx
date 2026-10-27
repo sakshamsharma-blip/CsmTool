@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fmtMoney, toINR, segmentFor, nativeCurrency } from "../lib/format";
-import { getCountryNames, getStatesForCountry, cityOptionsFor } from "../lib/geography";
+import { getCountryNames, getStatesForCountry } from "../lib/geography";
+import CityPicker from "./CityPicker";
 import SearchSelect from "./SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
 
@@ -73,13 +74,12 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
       if (field === "parentId") return { ...f, parentId: value, newParentBillingMode: "" };
       // Changing Country invalidates any already-picked State (it's a different list), and State
       // no longer matching also invalidates City, since City's suggestions are scoped by State.
-      if (field === "country") return { ...f, country: value, state: "" };
-      if (field === "state") return { ...f, state: value };
+      if (field === "country") return value === f.country ? f : { ...f, country: value, state: "", city: "" };
+      if (field === "state") return value === f.state ? f : { ...f, state: value, city: "" };
       return { ...f, [field]: value };
     });
   }
   const stateOptions = getStatesForCountry(form.country);
-  const cityOptions = cityOptionsFor(labs, form.state);
 
   // "Save & Add Another" after a preset-parent add (adding several child labs in a row under
   // the same parent) should stay on that parent rather than snapping back to a blank Parent Lab
@@ -261,10 +261,7 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
               </div>
               <div className="frow two">
                 <div className="field"><label>City <span className="req">*</span></label>
-                  <input value={form.city} onChange={(e) => set("city", e.target.value)} placeholder="Enter City" list="city-suggestions" />
-                  <datalist id="city-suggestions">
-                    {cityOptions.map((c) => <option key={c} value={c} />)}
-                  </datalist>
+                  <CityPicker country={form.country} state={form.state} value={form.city} onChange={(v) => set("city", v)} labs={labs} />
                 </div>
                 <div className="field"><label>Client Segment</label><input readOnly value={mrr ? `${seg.code} — ${SEG_LABELS[seg.code]}` : "Auto calculated"} /></div>
               </div>

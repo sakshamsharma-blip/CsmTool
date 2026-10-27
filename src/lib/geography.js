@@ -1,11 +1,12 @@
 import { allCountries } from "country-region-data";
+import { INDIA_CITIES } from "./indiaCities";
 
 // Country -> State/Region cascading data (country-region-data, MIT licensed). Deliberately NOT
 // using a country+state+city package here — those bundle a worldwide city list that's either
-// GPL-licensed or tens of MB uncompressed, which isn't worth it for a tool whose labs are
-// overwhelmingly in a handful of countries. City instead uses free text with suggestions drawn
-// from labs already in the system (see cityOptionsFor below) — zero bundle cost, and the
-// suggestions are actually the cities CSMs use, not a generic worldwide list.
+// GPL-licensed or tens of MB uncompressed. Cities (decision Oct 27 2026): India comes from a small
+// built-in list (lib/indiaCities.js); any other country asks a free public service
+// (countriesnow.space) for the state's cities, falling back to cities already on our labs if it's
+// down. City always stays type-anything.
 export function getCountryNames() {
   return allCountries.map(([name]) => name);
 }
@@ -23,4 +24,28 @@ export function getStatesForCountry(countryName) {
 export function cityOptionsFor(labs, state) {
   const pool = state ? labs.filter((l) => l.state === state) : labs;
   return [...new Set(pool.map((l) => l.city).filter(Boolean))].sort();
+}
+
+// Cities for a country + state, best first: India's built-in list, otherwise the online service (cached per session,
+// 6-second timeout, [] on any failure). Always merged with cities already used on our labs in that state.
+const cityCache = new Map();
+export async function fetchCities(country, state) {
+  if (!country || !state) return [];
+  if (country === "India") return INDIA_CITIES[state] || [];
+  const key = `${country}|${state}`;
+  if (cityCache.has(key)) return cityCache.get(key);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const url = `https://countriesnow.space/api/v0.1/countries/state/cities/q?country=${encodeURIComponent(country)}&state=${encodeURIComponent(state)}`;
+    const res = await fetch(url, { signal: ctrl.signal });
+    const json = await res.json();
+    const list = !json.error && Array.isArray(json.data) ? json.data.filter((c) => typeof c === "string" && c.trim()) : [];
+    cityCache.set(key, list);
+    return list;
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
 }
