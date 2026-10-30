@@ -3,6 +3,7 @@ import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
 import { fetchChurnLog, quarterOf } from "../lib/churn";
+import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import { computeLabRollup } from "../lib/labRollup";
 import ScopeToggle from "../components/ScopeToggle";
@@ -17,8 +18,9 @@ const SEGMENTS = SEG_BANDS.map((b) => b.code);
 // time), and MRR Breakdown (Segment × CSM matrix, Region/Country splits) — the more granular
 // reporting the old "CS Dashboard 2026" pivot tabs carried that Dashboard's simple bucket
 // counts didn't replace.
-export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "reports");
+export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab }) {
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "reports");
+  const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
   const [tab, setTab] = useSessionState("reports.tab", "churn");
 
   const [churnRows, setChurnRows] = useState([]);
@@ -47,12 +49,13 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
   const churnFiltered = useMemo(() => churnRows
     .filter((r) => {
       const csmName = nameById[r.csmId] || labsById[r.labId]?.csm;
+      if (labType && !labsById[r.labId]) return false;
       return !scopeCsm || csmName === scopeCsm;
     })
     .filter((r) => !typeFilter || r.churnType === typeFilter)
     .sort((a, b) => new Date(b.churnMonth) - new Date(a.churnMonth)),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [churnRows, scopeCsm, typeFilter]);
+  [churnRows, scopeCsm, typeFilter, labType]);
 
   const churnedCount = churnFiltered.filter((r) => r.churnType === "Churned").length;
   const contractionCount = churnFiltered.filter((r) => r.churnType === "Contraction").length;
@@ -63,7 +66,9 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
   // One row per client (parent lab) with its billed MRR from computeLabRollup — the same numbers Total
   // Labs and Dashboard show. Summing every lab's raw mrr double-counted groups: a Per-Branch parent's own
   // mrr is ignored in its group total, and so are the children of a Consolidated parent.
-  // State / City filters (remembered across a refresh) narrow every breakdown below except "CSM share of the book".
+  // Region / Country / State / City filters (remembered across a refresh) narrow every breakdown below except "CSM share of the book".
+  const [fRegion, setFRegion] = useSessionState("reports.fRegion", "");
+  const [fCountry, setFCountry] = useSessionState("reports.fCountry", "");
   const [fState, setFState] = useSessionState("reports.fState", "");
   const [fCity, setFCity] = useSessionState("reports.fCity", "");
   const scopedClients = useMemo(() => {
@@ -71,10 +76,16 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
     return scopeCsm ? rows.filter((r) => r.csm === scopeCsm || r.children.some((c) => c.csm === scopeCsm)) : rows;
   }, [labs, scopeCsm]);
   const breakdownLabs = useMemo(() => scopedClients
+    .filter((r) => !fRegion || r.region === fRegion)
+    .filter((r) => !fCountry || r.country === fCountry)
     .filter((r) => !fState || r.state === fState)
-    .filter((r) => !fCity || (r.city || "").trim().toLowerCase() === fCity.toLowerCase()), [scopedClients, fState, fCity]);
-  const stateOptions = [...new Set(scopedClients.map((r) => r.state).filter((v) => v && v !== "—"))].sort();
-  const cityOptions = [...new Set(scopedClients.filter((r) => !fState || r.state === fState).map((r) => (r.city || "").trim()).filter(Boolean))]
+    .filter((r) => !fCity || (r.city || "").trim().toLowerCase() === fCity.toLowerCase()), [scopedClients, fRegion, fCountry, fState, fCity]);
+  // Each dropdown only offers what exists within the choices made before it (Region → Country → State → City).
+  const inRegion = scopedClients.filter((r) => !fRegion || r.region === fRegion);
+  const countryOptions = [...new Set(inRegion.map((r) => r.country).filter((v) => v && v !== "—"))].sort();
+  const inCountry = inRegion.filter((r) => !fCountry || r.country === fCountry);
+  const stateOptions = [...new Set(inCountry.map((r) => r.state).filter((v) => v && v !== "—"))].sort();
+  const cityOptions = [...new Set(inCountry.filter((r) => !fState || r.state === fState).map((r) => (r.city || "").trim()).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b));
 
   // MRR by State / by City — per client (parent lab), group MRR in INR; labs = the client plus its child labs.
@@ -172,7 +183,7 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
       </div>
 
       <div style={{ marginTop: 16 }}>
-        <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
+        <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
       </div>
 
       {tab === "churn" && (
@@ -226,10 +237,14 @@ export default function ReportsView({ labs, viewer, idByName, onOpenLab }) {
       {tab === "mrr" && (
         <>
           <div className="filters">
+            <select value={fRegion} onChange={(e) => { setFRegion(e.target.value); setFCountry(""); setFState(""); setFCity(""); }}>
+              <option value="">All regions</option><option value="Domestic">Domestic</option><option value="ROW">ROW</option>
+            </select>
+            <span style={{ minWidth: 200 }}><SearchSelect value={fCountry} onChange={(v) => { setFCountry(v); setFState(""); setFCity(""); }} options={countryOptions.map((n) => ({ value: n, label: n }))} emptyLabel="All countries" placeholder="All countries" /></span>
             <span style={{ minWidth: 200 }}><SearchSelect value={fState} onChange={(v) => { setFState(v); setFCity(""); }} options={stateOptions.map((n) => ({ value: n, label: n }))} emptyLabel="All states" placeholder="All states" /></span>
             <span style={{ minWidth: 200 }}><SearchSelect value={fCity} onChange={setFCity} options={cityOptions.map((n) => ({ value: n, label: n }))} emptyLabel="All cities" placeholder="All cities" /></span>
-            {(fState || fCity) && <span className="clear" onClick={() => { setFState(""); setFCity(""); }}>Clear filters</span>}
-            <span style={{ fontSize: 12, color: "var(--text-dim)" }}>State / City narrow every table below except "CSM share of the book".</span>
+            {(fRegion || fCountry || fState || fCity) && <span className="clear" onClick={() => { setFRegion(""); setFCountry(""); setFState(""); setFCity(""); }}>Clear filters</span>}
+            <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Region / Country / State / City narrow every table below except "CSM share of the book".</span>
           </div>
           <div className="table-card" style={{ marginBottom: 18 }}>
             <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>CSM share of the book <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>— % of all {csmShare.totalLabs} labs and of total MRR {fmtINR(csmShare.totalMrr)}</span></div>

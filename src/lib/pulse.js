@@ -9,19 +9,6 @@ export function isHealthyStatus(status) {
   return status === "No Risk" || status === "Happy";
 }
 
-export async function fetchLabPulseHistory(labId) {
-  const { data, error } = await supabase
-    .from("lab_pulse_log")
-    .select("id,health_status,rating,note,csm_id,logged_at")
-    .eq("lab_id", labId)
-    .order("logged_at", { ascending: false });
-  if (error) throw error;
-  return (data || []).map((r) => ({
-    id: r.id, healthStatus: r.health_status, rating: r.rating != null ? Number(r.rating) : null,
-    note: r.note || "", csmId: r.csm_id, loggedAt: r.logged_at,
-  }));
-}
-
 // One pulse check captures health status + an optional satisfaction rating together (matches
 // how the source tracking sheet records both in the same monthly pass) — denormalizes onto
 // labs.health_status / labs.last_rating for fast list display, and logs to Lab History same as

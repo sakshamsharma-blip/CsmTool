@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Modal from "./Modal";
-import { todayISO } from "../lib/tasks";
+import { todayISO, TASK_PRIORITIES } from "../lib/tasks";
 import SearchSelect from "./SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
 
@@ -14,24 +14,26 @@ export default function AddTaskModal({ open, onClose, onSubmit, defaultAssignee,
   const [repeatDay, setRepeatDay] = useState(new Date().getDay());
   const [repeatIntervalDays, setRepeatIntervalDays] = useState(7);
   const [due, setDue] = useState(todayISO());
+  const [priority, setPriority] = useState("Medium");
+  const [details, setDetails] = useState("");
   const [error, setError] = useState(false);
 
   if (!open) return null;
 
   function reset() {
     setDesc(""); setAssignee(defaultAssignee); setLabId(""); setRepeat("none");
-    setRepeatDay(new Date().getDay()); setRepeatIntervalDays(7); setDue(todayISO()); setError(false);
+    setRepeatDay(new Date().getDay()); setRepeatIntervalDays(7); setDue(todayISO()); setPriority("Medium"); setDetails(""); setError(false);
   }
   function handleClose() { reset(); onClose(); }
 
   function handleSubmit() {
     if (!desc.trim()) { setError(true); return; }
     const owners = assignee === "__all__" ? csmNames.slice() : [assignee];
-    let payload = { labId: labId || null, desc: desc.trim(), owners, repeat, assignedByName: isHead ? defaultAssignee : null };
+    let payload = { labId: labId || null, desc: desc.trim(), owners, repeat, assignedByName: isHead ? defaultAssignee : null, priority, details };
     if (repeat === "weekly" || repeat === "fortnightly") payload = { ...payload, repeatDay, repeatAnchor: repeat === "fortnightly" ? todayISO() : null };
     else if (repeat === "monthly") payload = { ...payload, repeatDay: parseInt(repeatDay, 10) };
     else if (repeat === "custom") payload = { ...payload, repeatIntervalDays: Math.max(1, parseInt(repeatIntervalDays, 10) || 1), due };
-    else payload = { ...payload, due };
+    else payload = { ...payload, due: due || null }; // a one-off task may have no due date yet
     onSubmit(payload);
     reset();
   }
@@ -51,6 +53,16 @@ export default function AddTaskModal({ open, onClose, onSubmit, defaultAssignee,
       <div className="tmpl-field" style={{ marginBottom: 12 }}>
         <label>Task</label>
         <input type="text" style={fieldStyle} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="e.g. Weekly portfolio review" />
+      </div>
+      <div className="tmpl-field" style={{ marginBottom: 12 }}>
+        <label>Description (optional)</label>
+        <textarea rows="2" style={{ ...fieldStyle, resize: "vertical" }} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Any detail the owner needs" />
+      </div>
+      <div className="tmpl-field" style={{ marginBottom: 12 }}>
+        <label>Priority</label>
+        <select style={fieldStyle} value={priority} onChange={(e) => setPriority(e.target.value)}>
+          {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
       </div>
       {isHead && (
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
@@ -101,7 +113,7 @@ export default function AddTaskModal({ open, onClose, onSubmit, defaultAssignee,
       )}
       {(repeat === "none" || repeat === "custom") && (
         <div className="tmpl-field" style={{ marginTop: 0 }}>
-          <label>{repeat === "custom" ? "Starting From" : "Due Date"}</label>
+          <label>{repeat === "custom" ? "Starting From" : "Due Date (optional — clear it to add later)"}</label>
           <input type="date" style={fieldStyle} value={due} onChange={(e) => setDue(e.target.value)} />
         </div>
       )}

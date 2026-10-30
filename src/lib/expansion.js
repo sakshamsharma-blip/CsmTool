@@ -75,13 +75,3 @@ export async function updateExpansionOpportunity(id, { labId, monthlyRevenue, an
     csmId,
   }).catch((err) => console.error(err));
 }
-
-// Portfolio-wide rollup used by the Expansion tab's summary tiles — counts + pipeline value per
-// status. Pipeline value deliberately excludes Lost (never counted) and Live (already realized,
-// showing up in the lab's real MRR instead) — it's "what's still in motion".
-export function expansionSummary(items) {
-  const byStatus = { Onboarding: 0, Pipeline: 0, Live: 0, Lost: 0 };
-  items.forEach((i) => { byStatus[i.status] = (byStatus[i.status] || 0) + 1; });
-  const inMotion = items.filter((i) => i.status === "Onboarding" || i.status === "Pipeline");
-  return { byStatus, inMotionCount: inMotion.length };
-}

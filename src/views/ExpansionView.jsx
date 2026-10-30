@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR } from "../lib/format";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllExpansionOpportunities, addExpansionOpportunity, updateExpansionOpportunity, EXPANSION_STATUSES } from "../lib/expansion";
+import { filterLabsByLabType } from "../lib/labs";
+import { fetchAllPurchases } from "../lib/purchases";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
@@ -20,13 +22,15 @@ function emptyForm() {
   return { labId: "", monthlyRevenue: "", annualRevenue: "", dealWonDate: "", expectedLiveDate: "", status: "Pipeline", comments: "" };
 }
 
-export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showToast }) {
+export default function ExpansionView({ labs: allLabs, viewer, idByName, onOpenLab, showToast }) {
   // Same CSM/Manager split every other portfolio-wide screen (Collections, Dashboard, Tasks…)
   // uses — a plain CSM sees only their own deals, a Lead/Admin defaults to their own but can
   // flip to Team View for the consolidated picture across every CSM.
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "expansion");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "expansion");
+  const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
 
   const [items, setItems] = useState([]);
+  const [purchases, setPurchases] = useState([]); // features bought through Expansion (migration 0042)
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
 
@@ -43,6 +47,7 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
     setError(null);
     try {
       setItems(await fetchAllExpansionOpportunities());
+      setPurchases(await fetchAllPurchases().catch(() => [])); // table may not exist before migration 0042
     } catch (err) { setError(err.message || "Failed to load expansion opportunities."); }
     finally { setLoading(false); }
   }
@@ -86,6 +91,10 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
   allRows.forEach((r) => { labOptions.push(r); r.children.forEach((c) => labOptions.push(c)); });
   // Tiles above stay whole-portfolio; the filters only narrow the table.
   const shown = scoped.filter((i) => (!fLab || i.labId === fLab) && (!fStatus || i.status === fStatus));
+
+  // Features bought through the Adoption tab's Purchased stage — when, at what price (or trial), and if lost, when.
+  const shownPurchases = purchases.filter((p) => flatIds.has(p.labId) && (!fLab || p.labId === fLab));
+  const fmtDay = (d) => (d ? new Date(d + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" }) : "—");
 
   function openAdd() {
     setEditingId(null);
@@ -156,7 +165,7 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
       </h1>
       <p className="page-sub">Expansion opportunities for <b>{scopeLabel}</b>.</p>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
 
       <div className="summary-grid" style={{ gridTemplateColumns: "repeat(5,1fr)", marginBottom: 18 }}>
         <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Onboarding }}>{fmtINR(onboardingMRR)}</div><div className="slabel">Onboarding MRR</div></div>
@@ -200,6 +209,35 @@ export default function ExpansionView({ labs, viewer, idByName, onOpenLab, showT
                 <td><span className="status-chip" style={{ background: "transparent", border: `1px solid ${STATUS_COLORS[item.status]}`, color: STATUS_COLORS[item.status], cursor: "default" }}>{item.status}</span></td>
                 <td style={{ fontSize: 11.5, color: "var(--text-dim)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.comments}>{item.comments || "—"}</td>
                 <td><span className="mark-purchased" onClick={() => openEdit(item)}>Edit</span></td>
+              </tr>
+            );
+          })}</tbody>
+        </table></div>)}</Paginated></div>
+      )}
+
+      <h3 style={{ fontSize: 14, margin: "26px 0 4px", display: "flex", alignItems: "center" }}>
+        Features purchased
+        <InfoTip>Every feature a lab bought through the Adoption tab's Purchased stage — recorded here (not in Collections): when it was bought, Priced or Trial, the monthly charge, and when it was lost if it was later marked Lost after Purchase. MRR changes only through invoices (and a lost feature's charge is taken off MRR and logged as a Contraction in Financial Reports).</InfoTip>
+      </h3>
+      <p className="page-sub" style={{ marginTop: 0 }}>Deals won from a feature pitch, and any later losses.</p>
+      {!shownPurchases.length ? (
+        <div className="table-card" style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>No features purchased yet for {scopeLabel}.</div>
+      ) : (
+        <div className="table-card"><Paginated items={shownPurchases}>{(pageRows) => (<div className="table-scroll"><table className="child-mini">
+          <thead><tr><th>Lab</th><th>Feature</th><th>Deal won</th><th>Price</th><th>Charges added</th><th>Status</th><th>Lost on</th><th>Lost reason</th></tr></thead>
+          <tbody>{pageRows.map((p) => {
+            const lab = labsById[p.labId];
+            if (!lab) return null;
+            return (
+              <tr key={p.id}>
+                <td className="lab-name clickable" onClick={() => onOpenLab(lab.id)}>{lab.name}</td>
+                <td>{p.label}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{fmtDay(p.purchasedOn)}</td>
+                <td className="mrr-cell">{p.isTrial ? <span className="cat-tag cat-Warn">Trial</span> : `${fmtMoney(p.monthlyCharge, lab.region)}/mo`}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{fmtDay(p.chargesAddedOn)}</td>
+                <td><span className="status-chip" style={{ background: "transparent", border: `1px solid ${p.status === "Lost" ? "var(--bad)" : "var(--ok)"}`, color: p.status === "Lost" ? "var(--bad)" : "var(--ok)", cursor: "default" }}>{p.status === "Lost" ? "Lost after Purchase" : "Active"}</span></td>
+                <td style={{ whiteSpace: "nowrap" }}>{fmtDay(p.lostOn)}</td>
+                <td style={{ fontSize: 11.5, color: "var(--text-dim)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.lostComment}>{p.lostComment || "—"}</td>
               </tr>
             );
           })}</tbody>

@@ -128,7 +128,7 @@ test("Total Labs: city filter narrows the list", async ({ page }) => {
 test("Lab Adoption tab: every parameter is In plan / Not in plan and changes need a comment", async ({ page }) => {
   await page.getByText("iGenetic Diagnostics", { exact: true }).click();
   await page.getByRole("button", { name: "Adoption" }).click();
-  await expect(page.locator(".adopt-score-head", { hasText: "Adoption score" })).toBeVisible();
+  await expect(page.locator(".adopt-score-head", { hasText: "Adoption pipeline" })).toContainText("Expansion pipeline");
   await page.locator(".module-head").first().click();
   const firstParam = page.locator(".param-block").first();
   await expect(firstParam.getByRole("button", { name: "In plan", exact: true })).toBeVisible();
@@ -151,7 +151,7 @@ test("Support & Tickets opens Flow in a new tab", async ({ page }) => {
 test("Lab Adoption tab: stage pies, forward-only In-plan list and the stage filter", async ({ page }) => {
   await page.getByText("iGenetic Diagnostics", { exact: true }).click();
   await page.getByRole("button", { name: "Adoption" }).click();
-  for (const title of ["Overall", "Mandatory", "In plan", "Not in plan"]) {
+  for (const title of ["Overall", "Mandatory", "Adoption pipeline", "Expansion pipeline"]) {
     await expect(page.locator(".pie-card .pie-title", { hasText: new RegExp(`^${title} ·`) })).toBeVisible();
   }
   // Hovering a slice shows which stage and which parameters it holds.
@@ -235,5 +235,45 @@ test("Info pop-ups float above the page instead of being clipped", async ({ page
   await page.locator(".adopt-score-head .info-tip-icon").hover();
   const bubble = page.locator("body > .info-tip-floating");
   await expect(bubble).toBeVisible();
-  await expect(bubble).toContainText("Out of 100");
+  await expect(bubble).toContainText("Two pipelines, each out of 100");
+});
+
+test("Total Labs: new segment guide, Lab Type + Lab Health filters and the Lab Health count tiles", async ({ page }) => {
+  const guide = page.locator(".side-card", { hasText: "Segment Guide" });
+  await expect(guide).toContainText("₹1,00,000+ MRR");
+  await expect(guide).toContainText("₹75,000+ MRR");
+  await expect(guide).toContainText("₹50,000+ MRR");
+  await expect(guide).toContainText("₹25,000+ MRR");
+  await expect(guide).toContainText("₹0–₹24,999 MRR");
+  await expect(page.locator(".tile", { hasText: "Needs Attention (Lab Health)" })).toBeVisible();
+  await expect(page.locator(".tile", { hasText: "At Risk (Lab Health)" })).toBeVisible();
+  await expect(page.locator("th", { hasText: "Lab Health (Sentiment)" })).toBeVisible();
+  // Lab Type: no demo lab has one set, so choosing Radiology empties the list; clearing brings it back.
+  const labType = page.locator("select[title='Lab Type']");
+  await expect(labType.locator("option")).toHaveText(["All Lab Types", "Pathology", "Radiology", "Pathology + Radiology"]);
+  await labType.selectOption("Radiology");
+  await expect(page.getByText("No labs match these filters.")).toBeVisible();
+  await labType.selectOption("");
+  await expect(page.getByText("iGenetic Diagnostics", { exact: true })).toBeVisible();
+  // Lab Health filter offers every bucket.
+  await expect(page.locator("select[title^='Lab Health'] option")).toHaveText(["All Lab Health", "Healthy", "Needs Attention", "At Risk", "Not Assessed"]);
+});
+
+test("Add Lab: Lab Type is required for a Parent lab", async ({ page }) => {
+  await page.getByRole("button", { name: "+ Add New Lab" }).click();
+  const field = page.locator(".field", { hasText: "Lab Type" }).locator("select");
+  await expect(field.locator("option")).toHaveText(["Select lab type…", "Pathology", "Radiology", "Pathology + Radiology"]);
+  await expect(page.locator(".field", { hasText: "Lab Type" }).locator(".req")).toBeVisible(); // required marker for a Parent lab
+  await page.locator(".hchoice", { hasText: "Child Lab" }).click();
+  await expect(page.locator(".field", { hasText: "Lab Type" }).locator(".req")).toHaveCount(0); // optional for a Child lab
+});
+
+test("Lab Details: Lab Type is editable and the Stage field is gone", async ({ page }) => {
+  await page.getByText("iGenetic Diagnostics", { exact: true }).first().click();
+  await expect(page.getByText("Lab Details").first()).toBeVisible();
+  await expect(page.locator(".param-row", { hasText: "Lab Type" })).toContainText("Not set");
+  await expect(page.locator(".param-row", { hasText: "Hierarchy" })).toBeVisible();
+  await expect(page.locator(".param-row .pname", { hasText: /^Stage$/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "✎ Edit" }).click();
+  await expect(page.locator(".param-row", { hasText: "Lab Type" }).locator("select option")).toHaveText(["Not set", "Pathology", "Radiology", "Pathology + Radiology"]);
 });

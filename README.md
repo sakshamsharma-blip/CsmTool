@@ -14,20 +14,20 @@ It is **live and in daily use** at `csm-tool-two.vercel.app`, and still being ac
 
 | Area | What it's for |
 | --- | --- |
-| **Customer Master (Labs)** | Every lab, with Plan, CSM owner, region, parent/child hierarchy, editable Lab Name and Lab ID |
+| **Customer Master (Labs)** | Every lab, with Plan, CSM owner, region, Lab Type (Pathology / Radiology / both), parent/child hierarchy, editable Lab Name and Lab ID. Segments A–E by MRR (A ₹1,00,000+ · B ₹75,000+ · C ₹50,000+ · D ₹25,000+ · E below). Filter by Lab Type or Lab Health (Sentiment) on Total Labs; Lab Type is a filter on every lab screen |
 | **Adoption Template** | The catalog of modules/parameters; each is Adoption (base plan) or Expansion (paid add-on), Mandatory or Optional. Module weights total exactly 100%, and so do each module's parameter weights (one-click Rescale). Editable by CSM Leads / Admins |
 | **Plans** | LIMS Starter/Growth/Advance/Premium/Enterprise, each with a default scope |
 | **My Portfolio / Dashboard** | A CSM's own labs and KPIs; Leads/Admins can switch to Team View |
-| **Collections** | Invoices (PDF upload with auto-extraction), MRR, payments, trial→chargeable conversion |
-| **Adoption (per lab)** | Each parameter is In plan (To-Do → In Discussion / Demo → Trial → Onboarding / Setup → Live 1–4 → Adopted, forward only, skipping allowed, no waiting times, or Not Required / Not Applicable / Did Not Meet Requirements) or Not in plan (To-Do → Pitching → Trial → Purchased, or Not Required / Not Applicable / Lost). A purchased add-on moves onto the In-plan list. Every change needs a comment |
-| **Expansion** | Deal tracking with Pipeline/Lost/Live MRR; add-on pitches are worked from My Portfolio, Tasks and each lab's Adoption tab |
+| **Collections** | Invoice-driven only: invoices (PDF upload with auto-extraction), MRR, payments. A feature purchase never writes here |
+| **Adoption (per lab)** | Each parameter is In plan (To-Do → In Discussion / Demo → Trial → Onboarding / Setup → Live 1–4 → Adopted, forward only, skipping allowed, no waiting times, or Not Required / Not Applicable / Did Not Meet Requirements) or Not in plan (To-Do → Pitching → Trial → Purchased, or Not Required / Not Applicable / Lost). A purchased add-on moves onto the In-plan list at Onboarding / Setup. Two scores out of 100 — Adoption pipeline and Expansion pipeline — and Overall = their average. Every change needs a comment |
+| **Expansion** | Deal tracking with Pipeline/Lost/Live MRR, plus a **Features purchased** table (deal won date, Priced / Trial price, lost-after-purchase date and reason); add-on pitches are worked from My Portfolio, Tasks and each lab's Adoption tab |
 | **Visits & Meetings** | Offline (in-person) visits only: log a past visit, or plan a future one (becomes a task) |
-| **Log Check-in** | Calls, visits, emails, WhatsApp, notes — with sentiment, flagged modules and action items; action items and follow-ups become tasks |
-| **Tasks** | Follow-ups, action items, reminders, plus every Adoption / Expansion item that is under way (past To-Do) with days open and a status dropdown. Sort by due date; a WhatsApp-style counter on the sidebar shows new tasks |
+| **Log Check-in** | Calls, visits, emails, WhatsApp, notes — with sentiment, flagged modules and action items; action items and follow-ups become tasks. Dated today or yesterday only. Each point of contact can have a monthly minimum of proactive check-ins, tracked as done / left and as a per-CSM compliance stat on the Dashboard |
+| **Tasks** | Task management: status (Open / In Progress / On Hold / Done), priority, source (Manual / Adoption / Expansion), KPIs with Resolution TAT and on-time %, overdue aging, grouped table with bulk done, and a side panel with comments, activity history and timeline. Adoption / Expansion items that are under way become tasks automatically. A counter on the sidebar shows new tasks |
 | **Feedback & NPS** | CSMs record feedback collected via Google Form, email or WhatsApp (NPS 0–10, 1–5 rating, given by a lab POC, comment, link) and testimonial videos; report by CSM, designation and lab (parent labs) |
 | **Resources** | The team's common documents and training material, plus every module's docs/training links |
 | **Lab History** | Activity log of everything that happens to a lab |
-| **Health, churn, reports** | Health tracking, stage tags, churn logging, reports |
+| **Health, churn, reports** | Manual Health checks, Lab Health (Sentiment) from check-ins, churn logging, Financial Reports |
 
 **Not real yet:** Zoho Books sync (Collections simulates it), full Plan CRUD, KPI Management, Automation (greyed
 out as "Planned" in the sidebar). Support & Tickets opens Flow, a separate tool.
@@ -96,8 +96,8 @@ tests in `tests/`, run against demo mode — first time: `npx playwright install
 - Always convert to INR before summing money across labs (Domestic = INR, ROW = USD).
 - Parent/Child billing: **Consolidated** uses the parent's MRR; **Per-Branch** sums the children's.
 - A *Monthly* invoice sets a lab's MRR; a *ProRata* invoice adds to it until the next Monthly invoice.
-- Purchasing a feature (Priced or Trial) creates a Collections entry but doesn't change MRR; "Lost after
-  Purchase" lowers MRR by that feature's charge and logs a Contraction.
+- Purchasing a feature (Priced or Trial) is recorded on the Expansion tab (`feature_purchases`) — never in Collections,
+  and it doesn't change MRR; "Lost after Purchase" lowers MRR by that feature's charge and logs a Contraction.
 - `labs.id` is the permanent internal key; `labs.lab_code` is the editable, user-facing "Lab ID".
 - Adoption features are always in scope; Expansion features are pitched and sold.
 - `activity_log.source` accepts only `'system'` and `'checkin'`.

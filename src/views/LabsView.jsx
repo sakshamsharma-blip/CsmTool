@@ -6,6 +6,7 @@ import { computeLabRollup } from "../lib/labRollup";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fetchAllVisits } from "../lib/visits";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
+import { LAB_TYPES } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import { todayISO } from "../lib/dates";
 import ScopeToggle from "../components/ScopeToggle";
@@ -18,6 +19,7 @@ const CSV_COLUMNS = [
   ["Lab ID", (l) => l.labCode || l.id],
   ["Lab Name", (l) => l.name],
   ["Type", (l) => l.type],
+  ["Lab Type", (l) => l.labType || ""],
   ["Parent Lab ID", (l, byId) => (l.parent ? (byId[l.parent]?.labCode || l.parent) : "")],
   ["CSM", (l) => l.csm],
   ["Region", (l) => l.region],
@@ -65,7 +67,7 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
   const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm } = useScopedCsm(viewer, "labs");
 
   const [expanded, setExpanded] = useState({});
-  const EMPTY_FILTERS = { csm: "", region: "", status: "", segment: "", country: "", state: "", city: "" };
+  const EMPTY_FILTERS = { csm: "", region: "", status: "", segment: "", country: "", state: "", city: "", labType: "", health: "" };
   const [filters, setFilters] = useSessionState("labs.filters", EMPTY_FILTERS);
   // Populated from whatever States actually exist on labs today — not the full geography
   // dataset — so this only ever offers choices that will actually match something.
@@ -83,8 +85,11 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
     if (!SUPABASE_CONFIGURED) return;
     fetchAllVisits().then(setVisits).catch((err) => console.error(err));
   }, []);
-  const visitsByLab = {};
-  visits.forEach((v) => { (visitsByLab[v.labId] = visitsByLab[v.labId] || []).push(v); });
+  const visitsByLab = useMemo(() => {
+    const m = {};
+    visits.forEach((v) => { (m[v.labId] = m[v.labId] || []).push(v); });
+    return m;
+  }, [visits]);
   function sentimentHealthOf(l) { return computeSentimentHealth(visitsByLab[l.id]); }
 
   // The top bar's search box seeds this same query — keep them in sync when it changes there,
@@ -117,12 +122,18 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
     }
     if (filters.status) r = r.filter((row) => row.status === filters.status || row.children.some((c) => c.status === filters.status));
     if (filters.segment) r = r.filter((row) => segmentFor(toINR(row.mrr, row.region)).code === filters.segment);
+    // Same rule as filterLabsByLabType: a child lab with no type of its own counts as its parent's.
+    if (filters.labType) r = r.filter((row) => row.labType === filters.labType || row.children.some((c) => (c.labType || row.labType) === filters.labType));
+    if (filters.health) {
+      const hasHealth = (l) => computeSentimentHealth(visitsByLab[l.id]).bucket === filters.health;
+      r = r.filter((row) => hasHealth(row) || row.children.some(hasHealth));
+    }
     const mrrInr = (l) => toINR(l.mrr, l.region) || 0;
     const cmp = sortBy === "mrr-asc" ? (a, b) => mrrInr(a) - mrrInr(b)
       : sortBy === "name" ? (a, b) => a.name.localeCompare(b.name)
         : (a, b) => mrrInr(b) - mrrInr(a);
     return [...r].sort(cmp).map((row) => ({ ...row, children: [...row.children].sort(cmp) }));
-  }, [labs, filters, query, scopeCsm, sortBy]);
+  }, [labs, filters, query, scopeCsm, sortBy, visitsByLab]);
 
   const allRowsForTiles = useMemo(() => {
     let r = computeLabRollup(labs);
@@ -135,12 +146,17 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
   // Total MRR/ARR mix Domestic and ROW labs together, so every lab's own-currency amount is
   // converted to INR before summing — a raw sum would silently add dollars to rupees.
   const totalMRR = allRowsForTiles.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
+  // Lab Health (Sentiment) counts — every lab (parents and child labs), same way Active / Inactive are counted.
+  const everyLabInScope = allRowsForTiles.flatMap((r) => [r, ...r.children]);
+  const healthCount = (bucket) => everyLabInScope.filter((l) => sentimentHealthOf(l).bucket === bucket).length;
   const tiles = [
     ["Total Labs", totalLabs, ""],
     ["Parent Labs (Clients)", allRowsForTiles.length, ""],
     ["Child Labs", allRowsForTiles.reduce((s, r) => s + r.children.length, 0), ""],
     ["Active Labs", activeCount, "ok"],
     ["Inactive Labs", totalLabs - activeCount, totalLabs - activeCount > 0 ? "bad" : ""],
+    ["Needs Attention (Lab Health)", healthCount("Needs Attention"), healthCount("Needs Attention") > 0 ? "warn" : ""],
+    ["At Risk (Lab Health)", healthCount("At Risk"), healthCount("At Risk") > 0 ? "bad" : ""],
     ["Total MRR", fmtINR(totalMRR), "accent"],
     ["Total ARR", fmtINR(totalMRR * 12), "accent"],
   ];
@@ -164,6 +180,7 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
         <td className="mrr-cell">{fmtMoney(l.mrr, l.region)}</td>
         <td><span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span></td>
         <td>{l.region}</td>
+        <td>{l.labType || <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
         <td><span className={`status-pill ${statusPillClass(l.status)}`}>{l.status}</span></td>
         <td>{l.healthStatus ? <span className={`status-pill ${healthPillClass(l.healthStatus)}`}>{l.healthStatus}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
         <td><span style={{ fontSize: 11, fontWeight: 700, color: HEALTH_BUCKET_COLORS[sentimentHealthOf(l).bucket] }}>{sentimentHealthOf(l).bucket}</span></td>
@@ -188,7 +205,7 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
 
-      <div className="tiles">
+      <div className="tiles" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(128px, 1fr))" }}>
         {tiles.map(([label, val, cls]) => (
           <div key={label} className={`tile ${cls}`}>
             <div className="tval">{val}</div>
@@ -228,6 +245,14 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
         )}
         <select value={filters.segment} onChange={(e) => setFilters((f) => ({ ...f, segment: e.target.value }))}>
           <option value="">All Segments</option><option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
+        </select>
+        <select value={filters.labType || ""} onChange={(e) => setFilters((f) => ({ ...f, labType: e.target.value }))} title="Lab Type">
+          <option value="">All Lab Types</option>
+          {LAB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select value={filters.health || ""} onChange={(e) => setFilters((f) => ({ ...f, health: e.target.value }))} title="Lab Health (Sentiment) — from logged visit/check-in sentiment">
+          <option value="">All Lab Health</option>
+          {["Healthy", "Needs Attention", "At Risk", "Not Assessed"].map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
         <select value={filters.region} onChange={(e) => setFilters((f) => ({ ...f, region: e.target.value }))}>
           <option value="">All Regions</option><option>Domestic</option><option>ROW</option>
@@ -270,14 +295,14 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
         <thead>
           <tr>
             <th className="fz fz0"></th><th className="fz fz1">Lab ID</th><th className="fz fz2">Lab Name</th><th className="fz fz3">Type</th><th className="fz fz4">CSM Name</th>
-            <th>MRR</th><th>Segment</th><th>Region</th><th>Status</th><th>Health</th>
-            <th title="Auto, from logged visit/check-in sentiment — separate from Health">Lab Health</th>
+            <th>MRR</th><th>Segment</th><th>Region</th><th>Lab Type</th><th>Status</th><th>Health</th>
+            <th title="Auto, from logged visit/check-in sentiment — separate from Health">Lab Health (Sentiment)</th>
             <th>City</th><th>State</th><th>Country</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
-            <tr><td colSpan="14" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>No labs match these filters.</td></tr>
+            <tr><td colSpan="15" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>No labs match these filters.</td></tr>
           )}
           {rows.map((r) => (
             <Fragment key={r.id}>
@@ -293,10 +318,10 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 18 }}>
         <div className="side-card">
           <h4>Segment Guide</h4>
-          {SEG_BANDS.map((b) => (
+          {SEG_BANDS.map((b, i) => (
             <div key={b.code} className="seg-row">
               <span><span className="seg-badge" style={{ background: b.color }}>{b.code}</span> {SEG_NAME[b.code]}</span>
-              <span style={{ color: "var(--text-dim)" }}>{fmtINR(b.min)}+ MRR</span>
+              <span style={{ color: "var(--text-dim)" }}>{b.min === 0 ? `${fmtINR(0)}–${fmtINR(SEG_BANDS[i - 1].min - 1)}` : `${fmtINR(b.min)}+`} MRR</span>
             </div>
           ))}
         </div>

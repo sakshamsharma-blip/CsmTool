@@ -1,4 +1,4 @@
-// "Lab Health" — a health signal derived purely from logged visit/check-in sentiment, kept
+// "Lab Health (Sentiment)" — a health signal derived purely from logged visit/check-in sentiment, kept
 // deliberately separate from the manual health_status set via "Log Health Check" (lib/pulse.js).
 // The manual field is a CSM's own periodic judgment call; this one is computed automatically
 // from every sentiment a CSM already records while logging a visit or check-in, so it never
@@ -12,11 +12,11 @@ export const SENTIMENT_SCORE = { Positive: 100, Neutral: 50, "At Risk": 0 };
 // 5 gives a real trend without going stale for months on an old souring relationship.
 export const RECENT_WINDOW = 5;
 
-// Blend weights for the final bucketed score: mostly recent (so a real, current trend shows up
-// fast) but with a meaningful all-time anchor (so one rough week right after a long healthy
+// Blend weights for the final bucketed score (decision Oct 30 2026): 75% the last 5 sentiments (so a real,
+// current trend shows up fast) and 25% all-time (an anchor, so one rough week right after a long healthy
 // history doesn't instantly flip the bucket).
-const ALL_TIME_WEIGHT = 0.4;
-const RECENT_WEIGHT = 0.6;
+const ALL_TIME_WEIGHT = 0.25;
+const RECENT_WEIGHT = 0.75;
 
 export function healthBucket(score) {
   if (score == null) return "Not Assessed";

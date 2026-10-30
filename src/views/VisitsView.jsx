@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllVisits, addVisit, updateVisit } from "../lib/visits";
 import { fetchAllTasks, taskBucket, addTask, toggleTaskDone, deleteTask, updateTask, todayISO, syncFollowupTaskForVisit } from "../lib/tasks";
+import { filterLabsByLabType } from "../lib/labs";
+import { checkinDateBounds, isCheckinDateAllowed, CHECKIN_DATE_MESSAGE } from "../lib/dates";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
@@ -21,9 +23,10 @@ const PLANNED_VISIT_TASK_TYPE = "planned-visit";
 
 function invert(m) { const out = {}; Object.entries(m || {}).forEach(([name, id]) => { out[id] = name; }); return out; }
 
-export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToast }) {
+export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab, showToast }) {
   const { currentCSM } = viewer;
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "visits");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "visits");
+  const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
 
   const [visits, setVisits] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -121,7 +124,9 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
   function openLogForPlanned(task) {
     resetLogForm();
     setLogLabId(task.labId);
-    setLogDate(task.due && task.due <= todayISO() ? task.due : todayISO());
+    // A visit that was due earlier than yesterday can still be logged — but it takes today's date (check-ins can't be backdated further).
+    const dueDate = task.due && task.due <= todayISO() ? task.due : todayISO();
+    setLogDate(isCheckinDateAllowed(dueDate) ? dueDate : todayISO());
     setLogFromTask(task);
     setLogOpen(true);
   }
@@ -129,6 +134,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
   async function handleLogVisit() {
     if (!logLabId) { setLogError("Pick a lab first."); return; }
     if (!logEngagement) { setLogError("Choose Proactive or Reactive."); return; }
+    if (!isCheckinDateAllowed(logDate)) { setLogError(CHECKIN_DATE_MESSAGE); return; }
     try {
       const lab = labsById[logLabId];
       const newVisitId = await addVisit({
@@ -153,7 +159,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
           sourceVisitId: newVisitId,
         });
       }
-      if (logFromTask) await toggleTaskDone(logFromTask);
+      if (logFromTask) await toggleTaskDone(logFromTask, idByName[currentCSM]);
 
       setLogOpen(false);
       resetLogForm();
@@ -226,6 +232,8 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
   }
 
   async function handleSaveEdit() {
+    // A visit keeps its original date unless it's moved — and the new date must be today or yesterday.
+    if (editDate !== visitById[editId]?.visitDate && !isCheckinDateAllowed(editDate)) { showToast(CHECKIN_DATE_MESSAGE); return; }
     setEditSaving(true);
     try {
       await updateVisit(editId, {
@@ -257,7 +265,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
       </h1>
       <p className="page-sub">Planned and logged offline visits for <b>{scopeLabel}</b>.</p>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <div className="filters" style={{ marginBottom: 0 }}>
@@ -350,7 +358,7 @@ export default function VisitsView({ labs, viewer, idByName, onOpenLab, showToas
         </div>
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
           <label>Visit Date</label>
-          <input type="date" style={fieldStyle} value={logDate} max={todayISO()} onChange={(e) => setLogDate(e.target.value)} />
+          <input type="date" style={fieldStyle} value={logDate} min={checkinDateBounds().min} max={checkinDateBounds().max} onChange={(e) => setLogDate(e.target.value)} />
         </div>
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
           <label>Notes</label>

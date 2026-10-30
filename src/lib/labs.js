@@ -1,5 +1,20 @@
 import { supabase } from "../supabaseClient";
 
+// What the lab does (migration 0042) — a different thing from `type` (Parent / Child). null = not set yet.
+export const LAB_TYPES = ["Pathology", "Radiology", "Pathology + Radiology"];
+
+// Lab Type filter used by every lab-listing screen. A child lab with no type of its own counts as its parent's type.
+// A Parent stays in the list when it matches itself OR any of its child labs does (as the container for that branch),
+// so a Radiology branch of a Pathology group is still found when you filter Radiology.
+export function filterLabsByLabType(labs, labType) {
+  if (!labType) return labs;
+  const byId = {};
+  labs.forEach((l) => { byId[l.id] = l; });
+  const effective = (l) => l.labType || (l.parent && byId[l.parent] ? byId[l.parent].labType : null) || null;
+  const parentsOfMatchingChildren = new Set(labs.filter((l) => l.type === "Child" && effective(l) === labType).map((l) => l.parent));
+  return labs.filter((l) => (l.type === "Child" ? effective(l) === labType : l.labType === labType || parentsOfMatchingChildren.has(l.id)));
+}
+
 // idByName / nameById translate between the UI (works with CSM names) and the database
 // (labs.csm_id is a real profiles.id uuid) — same bridge app.html used.
 export async function fetchLabs(idByName) {
@@ -14,6 +29,7 @@ export async function fetchLabs(idByName) {
     labCode: l.lab_code || l.id,
     name: l.name,
     type: l.type,
+    labType: l.lab_type || null,
     parent: l.parent_id,
     csm: nameById[l.csm_id] || "",
     plan: l.plan_id,
@@ -34,7 +50,6 @@ export async function fetchLabs(idByName) {
     remarks: l.remarks || "",
     healthStatus: l.health_status || null,
     lastRating: l.last_rating != null ? Number(l.last_rating) : null,
-    stageTags: l.stage_tags || [],
     testimonialCollected: !!l.testimonial_collected,
     testimonialVideoUrl: l.testimonial_video_url || "",
     testimonialCollectedBy: l.testimonial_collected_by || null,
@@ -50,6 +65,7 @@ export async function insertLab(lab, idByName) {
     lab_code: lab.id,
     name: lab.name,
     type: lab.type,
+    ...(lab.labType ? { lab_type: lab.labType } : {}),
     parent_id: lab.parent || null,
     csm_id: idByName[lab.csm] || null,
     plan_id: lab.plan,
@@ -127,7 +143,7 @@ export async function updateLabStatus(labId, status) {
 // itself, the internal primary key, is never touched here) plus anything else that isn't already
 // covered by its own dedicated action (CSM, Plan, Status). Available to whoever can already see
 // this lab (the owning CSM, or any Lead/Admin) — same visibility the RLS policy already enforces.
-export async function updateLabDetails(labId, { name, labCode, city, state, country, region, billingType, paymentCycle, creditDays, remarks, yearlyVisitsRequired }) {
+export async function updateLabDetails(labId, { name, labCode, labType, city, state, country, region, billingType, paymentCycle, creditDays, remarks, yearlyVisitsRequired }) {
   const patch = {
     city: city || null,
     state,
@@ -140,13 +156,9 @@ export async function updateLabDetails(labId, { name, labCode, city, state, coun
   };
   if (name !== undefined) patch.name = name;
   if (labCode !== undefined) patch.lab_code = labCode;
+  if (labType !== undefined) patch.lab_type = labType || null;
   if (yearlyVisitsRequired !== undefined) patch.yearly_visits_required = yearlyVisitsRequired === "" || yearlyVisitsRequired == null ? null : parseInt(yearlyVisitsRequired, 10);
   const { error } = await supabase.from("labs").update(patch).eq("id", labId);
-  if (error) throw error;
-}
-
-export async function updateLabStageTags(labId, tags) {
-  const { error } = await supabase.from("labs").update({ stage_tags: tags }).eq("id", labId);
   if (error) throw error;
 }
 

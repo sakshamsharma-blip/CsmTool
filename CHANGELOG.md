@@ -2,6 +2,44 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 30 2026 — two-pipeline scoring, Tasks redesign
+Needs **migration 0043** (run in the CSM console project).
+- **Scoring:** each lab now has an **Adoption pipeline** score (In plan + purchased add-ons: To-Do 0 · In Discussion / Demo
+  10 · Trial 15 · Onboarding / Setup 35 · Live 1 50 · Live 2 60 · Live 3 70 · Live 4 80 · Adopted 100 · Did Not Meet
+  Requirements 0) and an **Expansion pipeline** score (Not in plan: To-Do 0 · Pitching 10 · Trial 15 · Purchased 100 · Lost 0),
+  both out of 100; Not Required and Not Applicable are left out. **Overall = the average of the two.** Mandatory stays. A
+  purchased add-on joins the In-plan list at Onboarding / Setup (35). The Adoption tab shows all four numbers and its pies are
+  now Overall, Mandatory, Adoption pipeline and Expansion pipeline.
+- **Tasks redesigned:** KPI tiles (with 30-day comparisons), Resolution TAT by source, status distribution, overdue aging;
+  filters for lab, type, status, priority, source, due-date range and search; grouped table with bulk Mark as Done; a side
+  panel per task (edit priority, owner, status, due date, description; comments; activity history; related items; timeline);
+  Team TAT Summary and source-wise completion.
+- **Adoption / Expansion items become tasks** automatically once they're under way (no due date until one is set — the
+  stage-change dialog now offers an optional task due date) and close themselves at a final stage. The separate
+  "items in progress" list and "Remind me" are replaced by these tasks.
+- **Add Task** has Priority and Description; the due date is optional.
+
+## Oct 30 2026 — lab type, new segments, POC targets, check-in date rule, purchases move to Expansion
+Needs **migration 0042** (run in the CSM console project). Pushed together with the next batch.
+- **Financial Reports → MRR Breakdown:** Region and Country filters (Region → Country → State → City, each only offers what exists
+  inside the choices before it); every table below narrows with them.
+- **Designations:** the dropdown now lists the 12 new roles (Owner / Founder / Managing Director … Inventory Manager). POCs
+  and check-ins saved with the old wording keep it until edited.
+- **Minimum Proactive Check-ins per Month:** typed per point of contact (Points of Contact tab, Log Check-in's "save as POC", Feedback's
+  "+ Add POC"). The POC list shows done / left for the month (Proactive check-ins whose Person Contacted is that POC); Dashboard has a
+  "Proactive check-in compliance" table per CSM.
+- **Lab Type** (Pathology / Radiology / Pathology + Radiology): set in Add Lab (required for a Parent) and Lab Details; "Not set" for
+  existing labs. Filter on Total Labs plus Dashboard, My Portfolio, Collections, Expansion, Visits, Tasks, Financial Reports and Feedback.
+  The old "Lab Type" row in Lab Details (Parent / Child) is now called **Hierarchy**.
+- **Lab Health (Sentiment):** renamed; score is now 75% the last 5 sentiments + 25% all-time (was 60 / 40). New Lab Health filter on Total
+  Labs, plus **Needs Attention** and **At Risk** count tiles.
+- **Lab Details:** the Stage tags field is removed.
+- **Segments:** A ₹1,00,000+ · B ₹75,000+ · C ₹50,000+ · D ₹25,000+ · E ₹0–₹24,999 (was 90K / 50K / 25K / 15K).
+- **Check-in dates:** Log Check-in, a logged offline visit, and edits to either can only be dated today or yesterday (UI rule).
+- **Collections is invoice-only:** a feature purchase, added charges and Lost after Purchase no longer touch Collections. They are recorded
+  on the Expansion tab ("Features purchased": deal won date, price or trial, charges added, lost date and reason). Older purchase-created
+  Collections rows were left as they are.
+
 ## Oct 28 2026 — adoption stages: skip ahead, no Live waits
 - In-plan stages can now be moved forward to any later stage (skipping is allowed), so a new lab's current stages can
   be set directly. All waiting times are removed: no 7 days between Live steps and no 30 days before Adopted (Adopted

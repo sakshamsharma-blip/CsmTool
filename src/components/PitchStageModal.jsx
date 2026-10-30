@@ -1,12 +1,15 @@
 import { useState } from "react";
 import Modal from "./Modal";
+import TaskDueField from "./TaskDueField";
+import { PITCH_ACTIVE_STATUSES } from "../lib/pitch";
+import { STATUS_ACTIVE } from "../lib/adoption";
 
 const fieldStyle = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
 
 // Confirm step for every Expansion pitch-stage change (My Portfolio, Tasks → Pitch Reminders, a lab's Adoption
 // tab — including its "Mark purchased" button; Tasks also uses it for In-plan status changes). A comment is REQUIRED for
 // every change (decision, Oct 2026). "Purchased" asks the person to
-// choose Priced or Trial (and the monthly charge if priced) because that stage creates a Collections entry;
+// choose Priced or Trial (and the monthly charge if priced) because that stage is recorded as a purchase on the Expansion tab (not in Collections);
 // "Lost after Purchase" explains the MRR drop before confirming. Render it only while a change is pending
 // (`{pending && <PitchStageModal … />}`) so its fields start fresh for each change.
 export default function PitchStageModal({ target, fromStatus, toStatus, onClose, onConfirm }) {
@@ -15,6 +18,9 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
   const [amount, setAmount] = useState("");
   const [error, setError] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [due, setDue] = useState("");
+  // The item is (still) under way after this change — it has a task, which can be given a due date now.
+  const askDue = toStatus === "Purchased" || PITCH_ACTIVE_STATUSES.includes(toStatus) || STATUS_ACTIVE.includes(toStatus);
 
   const isAdded = toStatus === "Purchased";
   const isLostAfterPurchase = toStatus === "Lost after Purchase";
@@ -32,7 +38,7 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
     }
     setSaving(true);
     try {
-      await onConfirm({ comment: comment.trim(), amount: parsed, isTrial: isAdded && trial });
+      await onConfirm({ comment: comment.trim(), amount: parsed, isTrial: isAdded && trial, due: askDue ? due || null : null });
     } finally {
       setSaving(false);
     }
@@ -65,7 +71,7 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
               </label>
             </div>
           </div>
-          <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginBottom: 10 }}>Once purchased, this feature moves onto the In-plan list (starting at To-Do) and is tracked through to Adopted.</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginBottom: 10 }}>Once purchased, this feature moves onto the In-plan list (starting at Onboarding / Setup) and is tracked through to Adopted.</div>
           {pricing === "priced" && (
             <div className="tmpl-field" style={{ marginBottom: 12 }}>
               <label>Added Monthly Cost ({sym})</label>
@@ -80,9 +86,10 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
         <textarea rows="3" style={{ ...fieldStyle, resize: "vertical" }} value={comment} onChange={(e) => { setComment(e.target.value); setError(false); }}
           placeholder="Why is this changing? Anything the next person should know." />
       </div>
+      {askDue && <TaskDueField value={due} onChange={setDue} style={fieldStyle} />}
       {isLostAfterPurchase && (
         <div className="warn-banner" style={{ marginTop: 12 }}>
-          The lab's MRR drops by this feature's monthly charge (from its Collections entry) and the loss is logged as a
+          The lab's MRR drops by this feature's monthly charge (from its purchase record on the Expansion tab) and the loss is logged as a
           Contraction in Reports. The next recurring invoice sets MRR to the billed figure again. A trial feature has no
           charge, so only the stage is recorded.
         </div>

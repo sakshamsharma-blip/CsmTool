@@ -3,13 +3,15 @@ import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtMoney, nativeCurrency } from "../lib/format";
 import {
-  STATUS_ORDER, fetchLabAdoption, computeLabScores, fetchParamChanges, setParamInPlan, setParamStatus, statusOptions,
+  STATUS_ORDER, STATUS_ACTIVE, fetchLabAdoption, computeLabScores, fetchParamChanges, setParamInPlan, setParamStatus, statusOptions,
 } from "../lib/adoption";
 import { fetchLabPitchStatus, applyPitchStageChange, pitchOptionsFor, PITCH_STATUSES } from "../lib/pitch";
 import { fetchAllCollectionsItems, convertItemToChargeable } from "../lib/collections";
+import { fetchLabPurchases, mergeCharges, addPurchaseCharges } from "../lib/purchases";
 import Modal from "./Modal";
 import InfoTip from "./InfoTip";
 import PitchStageModal from "./PitchStageModal";
+import TaskDueField from "./TaskDueField";
 import ModuleResources from "./ModuleResources";
 import AdoptionPies from "./AdoptionPies";
 import { fetchModuleResources } from "../lib/moduleResources";
@@ -42,14 +44,24 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
   const [pendingComment, setPendingComment] = useState(null); // { title, change, apply(comment) }
   const [pendingPitch, setPendingPitch] = useState(null);     // { target, from, to }
   const [trailFor, setTrailFor] = useState(null);             // resolved param whose audit trail is open
-  const [chargeItem, setChargeItem] = useState(null);         // trial Collections item getting charges
+  const [chargeItem, setChargeItem] = useState(null);         // trial purchase (or older Collections entry) getting charges
+
+  // What each purchased feature costs: its purchase record (Expansion tab), or — for features bought before purchases
+  // got their own record — the old Collections entry.
+  async function loadCharges() {
+    const [purchases, legacy] = await Promise.all([
+      fetchLabPurchases(lab.id).catch(() => []), // table may not exist before migration 0042
+      fetchAllCollectionsItems().then((all) => all.filter((i) => i.labId === lab.id)),
+    ]);
+    return mergeCharges(purchases, legacy);
+  }
 
   async function reload(alsoCollections = false) {
     const [a, p, ch, items] = await Promise.all([
       fetchLabAdoption(lab.id),
       fetchLabPitchStatus(lab.id),
       fetchParamChanges(lab.id).catch(() => []), // audit-trail table may not exist before migration 0034
-      alsoCollections || !collItems.length ? fetchAllCollectionsItems().then((all) => all.filter((i) => i.labId === lab.id)) : Promise.resolve(collItems),
+      alsoCollections || !collItems.length ? loadCharges() : Promise.resolve(collItems),
     ]);
     setAdoption(a); setPitch(p); setChanges(ch); setCollItems(items);
   }
@@ -61,13 +73,14 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
       fetchLabAdoption(lab.id),
       fetchLabPitchStatus(lab.id),
       fetchParamChanges(lab.id).catch(() => []),
-      fetchAllCollectionsItems().then((all) => all.filter((i) => i.labId === lab.id)),
+      loadCharges(),
       fetchModuleResources().catch(() => []), // table may not exist before migration 0036
     ])
       .then(([a, p, ch, items, res]) => { if (!cancelled) { setAdoption(a); setPitch(p); setChanges(ch); setCollItems(items); setResources(res); } })
       .catch((err) => { if (!cancelled) setError(err.message || "Failed to load adoption data."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lab.id]);
 
   const scores = useMemo(() => computeLabScores(modules, plan, adoption, pitch), [modules, plan, adoption, pitch]);
@@ -107,7 +120,8 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
     setPendingComment({
       title: `${r.def.name}: ${r.status} → ${status}`,
       label: status === "Adopted" ? "Adoption note — how it's being used" : undefined,
-      apply: async (comment) => { await setParamStatus(lab.id, r, status, comment, csmId, { canStepBack: isHead }); await afterChange(`${r.def.name}: ${status}.`); },
+      askDue: STATUS_ACTIVE.includes(status),
+      apply: async (comment, due) => { await setParamStatus(lab.id, r, status, comment, csmId, { canStepBack: isHead, due }); await afterChange(`${r.def.name}: ${status}.`); },
     });
   }
   function askPitch(r, to, mod) {
@@ -117,10 +131,10 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
       from: r.pitch, to,
     });
   }
-  async function confirmPitch({ comment, amount, isTrial }) {
+  async function confirmPitch({ comment, amount, isTrial, due }) {
     const { target, from, to } = pendingPitch;
     try {
-      const res = await applyPitchStageChange(target, { from, to, comment, amount, isTrial, csmId, labMrr: lab.mrr });
+      const res = await applyPitchStageChange(target, { from, to, comment, amount, isTrial, csmId, labMrr: lab.mrr, due });
       if (res.newMrr != null) onPatchLab?.(lab.id, { mrr: res.newMrr });
       setPendingPitch(null);
       await afterChange(res.message, to === "Purchased" || to === "Lost after Purchase");
@@ -130,10 +144,13 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
   return (
     <div>
       <div className="adopt-score-head">
-        <span>Adoption score <b>{Math.round(scores.overallPct)}%</b> · Mandatory <b>{Math.round(scores.mandatoryPct)}%</b></span>
-        <InfoTip>Out of 100 = everything purchased and fully adopted. Per parameter: In plan / purchased → To-Do 70, In Discussion / Demo 75, Trial 80, Onboarding / Setup 90, Live 1 92, Live 2 94, Live 3 96, Live 4 98, Adopted 100. Not in plan → To-Do 0, Pitching 10, Trial 30; Purchased moves it onto the In-plan list (70). Not Required, Did Not Meet Requirements and Lost = 0; Not Applicable is left out of the score. Modules average their parameters (by weight); the lab averages its modules (by weight). The In-plan list only moves forward (skipping steps is fine); only a CSM Lead or Admin can move an item back.</InfoTip>
+        <span>
+          Overall <b>{Math.round(scores.overallPct)}%</b> · Adoption pipeline <b>{scores.adoptionPct == null ? "—" : `${Math.round(scores.adoptionPct)}%`}</b>
+          {" "}· Expansion pipeline <b>{scores.expansionPct == null ? "—" : `${Math.round(scores.expansionPct)}%`}</b> · Mandatory <b>{Math.round(scores.mandatoryPct)}%</b>
+        </span>
+        <InfoTip>Two pipelines, each out of 100. Adoption pipeline (In plan, plus purchased add-ons): To-Do 0, In Discussion / Demo 10, Trial 15, Onboarding / Setup 35, Live 1 50, Live 2 60, Live 3 70, Live 4 80, Adopted 100, Did Not Meet Requirements 0. Expansion pipeline (Not in plan): To-Do 0, Pitching 10, Trial 15, Purchased 100, Lost 0 — a purchased add-on then also joins the Adoption pipeline at Onboarding / Setup (35). Not Required and Not Applicable are left out. Overall = the average of the two pipelines. Modules average their parameters (by weight); the lab averages its modules (by weight). The In-plan list only moves forward (skipping steps is fine); only a CSM Lead or Admin can move an item back.</InfoTip>
       </div>
-      <AdoptionPies moduleResults={scores.moduleResults} />
+      <AdoptionPies scores={scores} />
 
       <div className="adopt-note" style={{ margin: "0 0 12px" }}>
         {lab.name} is on <b>{plan?.name || "—"}</b>. Every template parameter is listed; mark each <b>In plan</b> or <b>Not in plan</b>.
@@ -215,7 +232,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
                           Trial <button type="button" className="mark-purchased" style={{ fontSize: 10.5 }} onClick={() => setChargeItem(c)}>Add charges</button>
                         </span>
                       ) : <span className="cat-tag cat-Adoption">Priced {fmtMoney(c.amount, lab.region)}/mo</span>)}
-                      <span className="param-score" title="This parameter's score">{r.score == null ? "n/a" : r.score}</span>
+                      <span className="param-score" title={r.purchased && !lost ? `Adoption pipeline ${r.adoptionScore ?? "n/a"} · Expansion pipeline ${r.expansionScore}` : "This parameter's score"}>{r.score == null ? "n/a" : r.score}</span>
                     </div>
                     {latest && (
                       <div className="param-latest" onClick={() => setTrailFor(r)} title="Show full history">
@@ -235,9 +252,10 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
           title={pendingComment.title}
           hint={pendingComment.hint}
           label={pendingComment.label}
+          askDue={pendingComment.askDue}
           onClose={() => setPendingComment(null)}
-          onConfirm={async (comment) => {
-            try { await pendingComment.apply(comment); setPendingComment(null); }
+          onConfirm={async (comment, due) => {
+            try { await pendingComment.apply(comment, due); setPendingComment(null); }
             catch (err) { showToast(`⚠ ${err.message}`); }
           }}
         />
@@ -273,7 +291,8 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
           onClose={() => setChargeItem(null)}
           onConfirm={async (amount) => {
             try {
-              await convertItemToChargeable(chargeItem.id, amount, lab.id, csmId, chargeItem.label, lab.region);
+              if (chargeItem.kind === "purchase") await addPurchaseCharges(chargeItem.id, amount, lab.id, csmId, chargeItem.label, lab.region);
+              else await convertItemToChargeable(chargeItem.id, amount, lab.id, csmId, chargeItem.label, lab.region); // bought before purchases had their own record
               setChargeItem(null);
               await afterChange(`Charges added for ${chargeItem.label} — MRR will update from the next invoice.`, true);
             } catch (err) { showToast(`⚠ ${err.message}`); }
@@ -284,14 +303,15 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
   );
 }
 
-function CommentRequiredModal({ title, hint, label, onClose, onConfirm }) {
+function CommentRequiredModal({ title, hint, label, askDue, onClose, onConfirm }) {
   const [comment, setComment] = useState("");
+  const [due, setDue] = useState("");
   const [error, setError] = useState(false);
   const [saving, setSaving] = useState(false);
   async function confirm() {
     if (!comment.trim()) { setError(true); return; }
     setSaving(true);
-    try { await onConfirm(comment.trim()); } finally { setSaving(false); }
+    try { await onConfirm(comment.trim(), askDue ? due || null : null); } finally { setSaving(false); }
   }
   return (
     <Modal open title={title} onClose={saving ? () => {} : onClose} actions={[
@@ -304,6 +324,7 @@ function CommentRequiredModal({ title, hint, label, onClose, onConfirm }) {
         <textarea rows="3" autoFocus style={{ ...field, resize: "vertical" }} value={comment} onChange={(e) => { setComment(e.target.value); setError(false); }}
           placeholder="Why is this changing?" />
       </div>
+      {askDue && <TaskDueField value={due} onChange={setDue} style={field} />}
       {error && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>A comment is required.</div>}
       <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 8 }}>Saved to this parameter's history and the lab's Lab History.</div>
     </Modal>

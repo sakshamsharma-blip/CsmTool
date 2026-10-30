@@ -1,23 +1,24 @@
 import { supabase } from "../supabaseClient";
-import { markParamIncluded, markModuleInScope, resolveParam, recordParamChange, normalizePitch, STATUS_ACTIVE } from "./adoption";
-import { addCollectionsItem } from "./collections";
+import { markParamIncluded, markModuleInScope, recordParamChange, normalizePitch, STATUS_ACTIVE, PURCHASED_START_STATUS } from "./adoption";
+import { recordPurchase, fetchActivePurchase, markPurchaseLost } from "./purchases";
 import { logActivity } from "./activity";
 import { updateLabMRR } from "./labs";
 import { logChurn } from "./churn";
 import { todayISO } from "./dates";
+import { syncItemTask, closeItemTasks } from "./tasks";
 
 // Expansion stages for a Not-in-plan parameter (list and order: decision Oct 23 2026). "Purchased" is the one
-// stage with real consequences: it asks Priced or Trial, creates a Collections item and moves the feature onto
-// the In-plan track (see markFeatureAdded below). The two Lost stages are kept at the end: "Lost in Expansion" =
+// stage with real consequences: it asks Priced or Trial, records the purchase on the Expansion tab (feature_purchases —
+// Collections is invoice-only and is not written to) and moves the feature onto the In-plan track (see
+// markFeatureAdded below). The two Lost stages are kept at the end: "Lost in Expansion" =
 // the pitch never converted (recorded + logged only). "Lost after Purchase" = it was bought and then lost: the
 // lab's MRR drops by that feature's charge and it's logged as a Contraction (see markLostAfterPurchase).
 // (Onboarding / Setup was removed from this list Oct 26 2026 — onboarding happens on the In-plan list after Purchased.)
 export const PITCH_STATUSES = ["To-Do", "Pitching", "Trial", "Purchased", "Not Required", "Not Applicable", "Lost in Expansion", "Lost after Purchase"];
-// Stages that mean work is under way — these show up in Tasks (with STATUS_ACTIVE for In-plan items).
+// Stages that mean work is under way — an item at one of these has an open task on Tasks (with STATUS_ACTIVE for In-plan items).
 export const PITCH_ACTIVE_STATUSES = ["Pitching", "Trial"];
 // Still open (not bought, not closed) — what My Portfolio lists as "to pitch".
 export const PITCH_OPEN_STATUSES = ["To-Do", ...PITCH_ACTIVE_STATUSES];
-export const PITCH_LOST_STATUSES = ["Lost in Expansion", "Lost after Purchase"];
 export { STATUS_ACTIVE };
 
 // Stage choices for one parameter. Once a feature has been bought it is on the In-plan track (its status
@@ -53,15 +54,6 @@ export async function fetchLabPitchStatus(labId) {
     map[r.param_name ? `param:${r.module_key}|${r.param_name}` : `mod:${r.module_key}`] = normalizePitch(r.status);
   });
   return map;
-}
-
-export function getModulePitchStatus(pitchForLab, moduleKey) {
-  return (pitchForLab && pitchForLab[`mod:${moduleKey}`]) || "To-Do";
-}
-export function getParamPitchStatus(pitchForLab, moduleKey, paramName, paramIncluded) {
-  const key = `param:${moduleKey}|${paramName}`;
-  if (pitchForLab && pitchForLab[key]) return pitchForLab[key];
-  return paramIncluded ? "Purchased" : "To-Do";
 }
 
 async function upsertPitchStatus(labId, moduleKey, paramName, status) {
@@ -103,50 +95,9 @@ export async function setParamPitchStatus(labId, moduleKey, paramName, status, c
   logPitchChange(labId, { moduleKey, paramName, label, from, to: status, comment, csmId });
 }
 
-// Every item that is UNDER WAY across a set of labs — what Tasks lists (decision Oct 23 2026: an item becomes a task
-// only once it moves past To-Do). In plan / purchased: In Discussion / Demo, Trial, Onboarding / Setup, Live 1–4.
-// Not in plan: Pitching, Trial. `changesByParam` ("<lab>|<module>|<param>" → ascending param_changes rows)
-// gives the date it got under way: the start of its latest unbroken run of active stages (null if unrecorded).
-export function buildActiveItemRows({ labs, modules, plans, adoptionByLab, pitchByLab, changesByParam = {} }) {
-  const rows = [];
-  labs.forEach((lab) => {
-    const plan = plans.find((p) => p.id === lab.plan) || plans[0];
-    if (!plan) return;
-    const pf = pitchByLab[lab.id];
-    modules.forEach((mod) => {
-      mod.params.forEach((p) => {
-        const r = resolveParam(plan, mod, p, adoptionByLab[lab.id], pf);
-        if (r.lost) return;
-        const planTrack = r.inPlan || r.purchased;
-        const status = planTrack ? r.status : r.pitch;
-        const active = planTrack ? STATUS_ACTIVE : PITCH_ACTIVE_STATUSES;
-        if (!active.includes(status)) return;
-        rows.push({
-          labId: lab.id, labName: lab.name, csm: lab.csm, moduleKey: mod.key, moduleName: mod.name, paramName: p.name,
-          category: planTrack ? "In-Plan" : "Not-in-Plan", status, resolved: r,
-          startedAt: activeSince(changesByParam[`${lab.id}|${mod.key}|${p.name}`], active),
-        });
-      });
-    });
-  });
-  return rows;
-}
-
-// Start of the latest unbroken run of changes INTO an active stage ("Status: A → B" / "Stage: A → B").
-function activeSince(changes, active) {
-  if (!changes || !changes.length) return null;
-  let since = null;
-  changes.forEach((c) => {
-    const m = /→ ([^(]+?)(?: \(|$)/.exec(c.change || "");
-    if (!m) return;
-    const to = normalizePitch(m[1].trim()); // older trail rows use the pre-0038 names
-    if (active.includes(to)) { if (!since) since = c.created_at; } else since = null;
-  });
-  return since;
-}
-
 // Confirms an "Added" pitch: records the pitch status, graduates the feature/module onto the Adoption
-// tab, and creates a real Collections item so there's something to collect against.
+// tab, and records the purchase (date, Priced / Trial, monthly charge) on the Expansion tab. It does NOT touch
+// Collections — that is driven only by uploaded invoices.
 export async function markFeatureAdded(target, amount, isTrial, csmId, comment) {
   const { labId, moduleKey, paramName, level, label, existingParamState, fromStatus } = target;
   await upsertPitchStatus(labId, moduleKey, level === "param" ? paramName : null, "Purchased");
@@ -155,7 +106,7 @@ export async function markFeatureAdded(target, amount, isTrial, csmId, comment) 
   } else {
     await markParamIncluded(labId, moduleKey, paramName, existingParamState);
   }
-  await addCollectionsItem({ labId, moduleKey, paramName: level === "param" ? paramName : null, label, amount: isTrial ? 0 : amount, isTrial, csmId });
+  await recordPurchase({ labId, moduleKey, paramName: level === "param" ? paramName : null, label, amount: isTrial ? 0 : amount, isTrial, csmId });
   const trimmed = (comment || "").trim();
   const sym = target.region === "ROW" ? "$" : "₹";
   if (level === "param" && trimmed) {
@@ -173,8 +124,8 @@ export async function markFeatureAdded(target, amount, isTrial, csmId, comment) 
   });
 }
 
-// The Collections entries created when this feature/module was Added (newest first). Module-level pitches
-// have param_name null.
+// Older purchases (before Oct 30 2026) created a Collections entry instead of a purchase record — still read as the
+// fallback when a feature has no purchase record. Module-level pitches have param_name null.
 export async function fetchFeatureCollectionsItems(labId, moduleKey, paramName) {
   let q = supabase.from("collections_items")
     .select("id,amount,is_trial,collected_manual,label,added_date,created_at")
@@ -187,7 +138,8 @@ export async function fetchFeatureCollectionsItems(labId, moduleKey, paramName) 
 }
 
 // "Lost after Purchase": records the stage (with the optional comment, logged like every stage change),
-// then takes the feature's monthly charge — the newest priced Collections entry for it — off the lab's own
+// then takes the feature's monthly charge — from its purchase record (older purchases: the newest priced Collections
+// entry) — off the lab's own
 // MRR (never below 0) and logs it as a Contraction so it shows in Reports → Churn Report / Total MRR
 // Impact. A trial/free feature has no charge, so only the stage is recorded. Returns the new MRR (or null
 // when MRR didn't change) so the caller can update the screen.
@@ -197,11 +149,18 @@ export async function markLostAfterPurchase(target, { labMrr, region, csmId, com
   if (level === "module") await setModulePitchStatus(labId, moduleKey, "Lost after Purchase", csmId, opts);
   else await setParamPitchStatus(labId, moduleKey, paramName, "Lost after Purchase", csmId, opts);
 
-  const items = await fetchFeatureCollectionsItems(labId, moduleKey, level === "param" ? paramName : null);
-  const priced = items.find((i) => !i.is_trial && Number(i.amount) > 0);
-  if (!priced) return { newMrr: null, lostAmount: 0 };
+  const purchase = await fetchActivePurchase(labId, moduleKey, level === "param" ? paramName : null);
+  if (purchase) await markPurchaseLost(purchase.id, comment);
+  let lostAmount = 0, dueAmount = 0;
+  if (purchase && !purchase.isTrial && purchase.monthlyCharge > 0) {
+    lostAmount = purchase.monthlyCharge;
+  } else if (!purchase) {
+    const items = await fetchFeatureCollectionsItems(labId, moduleKey, level === "param" ? paramName : null);
+    const priced = items.find((i) => !i.is_trial && Number(i.amount) > 0);
+    if (priced) { lostAmount = Number(priced.amount); dueAmount = Math.max(0, lostAmount - (Number(priced.collected_manual) || 0)); }
+  }
+  if (!lostAmount) return { newMrr: null, lostAmount: 0 };
 
-  const lostAmount = Number(priced.amount);
   const newMrr = Math.max(0, (Number(labMrr) || 0) - lostAmount);
   await updateLabMRR(labId, newMrr, region, "lost");
   const sym = region === "ROW" ? "$" : "₹";
@@ -210,7 +169,7 @@ export async function markLostAfterPurchase(target, { labMrr, region, csmId, com
     churnType: "Contraction",
     churnMonth: todayISO(),
     mrrLost: lostAmount,
-    dueAmount: Math.max(0, lostAmount - (Number(priced.collected_manual) || 0)),
+    dueAmount,
     reason: `Lost after purchase: ${label}${trimmed ? ` — ${trimmed}` : ""}`,
   }, csmId);
   await logActivity(labId, {
@@ -225,12 +184,21 @@ export async function markLostAfterPurchase(target, { labMrr, region, csmId, com
 // One entry point for every stage change (My Portfolio, Tasks → Pitch Reminders, a lab's Adoption tab), so
 // the three screens can never drift apart. `target` = { labId, moduleKey, paramName, level, label,
 // existingParamState, region }. Returns { newMrr, message } — newMrr is set only when the lab's MRR changed.
-export async function applyPitchStageChange(target, { from, to, comment, amount, isTrial, csmId, labMrr }) {
+// `due` (optional) = due date for the item's task when it is (still) under way.
+export async function applyPitchStageChange(target, { from, to, comment, amount, isTrial, csmId, labMrr, due }) {
+  const isParam = target.level !== "module";
+  const item = { labId: target.labId, moduleKey: target.moduleKey, paramName: target.paramName, actorId: csmId };
   if (to === "Purchased") {
     await markFeatureAdded({ ...target, fromStatus: from }, amount, isTrial, csmId, comment);
-    return { newMrr: null, message: `${target.label} marked Purchased${isTrial ? " (trial)" : ""} — now tracked on the In-plan list.` };
+    if (isParam) {
+      // The Expansion cycle is complete; the feature starts on the In-plan list at Onboarding / Setup.
+      await syncItemTask({ ...item, source: "Expansion", stage: "Purchased", active: false }).catch((err) => console.error(err));
+      await syncItemTask({ ...item, source: "Adoption", stage: PURCHASED_START_STATUS, active: true, due }).catch((err) => console.error(err));
+    }
+    return { newMrr: null, message: `${target.label} marked Purchased${isTrial ? " (trial)" : ""} — now on the In-plan list at ${PURCHASED_START_STATUS}.` };
   }
   if (to === "Lost after Purchase") {
+    if (isParam) await closeItemTasks(target.labId, target.moduleKey, target.paramName, csmId).catch((err) => console.error(err));
     const { newMrr, lostAmount } = await markLostAfterPurchase(target, { labMrr, region: target.region, csmId, comment, from });
     const sym = target.region === "ROW" ? "$" : "₹";
     return {
@@ -242,6 +210,9 @@ export async function applyPitchStageChange(target, { from, to, comment, amount,
   }
   const opts = { comment, from, label: target.label };
   if (target.level === "module") await setModulePitchStatus(target.labId, target.moduleKey, to, csmId, opts);
-  else await setParamPitchStatus(target.labId, target.moduleKey, target.paramName, to, csmId, opts);
+  else {
+    await setParamPitchStatus(target.labId, target.moduleKey, target.paramName, to, csmId, opts);
+    await syncItemTask({ ...item, source: "Expansion", stage: to, active: PITCH_ACTIVE_STATUSES.includes(to), due }).catch((err) => console.error(err));
+  }
   return { newMrr: null, message: `${target.label}: ${from} → ${to}.` };
 }

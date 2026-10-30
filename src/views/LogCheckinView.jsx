@@ -6,7 +6,7 @@ import { fetchLabPitchStatus, PITCH_ACTIVE_STATUSES } from "../lib/pitch";
 import { fetchLabActivity, ACTIVITY_ICONS } from "../lib/activity";
 import { fetchAllVisits, addVisit } from "../lib/visits";
 import { addTask } from "../lib/tasks";
-import { todayISO, daysFromTodayISO } from "../lib/dates";
+import { todayISO, daysFromTodayISO, checkinDateBounds, isCheckinDateAllowed, CHECKIN_DATE_MESSAGE } from "../lib/dates";
 import { fetchLabContacts, addLabContact } from "../lib/labContacts";
 import DesignationSelect from "../components/DesignationSelect";
 
@@ -60,6 +60,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   // This lab's points of contact (lab page → Points of Contact tab), offered as a type-or-pick list.
   const [contacts, setContacts] = useState([]);
   const [saveAsPoc, setSaveAsPoc] = useState(true);
+  const [newPocMin, setNewPocMin] = useState(""); // "Minimum Proactive Check-ins per Month" for a POC saved from here
   const [topics, setTopics] = useState([]);
   const [notes, setNotes] = useState("");
   // Adoption Snapshot "Discussed" marks (decision, Oct 2026): which modules — and optionally which parameters
@@ -138,12 +139,16 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
       window.scrollTo?.({ top: 0, behavior: "smooth" });
       return;
     }
+    if (!isCheckinDateAllowed(date)) {
+      showToast(CHECKIN_DATE_MESSAGE);
+      return;
+    }
     setSaving(true);
     try {
       const csmId = idByName?.[currentCSM];
       // Someone new was typed in and "save as a point of contact" is ticked → add them to the lab's POCs.
       if (personName.trim() && !knownContact && saveAsPoc) {
-        await addLabContact(lab.id, { name: personName, designation: personDesignation }, csmId).catch((err) => console.error(err));
+        await addLabContact(lab.id, { name: personName, designation: personDesignation, minProactive: newPocMin }, csmId).catch((err) => console.error(err));
       }
       const newVisitId = await addVisit({
         labId: lab.id,
@@ -283,7 +288,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
           <div className="table-card" style={{ padding: "16px 18px", marginBottom: 14 }}>
             <h3 style={{ fontSize: 13, margin: "0 0 10px" }}>2. Meeting Details</h3>
             <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-              <div className="tmpl-field" style={{ flex: "1 1 120px" }}><label>Date</label><input type="date" style={fieldStyle} value={date} onChange={(e) => setDate(e.target.value)} /></div>
+              <div className="tmpl-field" style={{ flex: "1 1 120px" }}><label>Date</label><input type="date" style={fieldStyle} value={date} min={checkinDateBounds().min} max={checkinDateBounds().max} onChange={(e) => setDate(e.target.value)} /></div>
               <div className="tmpl-field" style={{ flex: "1 1 100px" }}><label>Time</label><input type="time" style={fieldStyle} value={time} onChange={(e) => setTime(e.target.value)} /></div>
               <div className="tmpl-field" style={{ flex: "1 1 100px" }}><label>Duration (min)</label><input type="number" min="0" style={fieldStyle} value={duration} onChange={(e) => setDuration(e.target.value)} /></div>
             </div>
@@ -310,10 +315,16 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
           </div>
 
           {personName.trim() && !knownContact && (
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, margin: "-6px 0 14px 4px", cursor: "pointer" }}>
-              <input type="checkbox" checked={saveAsPoc} onChange={(e) => setSaveAsPoc(e.target.checked)} />
-              Save {personName.trim()} as a point of contact for {lab.name}
-            </label>
+            <div style={{ margin: "-6px 0 14px 4px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, cursor: "pointer" }}>
+                <input type="checkbox" checked={saveAsPoc} onChange={(e) => setSaveAsPoc(e.target.checked)} />
+                Save {personName.trim()} as a point of contact for {lab.name}
+              </label>
+              {saveAsPoc && (
+                <input type="number" min="0" max="31" style={{ ...fieldStyle, width: 250 }} value={newPocMin} onChange={(e) => setNewPocMin(e.target.value)}
+                  placeholder="Min. proactive check-ins / month (optional)" />
+              )}
+            </div>
           )}
 
           {/* 4. Discussion topics */}

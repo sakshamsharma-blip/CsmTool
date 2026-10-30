@@ -14,11 +14,11 @@ import {
   INVOICE_TYPES, isRecurringInvoice, invoiceTypeLabel, monthlyEquivalent, coveredUntil, invoiceTypeForCycle,
   invoiceBalance, isInvoiceOpen, invoiceStatusLabel,
 } from "../lib/invoices";
-import { updateLabStatus, updateLabStageTags, updateLabTestimonial, updateLabDetails, updateLabBillingMode, updateLabMRR, fetchMrrHistory } from "../lib/labs";
+import { LAB_TYPES, updateLabStatus, updateLabTestimonial, updateLabDetails, updateLabBillingMode, updateLabMRR, fetchMrrHistory } from "../lib/labs";
 import { HEALTH_STATUSES, isHealthyStatus, logLabPulse } from "../lib/pulse";
 import { fetchAllVisits, fetchVisitById, updateVisit } from "../lib/visits";
 import { syncFollowupTaskForVisit, addTask } from "../lib/tasks";
-import { todayISO, dueDateFor } from "../lib/dates";
+import { todayISO, dueDateFor, isCheckinDateAllowed, CHECKIN_DATE_MESSAGE } from "../lib/dates";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { CHURN_TYPES, logChurn } from "../lib/churn";
 import { getCountryNames, getStatesForCountry } from "../lib/geography";
@@ -37,7 +37,6 @@ import LabDocumentsTab from "../components/LabDocumentsTab";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const LAB_STATUSES = ["Active", "Inactive", "At Risk"]; // Churned/Contraction go through the Churn modal instead
-const STAGE_TAGS = ["Adoption", "Expansion", "Support", "Pending Dues", "Open Points", "Pilot", "Future Churn", "Churn", "Rapo"];
 
 // Same field vocab Log Check-in / Log Visit use — kept here too since the Visit Detail view
 // (Lab History tab) edits the very same visit/check-in records.
@@ -144,12 +143,11 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   const [pulseNote, setPulseNote] = useState("");
   const [savingPulse, setSavingPulse] = useState(false);
 
-  const [stageTags, setStageTags] = useState(lab.stageTags || []);
-  const [savingStageTags, setSavingStageTags] = useState(false);
 
   const [detailsEditMode, setDetailsEditMode] = useState(false);
   const [editName, setEditName] = useState(lab.name || "");
   const [editLabCode, setEditLabCode] = useState(lab.labCode || lab.id || "");
+  const [editLabType, setEditLabType] = useState(lab.labType || "");
   const [editCity, setEditCity] = useState(lab.city || "");
   const [editState, setEditState] = useState(lab.state || "");
   const [editCountry, setEditCountry] = useState(lab.country || "");
@@ -187,7 +185,6 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setPulseHealth(lab.healthStatus || "No Risk");
     setPulseRating(lab.lastRating != null ? String(lab.lastRating) : "");
     setPulseNote("");
-    setStageTags(lab.stageTags || []);
     setTestimonialOpen(false);
     setTestimonialCollected(lab.testimonialCollected || false);
     setTestimonialUrl(lab.testimonialVideoUrl || "");
@@ -320,6 +317,8 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   // remove based on the follow-up date now on the record — see lib/tasks.js), then refreshes the
   // Activity Timeline and Lab Health so the edit shows up immediately without a full page reload.
   async function handleSaveVisitDetail() {
+    // The date stays as logged unless it's moved — and a moved date must be today or yesterday.
+    if (vDate !== visitDetail?.visitDate && !isCheckinDateAllowed(vDate)) { showToast(CHECKIN_DATE_MESSAGE); return; }
     setSavingVisitDetail(true);
     try {
       await updateVisit(openVisitId, {
@@ -747,21 +746,6 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     }
   }
 
-  async function handleToggleStageTag(tag) {
-    const next = stageTags.includes(tag) ? stageTags.filter((t) => t !== tag) : [...stageTags, tag];
-    setStageTags(next);
-    setSavingStageTags(true);
-    try {
-      await updateLabStageTags(lab.id, next);
-      onPatchLab?.(lab.id, { stageTags: next });
-    } catch (err) {
-      setStageTags(stageTags); // revert on failure
-      showToast(`⚠ ${err.message}`);
-    } finally {
-      setSavingStageTags(false);
-    }
-  }
-
   async function handleTestimonialSave() {
     if (testimonialCollected && !isValidHttpUrl(testimonialUrl)) {
       showToast("⚠ Enter a valid http:// or https:// link before saving.");
@@ -793,6 +777,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   function startEditDetails() {
     setEditName(lab.name || "");
     setEditLabCode(lab.labCode || lab.id || "");
+    setEditLabType(lab.labType || "");
     setEditCity(lab.city || "");
     setEditState(lab.state || "");
     setEditCountry(lab.country || "");
@@ -835,7 +820,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setSavingDetails(true);
     try {
       const patch = {
-        name: trimmedName, labCode: trimmedLabCode, city: editCity, state: editState, country: editCountry, region: editRegion,
+        name: trimmedName, labCode: trimmedLabCode, labType: editLabType || null, city: editCity, state: editState, country: editCountry, region: editRegion,
         billingType: editBillingType, paymentCycle: editPaymentCycle, creditDays: editCreditDays, remarks: editRemarks,
         yearlyVisitsRequired: editYearlyVisits === "" ? null : parseInt(editYearlyVisits, 10),
       };
@@ -925,9 +910,9 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
             <span
               className="status-pill"
               style={{ background: "var(--bg)", color: HEALTH_BUCKET_COLORS[sentHealth.bucket] }}
-              title="Lab Health (Sentiment) — auto, from logged visit/check-in sentiment. Separate from the manual Health Status above."
+              title="Lab Health (Sentiment) — auto, from logged visit/check-in sentiment (75% the last 5, 25% all-time). Separate from the manual Health Status above."
             >
-              Lab Health: {sentHealth.bucket}
+              Lab Health (Sentiment): {sentHealth.bucket}
             </span>
           </div>
         </div>
@@ -992,7 +977,13 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                 {row("Lab ID", lab.labCode || lab.id,
                   <input value={editLabCode} onChange={(e) => setEditLabCode(e.target.value)} style={inputStyle} placeholder="Lab ID" />
                 )}
-                {row("Lab Type", lab.type + " Lab")}
+                {row("Lab Type", lab.labType || "Not set",
+                  <select value={editLabType} onChange={(e) => setEditLabType(e.target.value)} style={inputStyle}>
+                    <option value="">Not set</option>
+                    {LAB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                )}
+                {row("Hierarchy", lab.type + " Lab")}
                 {row("Parent Lab", lab.parent ? (labs.find((l) => l.id === lab.parent) || {}).name || lab.parent : "—")}
                 {row("CSM Name", lab.csm)}
                 {row("Region Category", lab.region,
@@ -1094,28 +1085,6 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               points={mrrHistory.map((h) => ({ value: h.mrr, label: new Date(h.loggedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" }) }))}
               valueFmt={(v) => fmtMoney(v, lab.region)}
             />
-          </div>
-
-          <div className="param-row" style={{ padding: "11px 0", alignItems: "flex-start" }}>
-            <span className="pname" style={{ color: "var(--text-dim)", flex: "0 0 180px", paddingTop: 4 }}>Stage</span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, opacity: savingStageTags ? 0.6 : 1 }}>
-              {STAGE_TAGS.map((tag) => (
-                <span
-                  key={tag}
-                  onClick={() => handleToggleStageTag(tag)}
-                  className="status-select"
-                  style={{
-                    cursor: "pointer", userSelect: "none", fontSize: 11.5, padding: "4px 10px", borderRadius: 20,
-                    border: `1px solid ${stageTags.includes(tag) ? "var(--accent)" : "var(--border)"}`,
-                    background: stageTags.includes(tag) ? "var(--accent-dim)" : "transparent",
-                    color: stageTags.includes(tag) ? "var(--info-text)" : "var(--text-dim)",
-                    fontWeight: stageTags.includes(tag) ? 700 : 500,
-                  }}
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
           </div>
 
           <div className="param-row" style={{ padding: "11px 0" }}>

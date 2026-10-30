@@ -32,10 +32,45 @@ export function isTaskDueToday(t) {
 }
 
 // A recurring task's "done" resets each day (lastDoneDate no longer matches today) rather than staying
-// checked off forever; a one-off task's done state is just its done flag.
+// checked off forever; a one-off task is done when its status is Done.
 export function isTaskDoneToday(t) {
-  if (!t.repeat || t.repeat === "none") return !!t.done;
+  if (!t.repeat || t.repeat === "none") return t.status === "Done";
   return t.lastDoneDate === todayISO();
+}
+export const isRecurring = (t) => !!t.repeat && t.repeat !== "none";
+
+// ---- Task management (migration 0043) ----
+// Workflow status — "Overdue" isn't stored: it's an open task whose due date has passed (taskStatusLabel).
+export const TASK_STATUSES = ["Open", "In Progress", "On Hold", "Done"];
+export const TASK_PRIORITIES = ["High", "Medium", "Low"];
+// Manual = made by a person (Add Task, Log Check-in, Visits…); Adoption / Expansion = created automatically when an
+// item on a lab's Adoption tab gets under way (syncItemTask).
+export const TASK_SOURCES = ["Manual", "Adoption", "Expansion"];
+export const PRIORITY_COLORS = { High: "var(--bad)", Medium: "var(--warn)", Low: "var(--ok)" };
+
+export function isTaskOverdue(t) {
+  return !isRecurring(t) && t.status !== "Done" && !!t.due && taskBucket(t.due) === "overdue";
+}
+// What the status pill says: Overdue wins over Open / In Progress; On Hold and Done show as they are.
+export function taskStatusLabel(t) {
+  if (isRecurring(t)) return isTaskDoneToday(t) ? "Done" : "Open";
+  if (t.status === "Done" || t.status === "On Hold") return t.status;
+  if (isTaskOverdue(t)) return "Overdue";
+  if (t.due && taskBucket(t.due) === "today") return "Due Today";
+  return t.status;
+}
+const DAY = 86400000;
+// Days from creation to completion (one decimal), or null while open. Recurring tasks have no TAT.
+export function resolutionDays(t) {
+  if (!t.completedAt || !t.createdAt) return null;
+  return Math.max(0, (new Date(t.completedAt) - new Date(t.createdAt)) / DAY);
+}
+// Completed on or before its due date (null when it has no due date or isn't done).
+export function completedOnTime(t) {
+  if (!t.completedAt || !t.due) return null;
+  const d = new Date(t.completedAt);
+  const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return local <= t.due;
 }
 
 export function taskBucket(due) {
@@ -62,6 +97,8 @@ export function repeatLabel(t) {
   return "";
 }
 export function taskTypeLabel(t) {
+  if (t.type === "adoption-item") return "Adoption";
+  if (t.type === "expansion-item") return "Expansion";
   if (t.type === "follow-up") return "Follow-up";
   if (t.type === "action-item") return "Action Item";
   if (t.type === "planned-visit") return "Planned Visit";
@@ -111,7 +148,15 @@ function fromRow(r, nameById) {
     broadcastId: r.broadcast_id,
     type: r.type,
     due: r.due,
-    done: r.done,
+    // status is the source of truth; rows from before migration 0043 fall back to the old done flag.
+    status: r.status || (r.done ? "Done" : "Open"),
+    done: r.status ? r.status === "Done" : r.done,
+    priority: r.priority || "Medium",
+    source: r.source || "Manual",
+    details: r.details || "",
+    completedAt: r.completed_at || null,
+    moduleKey: r.module_key || null,
+    paramName: r.param_name || null,
     lastDoneDate: r.last_done_date,
     repeat: r.repeat,
     repeatDay: r.repeat_day != null ? parseInt(r.repeat_day, 10) : null,
@@ -135,7 +180,7 @@ export async function fetchAllTasks(nameById) {
 // a later edit to that visit's follow-up date can keep this task in sync — see
 // syncFollowupTaskForVisit below. Returns the inserted row(s) so a caller that needs the new id
 // (exactly the sourceVisitId case, always a single owner) can use it right away.
-export async function addTask({ labId, desc, owners, type, repeat, repeatDay, repeatIntervalDays, repeatAnchor, due, idByName, assignedByName, sourceVisitId }) {
+export async function addTask({ labId, desc, owners, type, repeat, repeatDay, repeatIntervalDays, repeatAnchor, due, idByName, assignedByName, sourceVisitId, priority, details }) {
   const broadcastId = owners.length > 1 ? crypto.randomUUID() : null;
   const assignedById = assignedByName ? idByName[assignedByName] || null : null;
   const rows = owners.map((owner) => ({
@@ -151,9 +196,13 @@ export async function addTask({ labId, desc, owners, type, repeat, repeatDay, re
     repeat_interval_days: repeatIntervalDays || null,
     repeat_anchor: repeatAnchor || null,
     source_visit_id: sourceVisitId || null,
+    priority: priority || "Medium",
+    details: (details || "").trim() || null,
   }));
   const { data, error } = await supabase.from("tasks").insert(rows).select("id");
   if (error) throw error;
+  const by = assignedById || idByName[owners[0]] || null;
+  (data || []).forEach((row) => logTaskEvent(row.id, by, "Task created"));
   if (labId) {
     logActivity(labId, {
       kind: "Task Added",
@@ -165,12 +214,117 @@ export async function addTask({ labId, desc, owners, type, repeat, repeatDay, re
   return data || [];
 }
 
-export async function toggleTaskDone(task) {
-  const patch = (!task.repeat || task.repeat === "none")
-    ? { done: !task.done }
-    : { last_done_date: isTaskDoneToday(task) ? null : todayISO() };
+// The tick box (Dashboard / My Portfolio "Tasks for Today", the Tasks list): Done ⇄ Open for a one-off task, done-for-
+// today for a recurring one.
+export async function toggleTaskDone(task, actorId) {
+  if (isRecurring(task)) {
+    const { error } = await supabase.from("tasks").update({ last_done_date: isTaskDoneToday(task) ? null : todayISO() }).eq("id", task.id);
+    if (error) throw error;
+    return;
+  }
+  await setTaskStatus(task, task.status === "Done" ? "Open" : "Done", actorId);
+}
+
+// Status change — keeps `done` and completed_at in step, and records it in the task's activity history.
+export async function setTaskStatus(task, status, actorId) {
+  if (status === task.status) return;
+  const patch = { status, done: status === "Done", completed_at: status === "Done" ? new Date().toISOString() : null };
   const { error } = await supabase.from("tasks").update(patch).eq("id", task.id);
   if (error) throw error;
+  logTaskEvent(task.id, actorId, `Status changed to ${status}`);
+}
+
+// Field edits from the task panel. `changes` = any of { desc, details, priority, due, ownerId }; `ownerName` labels an
+// owner change in the history. Each real change becomes one activity entry.
+export async function updateTaskFields(task, changes, actorId, { ownerName } = {}) {
+  const patch = {};
+  const events = [];
+  if (changes.desc !== undefined && changes.desc.trim() && changes.desc.trim() !== task.desc) { patch.description = changes.desc.trim(); events.push("Title changed"); }
+  if (changes.details !== undefined && (changes.details || "").trim() !== (task.details || "")) { patch.details = (changes.details || "").trim() || null; events.push("Description updated"); }
+  if (changes.priority !== undefined && changes.priority !== task.priority) { patch.priority = changes.priority; events.push(`Priority set to ${changes.priority}`); }
+  if (changes.due !== undefined && (changes.due || null) !== (task.due || null)) {
+    patch.due = changes.due || null;
+    events.push(changes.due ? `Due date set to ${new Date(changes.due + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}` : "Due date removed");
+  }
+  if (changes.ownerId !== undefined && changes.ownerId !== task.ownerId) { patch.owner_id = changes.ownerId; events.push(`Reassigned to ${ownerName || "another CSM"}`); }
+  if (!Object.keys(patch).length) return;
+  const { error } = await supabase.from("tasks").update(patch).eq("id", task.id);
+  if (error) throw error;
+  events.forEach((e) => logTaskEvent(task.id, actorId, e));
+}
+
+// ---- comments & activity history (task_updates) ----
+function logTaskEvent(taskId, actorId, body) {
+  supabase.from("task_updates").insert({ task_id: taskId, author_id: actorId || null, kind: "event", body })
+    .then(({ error }) => { if (error) console.error(error); });
+}
+export async function fetchTaskUpdates(taskId) {
+  const { data, error } = await supabase.from("task_updates").select("id,task_id,author_id,kind,body,created_at")
+    .eq("task_id", taskId).order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data || []).map((r) => ({ id: r.id, taskId: r.task_id, authorId: r.author_id, kind: r.kind, body: r.body, createdAt: r.created_at }));
+}
+// Comment counts for the list (one query; RLS limits it to tasks this person can see).
+export async function fetchTaskCommentCounts() {
+  const { data, error } = await supabase.from("task_updates").select("task_id").eq("kind", "comment");
+  if (error) throw error;
+  const counts = {};
+  (data || []).forEach((r) => { counts[r.task_id] = (counts[r.task_id] || 0) + 1; });
+  return counts;
+}
+export async function addTaskComment(taskId, body, authorId) {
+  const { error } = await supabase.from("task_updates").insert({ task_id: taskId, author_id: authorId, kind: "comment", body: body.trim() });
+  if (error) throw error;
+}
+export async function deleteTaskUpdate(id) {
+  const { error } = await supabase.from("task_updates").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ---- tasks for Adoption / Expansion items (decision Oct 30 2026) ----
+// When a parameter on a lab's Adoption tab gets under way (moves past To-Do), it gets ONE task — Source "Adoption" (In-plan
+// list) or "Expansion" (Not-in-plan list) — owned by the lab's CSM, with NO due date unless one is given (the stage-change
+// dialog offers one; it can also be added later on Tasks). Moving between under-way stages keeps the same task and updates
+// its title; reaching a final stage (Adopted, Purchased, Not Required, Lost…) marks it Done. Called from the single entry
+// points for stage changes (setParamStatus / applyPitchStageChange / setParamInPlan), so every screen behaves the same.
+export async function syncItemTask({ labId, moduleKey, paramName, source, stage, active, due, actorId }) {
+  const { data: open, error } = await supabase.from("tasks").select("id,status,description,due")
+    .eq("lab_id", labId).eq("module_key", moduleKey).eq("param_name", paramName).eq("source", source).neq("status", "Done")
+    .order("created_at", { ascending: false }).limit(1);
+  if (error) throw error;
+  const existing = open && open[0];
+  const title = `${paramName} — ${stage}`;
+  if (!active) {
+    if (existing) await setTaskStatus({ id: existing.id, status: existing.status }, "Done", actorId);
+    return;
+  }
+  if (existing) {
+    const patch = { description: title };
+    if (due) patch.due = due;
+    const { error: e2 } = await supabase.from("tasks").update(patch).eq("id", existing.id);
+    if (e2) throw e2;
+    logTaskEvent(existing.id, actorId, `Stage changed to ${stage}${due ? ` · due ${due}` : ""}`);
+    return;
+  }
+  const { data: lab, error: e3 } = await supabase.from("labs").select("csm_id").eq("id", labId).single();
+  if (e3) throw e3;
+  const ownerId = lab?.csm_id || actorId;
+  if (!ownerId) return;
+  const { data: created, error: e4 } = await supabase.from("tasks").insert({
+    lab_id: labId, owner_id: ownerId, assigned_by: actorId && actorId !== ownerId ? actorId : null,
+    description: title, type: source === "Adoption" ? "adoption-item" : "expansion-item", source,
+    module_key: moduleKey, param_name: paramName, due: due || null, repeat: "none", priority: "Medium", auto: true,
+  }).select("id").single();
+  if (e4) throw e4;
+  logTaskEvent(created.id, actorId, `Task created — ${paramName} got under way (${stage})`);
+}
+
+// Closes every open item task of one parameter (both lists) — used when it switches In plan ⇄ Not in plan or is lost.
+export async function closeItemTasks(labId, moduleKey, paramName, actorId) {
+  const { data, error } = await supabase.from("tasks").select("id,status")
+    .eq("lab_id", labId).eq("module_key", moduleKey).eq("param_name", paramName).neq("status", "Done");
+  if (error) throw error;
+  await Promise.all((data || []).map((t) => setTaskStatus(t, "Done", actorId)));
 }
 
 // Generic patch — used by syncFollowupTaskForVisit to update a linked task's due date/description

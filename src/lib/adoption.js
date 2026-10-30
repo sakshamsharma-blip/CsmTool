@@ -1,6 +1,7 @@
 import { supabase } from "../supabaseClient";
 import { planIncludesParam } from "./plans";
 import { logActivity } from "./activity";
+import { syncItemTask, closeItemTasks } from "./tasks";
 
 // ============================================================================================================
 // Adoption model v2 (Oct 2026)
@@ -13,15 +14,19 @@ import { logActivity } from "./activity";
 // A parameter's default (until someone changes it): In plan when the lab's Plan includes it AND its template
 // category is Adoption; otherwise Not in plan. Changing it is always reversible.
 //
-// Scoring — every parameter scores 0–100 on ONE ladder, so 100% means "everything purchased and fully adopted":
-//   Not in plan, not purchased → by its Expansion stage (PITCH_SCORE)    To-Do 0 · Pitching 10 · Trial 30
-//   In plan, or purchased      → by its In-plan status (ROLLOUT_SCORE)   To-Do 70 … Live 4 98 · Adopted 100
-//   A purchased add-on joins the In-plan track at To-Do (70) — "Purchased" itself is the hand-over point.
-//   "Not Required", "Did Not Meet Requirements" and both Lost stages → 0 (they still count, pulling the score down).
-//   "Not Applicable" → left out of the score entirely (null).
-// Module score = weighted average of its parameters (parameter weights); lab score = weighted average of its
-// modules (module weights). "Mandatory completion" = the same calculation using only Mandatory parameters.
-// The numbers below are the single place to tune the ladder (lists and their order: decisions Oct 23 & 26 2026).
+// Scoring — TWO pipelines, each scored 0–100 on its own (decision Oct 30 2026):
+//   • Adoption pipeline  = In-plan parameters, plus purchased add-ons (ROLLOUT_SCORE):
+//       To-Do 0 · In Discussion / Demo 10 · Trial 15 · Onboarding / Setup 35 · Live 1 50 · Live 2 60 · Live 3 70 ·
+//       Live 4 80 · Adopted 100 · Did Not Meet Requirements 0 · Not Required / Not Applicable left out.
+//     A purchased add-on joins this pipeline at Onboarding / Setup (35) — its pitch / trial already happened.
+//   • Expansion pipeline = Not-in-plan parameters (PITCH_SCORE): To-Do 0 · Pitching 10 · Trial 15 · Purchased 100
+//       (the sale completes this cycle) · Lost in Expansion / Lost after Purchase 0 · Not Required / Not Applicable
+//       left out. A purchased add-on is therefore counted in BOTH pipelines (100 here, its rollout there); a lost one
+//       only here (0).
+//   • Overall = the simple average of the two pipeline scores (just the one that has parameters, if only one does).
+// Module pipeline score = weighted average of its parameters (parameter weights); lab pipeline score = weighted
+// average of the modules (module weights). "Mandatory" = the same calculation using only Mandatory parameters.
+// The numbers below are the single place to tune the ladders.
 //
 // The In-plan list only moves FORWARD: To-Do → In Discussion / Demo → Trial → Onboarding / Setup → Live 1 → Live 2 →
 // Live 3 → Live 4 → Adopted. Anyone may skip ahead (decision Oct 28 2026 — new labs need their current stage set
@@ -36,14 +41,17 @@ export const STATUS_PROGRESS = ["To-Do", "In Discussion / Demo", "Trial", "Onboa
 export const STATUS_EXITS = ["Not Required", "Not Applicable", "Did Not Meet Requirements"];
 export const STATUS_ORDER = [...STATUS_PROGRESS, ...STATUS_EXITS];
 export const ROLLOUT_SCORE = {
-  "To-Do": 70, "In Discussion / Demo": 75, Trial: 80, "Onboarding / Setup": 90,
-  "Live 1": 92, "Live 2": 94, "Live 3": 96, "Live 4": 98, Adopted: 100,
-  "Not Required": 0, "Not Applicable": null, "Did Not Meet Requirements": 0,
+  "To-Do": 0, "In Discussion / Demo": 10, Trial: 15, "Onboarding / Setup": 35,
+  "Live 1": 50, "Live 2": 60, "Live 3": 70, "Live 4": 80, Adopted: 100,
+  "Not Required": null, "Not Applicable": null, "Did Not Meet Requirements": 0,
 };
-// In-plan statuses that mean work is under way — these (and PITCH_ACTIVE_STATUSES) are what Tasks lists.
+// Where a purchased add-on starts on the In-plan list.
+export const PURCHASED_START_STATUS = "Onboarding / Setup";
+// In-plan statuses that mean work is under way — while an item is at one of these (or PITCH_ACTIVE_STATUSES) it has an
+// open task (syncItemTask in lib/tasks.js).
 export const STATUS_ACTIVE = ["In Discussion / Demo", "Trial", "Onboarding / Setup", ...LIVE_STAGES];
 export const PITCH_SCORE = {
-  "To-Do": 0, Pitching: 10, Trial: 30, "Not Required": 0, "Not Applicable": null,
+  "To-Do": 0, Pitching: 10, Trial: 15, Purchased: 100, "Not Required": null, "Not Applicable": null,
   "Lost in Expansion": 0, "Lost after Purchase": 0,
 };
 
@@ -124,17 +132,19 @@ export function resolveParam(plan, mod, paramDef, adoption, pitchForLab) {
   // model existed defaulted `included` to true for Adoption-category params, so for those it only counts when
   // the row explicitly says Not in plan (migration 0034 cleared the ones that mattered).
   const purchased = !inPlan && !!st && !!st.included && (st.inPlan === false || paramDef.category === "Expansion");
-  const status = (st && st.status) || "To-Do";
+  const status = (st && st.status) || (purchased ? PURCHASED_START_STATUS : "To-Do");
   const pitch = normalizePitch(pitchForLab && pitchForLab[`param:${key}`]) || (purchased ? "Purchased" : "To-Do");
   // Either Lost stage means the feature is gone — including one that had been bought (e.g. a trial that was
-  // then marked Lost): it scores 0 and has no rollout or charges left to track.
+  // then marked Lost): 0 in the Expansion pipeline, no longer in the Adoption pipeline, no rollout or charges left.
   const lost = !inPlan && (pitch === "Lost after Purchase" || pitch === "Lost in Expansion");
-  let score;
-  if (lost) score = 0;
-  else if (inPlan || purchased) score = status in ROLLOUT_SCORE ? ROLLOUT_SCORE[status] : 0;
-  else score = pitch in PITCH_SCORE ? PITCH_SCORE[pitch] : 0;
+  const onPlanTrack = (inPlan || purchased) && !lost;
+  // null = not part of that pipeline (or left out of its score, e.g. Not Applicable).
+  const adoptionScore = onPlanTrack ? (status in ROLLOUT_SCORE ? ROLLOUT_SCORE[status] : 0) : null;
+  const expansionScore = inPlan ? null : lost ? 0 : purchased ? PITCH_SCORE.Purchased : pitch in PITCH_SCORE ? PITCH_SCORE[pitch] : 0;
+  // The score on the list it's on now (what the parameter row shows).
+  const score = onPlanTrack ? adoptionScore : expansionScore;
   return {
-    key, def: paramDef, inPlan, purchased, lost, status, pitch, score,
+    key, def: paramDef, inPlan, purchased, lost, status, pitch, score, adoptionScore, expansionScore,
     // What this parameter is for THIS lab. A purchased add-on has moved onto the In-plan track.
     category: inPlan || (purchased && !lost) ? "Adoption" : "Expansion",
     state: st,
@@ -147,18 +157,37 @@ function weightedAvg(items) {
   return w ? sum / w : null;
 }
 
-// Whole-lab scoring. Returns { overallPct, mandatoryPct, moduleResults: [{ mod, overallPct, mandPct, params }] }.
-// overallPct/mandatoryPct are 0–100 (0 when nothing counts); a module with nothing counted has null scores.
+// Simple average of the two pipeline scores; just the one that is scored if the other has nothing counted.
+function averageOfPipelines(a, b) {
+  if (a == null) return b;
+  if (b == null) return a;
+  return (a + b) / 2;
+}
+const paramAvg = (params, field) => weightedAvg(params.map((r) => ({ weight: r.def.weight, value: r[field] })));
+const moduleAvg = (moduleResults, field) => weightedAvg(moduleResults.map((m) => ({ weight: m.mod.weight, value: m[field] })));
+
+// Whole-lab scoring. Returns { overallPct, adoptionPct, expansionPct, mandatoryPct, moduleResults: [{ mod, params,
+// overallPct, adoptionPct, expansionPct, mandPct }] }. adoptionPct / expansionPct are null when that pipeline has no
+// counted parameter; the lab's overallPct / mandatoryPct are 0 when nothing counts. A module with nothing counted has
+// null scores.
 export function computeLabScores(modules, plan, adoption, pitchForLab) {
   const moduleResults = modules.map((mod) => {
     const params = mod.params.map((p) => resolveParam(plan, mod, p, adoption, pitchForLab));
-    const overallPct = weightedAvg(params.map((r) => ({ weight: r.def.weight, value: r.score })));
-    const mandPct = weightedAvg(params.filter((r) => r.def.type === "M").map((r) => ({ weight: r.def.weight, value: r.score })));
-    return { mod, params, overallPct, mandPct };
+    const mand = params.filter((r) => r.def.type === "M");
+    const adoptionPct = paramAvg(params, "adoptionScore");
+    const expansionPct = paramAvg(params, "expansionScore");
+    const mandAdoptionPct = paramAvg(mand, "adoptionScore");
+    const mandExpansionPct = paramAvg(mand, "expansionScore");
+    return {
+      mod, params, adoptionPct, expansionPct, overallPct: averageOfPipelines(adoptionPct, expansionPct),
+      mandAdoptionPct, mandExpansionPct, mandPct: averageOfPipelines(mandAdoptionPct, mandExpansionPct),
+    };
   });
-  const overallPct = weightedAvg(moduleResults.map((m) => ({ weight: m.mod.weight, value: m.overallPct }))) ?? 0;
-  const mandatoryPct = weightedAvg(moduleResults.map((m) => ({ weight: m.mod.weight, value: m.mandPct }))) ?? 0;
-  return { overallPct, mandatoryPct, moduleResults };
+  const adoptionPct = moduleAvg(moduleResults, "adoptionPct");
+  const expansionPct = moduleAvg(moduleResults, "expansionPct");
+  const overallPct = averageOfPipelines(adoptionPct, expansionPct) ?? 0;
+  const mandatoryPct = averageOfPipelines(moduleAvg(moduleResults, "mandAdoptionPct"), moduleAvg(moduleResults, "mandExpansionPct")) ?? 0;
+  return { overallPct, adoptionPct, expansionPct, mandatoryPct, moduleResults };
 }
 // ---- stage groups (analytics) ----
 // Where each parameter currently sits, bucketed for the Adoption-tab pies and My Portfolio's charts. Colours (decision
@@ -175,11 +204,12 @@ export const STAGE_GROUPS = [
   { key: "closed", label: "Closed (Not Required / N/A / Lost)", color: "var(--stg-closed)", ink: "var(--stg-closed-ink)" },
   { key: "notinplan", label: "Not in plan (not bought)", color: "var(--stg-notin)", ink: "var(--stg-notin-ink)" },
 ];
-// The Not-in-plan pie splits the add-ons that haven't been bought by Expansion stage.
+// The Expansion-pipeline pie: every Not-in-plan parameter by Expansion stage, purchased ones included.
 export const EXPANSION_GROUPS = [
   { key: "exp_todo", label: "To-Do", color: "var(--stg-exp-1)", ink: "var(--stg-exp-1-ink)" },
   { key: "exp_pitching", label: "Pitching", color: "var(--stg-exp-2)", ink: "var(--stg-exp-2-ink)" },
   { key: "exp_trial", label: "Trial", color: "var(--stg-exp-3)", ink: "var(--stg-exp-3-ink)" },
+  { key: "exp_purchased", label: "Purchased", color: "var(--stg-plan-5)", ink: "var(--stg-plan-5-ink)" },
   { key: "closed", label: "Closed (Not Required / N/A / Lost)", color: "var(--stg-closed)", ink: "var(--stg-closed-ink)" },
 ];
 // The exact stage a parameter is at, as shown in its dropdown ("Adopted", "Pitching", …).
@@ -200,23 +230,12 @@ export function stageGroupOf(r) {
   if (st === "In Discussion / Demo" || st === "Trial") return "progress";
   return "todo";
 }
+// A Not-in-plan parameter's place in the Expansion pipeline (by its Expansion stage, not its rollout).
 export function expansionGroupOf(r) {
-  if (isClosed(r)) return "closed";
-  const st = currentStage(r);
-  return st === "Pitching" ? "exp_pitching" : st === "Trial" ? "exp_trial" : "exp_todo";
-}
-
-// Adoption % of just one group of parameters (e.g. only In plan, only Optional) — same weighting as the lab
-// score: parameters by weight within each module, then modules by module weight. Also returns how many
-// parameters are in the group. Parameters left out of the score (Not Applicable) aren't counted.
-export function groupAdoption(moduleResults, pred) {
-  let count = 0;
-  const pct = weightedAvg(moduleResults.map((m) => {
-    const ps = m.params.filter(pred);
-    count += ps.filter((r) => r.score != null).length;
-    return { weight: m.mod.weight, value: weightedAvg(ps.map((r) => ({ weight: r.def.weight, value: r.score }))) };
-  }));
-  return { pct, count };
+  if (r.lost) return "closed";
+  if (r.purchased) return "exp_purchased";
+  if (["Not Required", "Not Applicable"].includes(r.pitch)) return "closed";
+  return r.pitch === "Pitching" ? "exp_pitching" : r.pitch === "Trial" ? "exp_trial" : "exp_todo";
 }
 
 // Same thing — kept under its old name for the screens that score already-saved data (Portfolio, Dashboard…).
@@ -242,14 +261,6 @@ export async function fetchParamChanges(labId) {
   }));
 }
 
-// Every lab's audit trail at once (Tasks needs it to work out how long each item has been under way).
-export async function fetchAllParamChanges() {
-  const { data, error } = await supabase.from("param_changes")
-    .select("lab_id,module_key,param_name,change,created_at").order("created_at", { ascending: true });
-  if (error) throw error;
-  return data || [];
-}
-
 // `timing` (optional) = { statusChangedAt, liveStartedAt } — only sent when the status itself changes, so other
 // updates (In plan ⇄ Not in plan) leave the Live timers alone.
 async function upsertParamState(labId, moduleKey, paramName, next, timing) {
@@ -272,6 +283,13 @@ export async function setParamInPlan(labId, resolved, inPlan, comment, csmId) {
   await upsertParamState(labId, moduleKey, def.name, { ...base, inPlan, included: inPlan, status: base.status || "To-Do" });
   const change = inPlan ? "Not in plan → In plan" : "In plan → Not in plan";
   await recordParamChange(labId, moduleKey, def.name, change, comment, csmId);
+  // Its item task belongs to the list it left; if it lands on the In-plan list mid-way, that list gets one.
+  await closeItemTasks(labId, moduleKey, def.name, csmId).catch((err) => console.error(err));
+  const status = base.status || "To-Do";
+  if (inPlan && STATUS_ACTIVE.includes(status)) {
+    await syncItemTask({ labId, moduleKey, paramName: def.name, source: "Adoption", stage: status, active: true, actorId: csmId })
+      .catch((err) => console.error(err));
+  }
   logActivity(labId, {
     kind: "Adoption Updated", title: `${def.name}: ${change}`, meta: comment.trim(), csmId,
     details: { param: { moduleKey, paramName: def.name, change, comment: comment.trim() } },
@@ -280,7 +298,8 @@ export async function setParamInPlan(labId, resolved, inPlan, comment, csmId) {
 
 // In-plan status (To-Do … Adopted, see STATUS_ORDER) of an In-plan or purchased parameter. Enforces the one-way
 // rules (statusOptions) for every caller — Adoption tab and Tasks alike. `canStepBack` = CSM Lead / Admin.
-export async function setParamStatus(labId, resolved, status, comment, csmId, { canStepBack = false } = {}) {
+// `due` (optional) = due date for the item's task when it is (still) under way.
+export async function setParamStatus(labId, resolved, status, comment, csmId, { canStepBack = false, due } = {}) {
   const { def } = resolved;
   const moduleKey = resolved.key.split("|")[0];
   const base = resolved.state || {};
@@ -300,6 +319,8 @@ export async function setParamStatus(labId, resolved, status, comment, csmId, { 
   }, { statusChangedAt: nowIso, liveStartedAt });
   const change = `Status: ${resolved.status} → ${status}`;
   await recordParamChange(labId, moduleKey, def.name, change, comment, csmId);
+  await syncItemTask({ labId, moduleKey, paramName: def.name, source: "Adoption", stage: status, active: STATUS_ACTIVE.includes(status), due, actorId: csmId })
+    .catch((err) => console.error(err));
   logActivity(labId, {
     kind: "Adoption Updated", title: `${def.name}: ${change}`, meta: comment.trim(), csmId,
     details: { param: { moduleKey, paramName: def.name, change, comment: comment.trim() } },
@@ -309,10 +330,11 @@ export async function setParamStatus(labId, resolved, status, comment, csmId, { 
 // ---- purchase plumbing used by pitch.js ("Purchased") ----
 // A feature graduating from "pitched" to "Purchased" flips included=true on its param_states row without disturbing
 // the rest. in_plan is left as it is (a bought add-on stays Not in plan, tracked as purchased).
+// It joins the In-plan list at Onboarding / Setup (PURCHASED_START_STATUS).
 export async function markParamIncluded(labId, moduleKey, paramName, existingState) {
   const base = existingState || {};
   await upsertParamState(labId, moduleKey, paramName, {
-    inPlan: base.inPlan ?? false, included: true, status: "To-Do",
+    inPlan: base.inPlan ?? false, included: true, status: PURCHASED_START_STATUS,
     expValue: base.expValue ?? null, expStage: base.expStage ?? null,
   }, { statusChangedAt: new Date().toISOString(), liveStartedAt: null });
 }

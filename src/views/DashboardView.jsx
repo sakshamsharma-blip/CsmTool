@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
@@ -7,23 +7,28 @@ import { fetchAllPitchStatus } from "../lib/pitch";
 import { fetchAllCollectionsItems, labCollectionsSummary, isItemOpen, itemBalance, AGING_COLORS } from "../lib/collections";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask, getOpenTasksFor } from "../lib/tasks";
 import { fetchAllVisits } from "../lib/visits";
+import { fetchAllLabContacts, pocCompliance } from "../lib/labContacts";
+import { todayISO } from "../lib/dates";
 import { fetchChurnLog } from "../lib/churn";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
+import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import BarChart from "../components/BarChart";
 import TasksPanel from "../components/TasksPanel";
 import InfoTip from "../components/InfoTip";
 
-export default function DashboardView({ labs, modules, plans, viewer, idByName, onOpenLab, showToast }) {
+export default function DashboardView({ labs: allLabs, modules, plans, viewer, idByName, onOpenLab, showToast }) {
   const { currentCSM } = viewer;
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "dashboard");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "dashboard");
+  const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
 
   const [adoptionByLab, setAdoptionByLab] = useState({});
   const [pitchByLab, setPitchByLab] = useState({}); // pitch stages feed the adoption score (lib/adoption.js)
   const [collectionsItems, setCollectionsItems] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [visits, setVisits] = useState([]);
+  const [contacts, setContacts] = useState([]); // points of contact, for the monthly proactive check-in compliance card
   const [churnLog, setChurnLog] = useState([]);
   const [loading, setLoading] = useState(SUPABASE_CONFIGURED);
   const [error, setError] = useState(null);
@@ -35,10 +40,12 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
     setLoading(true);
     setError(null);
     try {
-      const [adoption, items, tk, vs, pitch, churn] = await Promise.all([
+      const [adoption, items, tk, vs, pitch, churn, pocs] = await Promise.all([
         fetchAllLabsAdoption(), fetchAllCollectionsItems(), fetchAllTasks(invert(idByName)), fetchAllVisits(), fetchAllPitchStatus(),
         fetchChurnLog().catch(() => []),
+        fetchAllLabContacts().catch(() => []), // table/column may not exist before migrations 0032 / 0042
       ]);
+      setContacts(pocs);
       setChurnLog(churn);
       setAdoptionByLab(adoption);
       setPitchByLab(pitch);
@@ -80,7 +87,10 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
   const activeCount = rows.filter((r) => r.status === "Active").length + rows.reduce((s, r) => s + r.children.filter((c) => c.status === "Active").length, 0);
   const atRiskCount = rows.filter((r) => r.status === "At Risk").length + rows.reduce((s, r) => s + r.children.filter((c) => c.status === "At Risk").length, 0);
   const avgAdoption = rows.length ? Math.round(rows.reduce((s, r) => s + scoreOf(r).overallPct, 0) / rows.length) : 0;
-  const openTaskCount = getOpenTasksFor(tasks, teamAll ? null : scopeCsm).length;
+  // With a Lab Type chosen, only tasks for labs of that type count (lab-less personal tasks drop out).
+  const labIdsInView = new Set(labs.map((l) => l.id));
+  const tasksInView = labType ? tasks.filter((t) => labIdsInView.has(t.labId)) : tasks;
+  const openTaskCount = getOpenTasksFor(tasksInView, teamAll ? null : scopeCsm).length;
 
   const healthy = rows.filter((r) => scoreOf(r).overallPct >= 75).length;
   const needsPush = rows.filter((r) => { const p = scoreOf(r).overallPct; return p >= 40 && p < 75; }).length;
@@ -93,6 +103,10 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
 
   const labsById = {};
   labs.forEach((l) => { labsById[l.id] = l; });
+
+  // Internal compliance: Proactive check-ins done vs the monthly minimum set on each point of contact (this calendar month).
+  const complianceMonth = todayISO().slice(0, 7);
+  const compliance = pocCompliance(contacts, visits, labs, complianceMonth).filter((c) => teamAll || c.csm === scopeCsm);
 
   const rowIds = new Set();
   rows.forEach((r) => { rowIds.add(r.id); r.children.forEach((c) => rowIds.add(c.id)); });
@@ -112,7 +126,7 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
   });
 
   async function handleToggleDone(task) {
-    try { await apiToggleTaskDone(task); await loadAll(); } catch (err) { showToast(`⚠ ${err.message}`); }
+    try { await apiToggleTaskDone(task, idByName[currentCSM]); await loadAll(); } catch (err) { showToast(`⚠ ${err.message}`); }
   }
   async function handleAddTask(payload) {
     try { await apiAddTask({ ...payload, idByName }); await loadAll(); showToast(payload.owners.length > 1 ? `Task added for all ${payload.owners.length} CSMs.` : "Task added."); }
@@ -139,7 +153,7 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
     const labCount = csmRows.length + csmRows.reduce((s, r) => s + r.children.length, 0);
     const mrr = csmRows.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
     const avgAdopt = csmRows.length ? Math.round(csmRows.reduce((s, r) => s + scoreOf(r).overallPct, 0) / csmRows.length) : 0;
-    const openTasks = getOpenTasksFor(tasks, name).length;
+    const openTasks = getOpenTasksFor(tasksInView, name).length;
     const ch = churnStats(name);
     return { name, labCount, mrr, avgAdopt, openTasks, ...ch, churnPct: mrr > 0 ? (ch.mrrChurned / mrr) * 100 : null };
   }).filter((c) => c.labCount > 0) : null;
@@ -149,7 +163,7 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
       <h1 className="page-title">Dashboard</h1>
       <p className="page-sub">Viewing: <b>{scopeLabel}</b></p>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
 
       <div className="summary-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 8 }}>
         <div className="stile"><div className="sval">{totalLabs}</div><div className="slabel">Total Labs</div></div>
@@ -193,7 +207,7 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
               neighbors' instead of sitting lower. */}
           <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center" }}>
             Lab Health (Sentiment)
-            <InfoTip>From logged visit/check-in sentiment — separate from the manual Health Status field.</InfoTip>
+            <InfoTip>From logged visit/check-in sentiment — 75% the last 5, 25% all-time. Separate from the manual Health Status field.</InfoTip>
           </div>
           <BarChart labelWidth={130} valueFmt={(v) => String(v)} data={[
             { label: "Healthy", value: sentBuckets.Healthy, color: HEALTH_BUCKET_COLORS.Healthy },
@@ -216,9 +230,27 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
 
       <h3 style={{ fontSize: 14, margin: "18px 0 8px" }}>Tasks for Today</h3>
       <div style={{ marginBottom: 8 }}>
-        <TasksPanel persistKey="dashboard" tasks={tasks} scopeCsm={teamAll ? null : scopeCsm} onToggleDone={handleToggleDone} onAddTask={handleAddTask}
+        <TasksPanel persistKey="dashboard" tasks={tasksInView} scopeCsm={teamAll ? null : scopeCsm} onToggleDone={handleToggleDone} onAddTask={handleAddTask}
           onOpenLab={onOpenLab} isHead={isHead} currentCSM={currentCSM} csmNames={csmNames} labOptions={labOptions} labsById={labsById} />
       </div>
+
+      <h3 style={{ fontSize: 14, margin: "18px 0 8px", display: "flex", alignItems: "center" }}>
+        Proactive check-in compliance — this month
+        <InfoTip>Each point of contact can have a "Minimum Proactive Check-ins per Month" (set on the lab's Points of Contact tab). A check-in counts when it is logged as Proactive with that person as Person Contacted. Done is capped at the minimum per person, so extra calls to one person don't cover a miss on another.</InfoTip>
+      </h3>
+      {!compliance.length ? (
+        <div className="table-card" style={{ padding: "16px 20px", color: "var(--text-faint)", fontSize: 12.5 }}>No point of contact has a monthly minimum set yet — add one on a lab's Points of Contact tab.</div>
+      ) : (
+        <div className="table-card"><div className="table-scroll"><table className="child-mini">
+          <thead><tr><th>CSM</th><th>POCs with a target</th><th>On target</th><th>Check-ins required</th><th>Done</th><th>Left</th><th>Compliance</th></tr></thead>
+          <tbody>{compliance.map((c) => (
+            <tr key={c.csm}>
+              <td>{c.csm}</td><td>{c.pocs}</td><td>{c.onTarget} of {c.pocs}</td><td>{c.required}</td><td>{c.done}</td><td>{Math.max(0, c.required - c.done)}</td>
+              <td style={{ fontWeight: 700, color: c.pct >= 100 ? "var(--ok)" : c.pct >= 50 ? "var(--warn)" : "var(--bad)" }}>{c.pct}%</td>
+            </tr>
+          ))}</tbody>
+        </table></div></div>
+      )}
 
       {byCsm && (
         <div style={{ marginTop: 18 }}>
@@ -261,7 +293,7 @@ export default function DashboardView({ labs, modules, plans, viewer, idByName, 
             <div style={{ textAlign: "right", fontSize: 12, width: 48 }}><div style={{ fontWeight: 700, color: ringColor }}>{Math.round(scores.overallPct)}%</div><div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>Adoption</div></div>
             <div style={{ textAlign: "right", fontSize: 11, width: 92 }} title="Lab Health (Sentiment) — from logged visits/check-ins, separate from manual Health Status">
               <span style={{ fontWeight: 700, color: HEALTH_BUCKET_COLORS[sentHealth.bucket] }}>{sentHealth.bucket}</span>
-              <div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>Lab Health</div>
+              <div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>Lab Health (Sentiment)</div>
             </div>
           </div>
         );

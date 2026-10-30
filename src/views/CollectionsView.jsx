@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR } from "../lib/format";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllCollectionsItems, addCollectionsItem, logCollectionsReminder, labCollectionsSummary, daysSince, agingBucket, AGING_COLORS } from "../lib/collections";
 import { fetchAllInvoices, invoiceBalance, isInvoiceOpen } from "../lib/invoices";
+import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import Modal from "../components/Modal";
@@ -13,8 +14,9 @@ import Paginated from "../components/Pager";
 import SearchSelect from "../components/SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
 
-export default function CollectionsView({ labs, viewer, idByName, onOpenLab, showToast }) {
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "collections");
+export default function CollectionsView({ labs: allLabs, viewer, idByName, onOpenLab, showToast }) {
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "collections");
+  const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
 
   const [items, setItems] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -63,7 +65,7 @@ export default function CollectionsView({ labs, viewer, idByName, onOpenLab, sho
   const scopedInvoices = invoices.filter((iv) => flatIds.has(iv.labId));
 
   // Group into one row per lab, matching the prototype's portfolio-wide Collections list —
-  // itemized owed/collected detail (both pitch-add-on items and uploaded invoices) lives on
+  // itemized owed/collected detail (invoices, plus older purchase-created / manually added items) lives on
   // that lab's own Collections tab.
   const byLab = {};
   scoped.forEach((i) => { (byLab[i.labId] = byLab[i.labId] || []).push(i); });
@@ -132,7 +134,7 @@ export default function CollectionsView({ labs, viewer, idByName, onOpenLab, sho
       </h1>
       <p className="page-sub">Outstanding dues for labs assigned to <b>{scopeLabel}</b>.</p>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
 
       <div className="summary-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 18 }}>
         <div className="stile"><div className="sval">{fmtINR(totalOutstanding)}</div><div className="slabel">Total Outstanding</div></div>

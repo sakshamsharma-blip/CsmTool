@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import {
@@ -7,6 +7,7 @@ import {
 } from "../lib/feedback";
 import { fetchAllLabContacts, addLabContact } from "../lib/labContacts";
 import { todayISO } from "../lib/dates";
+import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import SearchSelect from "../components/SearchSelect";
@@ -49,8 +50,9 @@ function downloadCsv(name, header, lines) {
 //   Report       — average NPS out of 10, promoters / passives / detractors, by CSM (with feedback coverage of
 //                  their labs), by lab and by designation; CSV export.
 // Filters: lab, CSM (My Labs / Team View), designation, source and date range.
-export default function FeedbackView({ labs, viewer, idByName, onOpenLab, showToast }) {
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll } = useScopedCsm(viewer, "feedback");
+export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLab, showToast }) {
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "feedback");
+  const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
   const [tab, setTab] = useSessionState("feedback.tab", "responses");
   const [feedback, setFeedback] = useState([]);
   const [testimonials, setTestimonials] = useState([]);
@@ -104,8 +106,8 @@ export default function FeedbackView({ labs, viewer, idByName, onOpenLab, showTo
 
   // POCs of the chosen lab (and of its child labs), for the "Given by" pickers.
   const pocsFor = (labId) => contacts.filter((c) => c.labId === labId || parentOf(c.labId) === labId);
-  async function addPoc(labId, { name, designation }) {
-    const c = await addLabContact(labId, { name, designation }, csmId);
+  async function addPoc(labId, { name, designation, minProactive }) {
+    const c = await addLabContact(labId, { name, designation, minProactive }, csmId);
     setContacts((cs) => [...cs, c]);
     return c;
   }
@@ -178,7 +180,7 @@ export default function FeedbackView({ labs, viewer, idByName, onOpenLab, showTo
       <p className="page-sub">Record the feedback and NPS your labs give you — through a Google Form, by email or on WhatsApp — so it can be reported on. Viewing <b>{teamAll ? "the whole team" : scopeCsm}</b>'s labs.</p>
       {error && <div className="error-banner">{error}</div>}
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
 
       <div className="tabs" style={{ marginBottom: 12, width: "fit-content" }}>
         {[["responses", `Responses (${responses.length})`], ["testimonials", `Testimonials (${tRows.length})`], ["report", "Report"]].map(([k, l]) => (
@@ -368,7 +370,7 @@ export default function FeedbackView({ labs, viewer, idByName, onOpenLab, showTo
 
 // "Given by": pick one of the lab's Points of Contact, or add a new POC on the spot (saved to the lab).
 function PocPicker({ labId, name, designation, pocsFor, onAddPoc, onPick, showToast }) {
-  const [adding, setAdding] = useState(null); // { name, designation }
+  const [adding, setAdding] = useState(null); // { name, designation, minProactive }
   const [busy, setBusy] = useState(false);
   const pocs = labId ? pocsFor(labId) : [];
   const match = pocs.find((c) => c.name === name && (c.designation || "") === (designation || ""));
@@ -389,7 +391,7 @@ function PocPicker({ labId, name, designation, pocsFor, onAddPoc, onPick, showTo
             <SearchSelect value={match?.id || ""} onChange={(id) => { const c = pocs.find((x) => x.id === id); if (c) onPick(c); }}
               options={options} placeholder={pocs.length ? "Pick a point of contact…" : "No POCs yet for this lab"} />
           </div>
-          <button type="button" className="mark-purchased" onClick={() => setAdding({ name: "", designation: "" })}>+ Add POC</button>
+          <button type="button" className="mark-purchased" onClick={() => setAdding({ name: "", designation: "", minProactive: "" })}>+ Add POC</button>
         </div>
       )}
       {!adding && name && !match && <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 4 }}>Saved as: {name}{designation ? ` — ${designation}` : ""}</div>}
@@ -398,6 +400,8 @@ function PocPicker({ labId, name, designation, pocsFor, onAddPoc, onPick, showTo
         <div className="table-card" style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
           <input style={field} placeholder="Name *" value={adding.name} onChange={(e) => setAdding((a) => ({ ...a, name: e.target.value }))} autoFocus />
           <DesignationSelect style={field} value={adding.designation} onChange={(v) => setAdding((a) => ({ ...a, designation: v }))} />
+          <input style={field} type="number" min="0" max="31" placeholder="Minimum proactive check-ins per month (optional)" value={adding.minProactive}
+            onChange={(e) => setAdding((a) => ({ ...a, minProactive: e.target.value }))} />
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className="btn btn-primary" style={{ fontSize: 12, padding: "6px 12px" }} disabled={busy} onClick={save}>{busy ? "Saving…" : "Save POC"}</button>
             <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: "6px 12px" }} disabled={busy} onClick={() => setAdding(null)}>Cancel</button>

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import Modal from "./Modal";
 import DesignationSelect from "./DesignationSelect";
-import { fetchLabContacts, addLabContact, updateLabContact, deleteLabContact } from "../lib/labContacts";
+import { fetchLabContacts, addLabContact, updateLabContact, deleteLabContact, pocMonthStatus } from "../lib/labContacts";
+import { fetchAllVisits } from "../lib/visits";
+import { todayISO } from "../lib/dates";
 
 const field = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
-const EMPTY = { name: "", designation: "", phone: "", email: "" };
+const EMPTY = { name: "", designation: "", phone: "", email: "", minProactive: "" };
 
 // Lab page → "Points of Contact" tab: the people at this lab a CSM deals with. These are what Log Check-in offers
 // under "Person Contacted".
@@ -14,6 +16,8 @@ export default function LabContactsCard({ lab, csmId, showToast }) {
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(null); // null | { contact?: existing, f: form }
   const [saving, setSaving] = useState(false);
+  const [labVisits, setLabVisits] = useState([]); // to count this month's Proactive check-ins per POC
+  const month = todayISO().slice(0, 7);
 
   async function load() {
     try { setContacts(await fetchLabContacts(lab.id)); setError(""); }
@@ -26,6 +30,7 @@ export default function LabContactsCard({ lab, csmId, showToast }) {
       .then((rows) => { if (!cancelled) { setContacts(rows); setError(""); } })
       .catch((err) => { if (!cancelled) setError(err.message || "Couldn't load contacts."); })
       .finally(() => { if (!cancelled) setLoading(false); });
+    fetchAllVisits().then((all) => { if (!cancelled) setLabVisits(all.filter((v) => v.labId === lab.id)); }).catch(() => {});
     return () => { cancelled = true; };
   }, [lab.id]);
 
@@ -59,15 +64,22 @@ export default function LabContactsCard({ lab, csmId, showToast }) {
         : !contacts.length ? <div style={{ fontSize: 12, color: "var(--text-faint)", padding: "8px 0" }}>No contacts yet — add the people you speak to at {lab.name}.</div>
         : (
           <div className="table-scroll"><table className="child-mini">
-            <thead><tr><th>Name</th><th>Designation</th><th>Phone</th><th>Email</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Designation</th><th>Phone</th><th>Email</th><th title="Proactive check-ins with this person this month vs the minimum set for them">Proactive check-ins this month</th><th></th></tr></thead>
             <tbody>{contacts.map((c) => (
               <tr key={c.id}>
                 <td style={{ fontWeight: 600 }}>{c.name}</td>
                 <td>{c.designation || "—"}</td>
                 <td>{c.phone || "—"}</td>
                 <td>{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : "—"}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{(() => {
+                  if (!c.minProactive) return <span style={{ color: "var(--text-faint)" }}>No target</span>;
+                  const st = pocMonthStatus(c, labVisits, month);
+                  return st.met
+                    ? <span style={{ color: "var(--ok)", fontWeight: 700 }}>✓ {st.done} of {st.required} done</span>
+                    : <span style={{ color: "var(--warn)", fontWeight: 700 }}>{st.done} of {st.required} done · {st.left} left</span>;
+                })()}</td>
                 <td style={{ whiteSpace: "nowrap" }}>
-                  <span className="icon-btn" title="Edit" style={{ cursor: "pointer" }} onClick={() => setEditing({ contact: c, f: { name: c.name, designation: c.designation, phone: c.phone, email: c.email } })}>✎</span>
+                  <span className="icon-btn" title="Edit" style={{ cursor: "pointer" }} onClick={() => setEditing({ contact: c, f: { name: c.name, designation: c.designation, phone: c.phone, email: c.email, minProactive: c.minProactive != null ? String(c.minProactive) : "" } })}>✎</span>
                   <span className="icon-btn" title="Remove" style={{ cursor: "pointer", marginLeft: 6 }} onClick={() => handleDelete(c)}>🗑</span>
                 </td>
               </tr>
@@ -94,6 +106,12 @@ export default function LabContactsCard({ lab, csmId, showToast }) {
                   : <input style={field} value={editing.f[k]} placeholder={ph} onChange={(e) => setEditing((x) => ({ ...x, f: { ...x.f, [k]: e.target.value } }))} />}
               </div>
             ))}
+            <div className="tmpl-field" style={{ marginBottom: 10 }}>
+              <label>Minimum Proactive Check-ins per Month</label>
+              <input type="number" min="0" max="31" step="1" style={field} value={editing.f.minProactive} placeholder="e.g. 2 — leave empty for no target"
+                onChange={(e) => setEditing((x) => ({ ...x, f: { ...x.f, minProactive: e.target.value } }))} />
+              <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 3 }}>How many Proactive check-ins with this person are expected every month. Counted from Log Check-in when Person Contacted is this name; shown here as done / left and in the Dashboard's compliance stats.</div>
+            </div>
           </>
         )}
       </Modal>

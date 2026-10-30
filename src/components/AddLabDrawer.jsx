@@ -4,6 +4,7 @@ import { getCountryNames, getStatesForCountry } from "../lib/geography";
 import CityPicker from "./CityPicker";
 import SearchSelect from "./SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
+import { LAB_TYPES } from "../lib/labs";
 
 const COUNTRY_NAMES = getCountryNames();
 
@@ -35,6 +36,7 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
         parentId: presetParent.id,
         csm: presetParent.csm || csmNames[0] || "",
         plan: presetParent.plan || plans[0]?.id || "",
+        labType: presetParent.labType || "",
         region: presetParent.region || "Domestic",
         city: presetParent.city || "",
         state: presetParent.state || "",
@@ -127,6 +129,10 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
       setSaveError("Credit Days is required — enter 0 if this lab has no credit period.");
       return;
     }
+    if (hierarchy !== "child" && !form.labType) {
+      setSaveError("Lab Type is required for a Parent lab — choose Pathology, Radiology, or Pathology + Radiology.");
+      return;
+    }
     if (hierarchy !== "child" && form.yearlyVisits.trim() === "") {
       setSaveError("Yearly Visits Required is required for a Parent lab — enter 0 if no in-person visits are owed.");
       return;
@@ -139,7 +145,7 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
     const lab = {
       id: form.id.trim(), name: form.name.trim(), type: hierarchy === "child" ? "Child" : "Parent",
       parent: hierarchy === "child" ? form.parentId : null,
-      csm: form.csm, plan: form.plan,
+      csm: form.csm, plan: form.plan, labType: form.labType || null,
       region: form.region, city: form.city.trim(), state: form.state.trim() || "—", country: form.country.trim() || "—",
       mrr, status: "Active",
       creditDays: form.creditDays, billingType: form.billingType, paymentCycle: form.paymentCycle,
@@ -234,6 +240,13 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
                     {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
+                <div className="field"><label>Lab Type {hierarchy !== "child" && <span className="req">*</span>}</label>
+                  <select value={form.labType} onChange={(e) => set("labType", e.target.value)}>
+                    <option value="">Select lab type…</option>
+                    {LAB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <div className="hint">Pathology, Radiology, or both — used to filter labs across the app.</div>
+                </div>
               </div>
               <div className="frow">
                 <div className="field"><label>Country <span className="req">*</span></label>
@@ -315,11 +328,11 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
               </div>
               <div className="side-card" style={{ marginTop: 4 }}>
                 <h4>Segment Guide (based on MRR)</h4>
-                <div className="seg-row"><span><span className="seg-badge" style={{ background: "var(--segA)" }}>A</span> ≥ ₹90,000</span><span>Enterprise</span></div>
-                <div className="seg-row"><span><span className="seg-badge" style={{ background: "var(--segB)" }}>B</span> ₹50K–89,999</span><span>Premium</span></div>
-                <div className="seg-row"><span><span className="seg-badge" style={{ background: "var(--segC)" }}>C</span> ₹25K–49,999</span><span>Advance</span></div>
-                <div className="seg-row"><span><span className="seg-badge" style={{ background: "var(--segD)" }}>D</span> ₹15K–24,999</span><span>Standard</span></div>
-                <div className="seg-row"><span><span className="seg-badge" style={{ background: "var(--segE)" }}>E</span> &lt; ₹15,000</span><span>Essential</span></div>
+                <div className="seg-row"><span><span className="seg-badge" style={{ background: "var(--segA)" }}>A</span> ≥ ₹1,00,000</span><span>Enterprise</span></div>
+                <div className="seg-row"><span><span className="seg-badge" style={{ background: "var(--segB)" }}>B</span> ₹75K–99,999</span><span>Premium</span></div>
+                <div className="seg-row"><span><span className="seg-badge" style={{ background: "var(--segC)" }}>C</span> ₹50K–74,999</span><span>Advance</span></div>
+                <div className="seg-row"><span><span className="seg-badge" style={{ background: "var(--segD)" }}>D</span> ₹25K–49,999</span><span>Standard</span></div>
+                <div className="seg-row"><span><span className="seg-badge" style={{ background: "var(--segE)" }}>E</span> ₹0–24,999</span><span>Essential</span></div>
               </div>
             </div>
 
@@ -357,7 +370,7 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
 
 function initialForm(csmNames, plans) {
   return {
-    id: "", name: "", parentId: "", csm: csmNames[0] || "", region: "Domestic", plan: plans[0]?.id || "",
+    id: "", name: "", parentId: "", csm: csmNames[0] || "", region: "Domestic", plan: plans[0]?.id || "", labType: "",
     city: "", state: "", country: "", creditDays: "30", billingType: "Fixed", paymentCycle: "Monthly",
     mrr: "", remarks: "", newParentBillingMode: "", yearlyVisits: "",
   };

@@ -17,6 +17,8 @@ export function useScopedCsm(viewer, page = "default") {
   const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
   const [scope, setScope] = useSessionState(`${page}.scope`, "mine");
   const [csmFilter, setCsmFilter] = useSessionState(`${page}.csmFilter`, "");
+  // Lab Type filter (Pathology / Radiology / both), remembered per screen like the scope choice — see filterLabsByLabType.
+  const [labType, setLabType] = useSessionState(`${page}.labType`, "");
   const csmNames = csmDirectory.map((c) => c.name);
 
   // Someone locked to their own labs (isHead === false) always resolves to currentCSM itself,
@@ -29,5 +31,5 @@ export function useScopedCsm(viewer, page = "default") {
   // Team View's CSM dropdown only lists people who actually have labs (an Admin or a new CSM with none isn't offered).
   const teamNames = viewer.csmsWithLabs ? csmNames.filter((n) => viewer.csmsWithLabs.includes(n)) : csmNames;
 
-  return { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll };
+  return { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll, labType, setLabType };
 }

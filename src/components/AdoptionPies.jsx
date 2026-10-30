@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  groupAdoption, STAGE_GROUPS, EXPANSION_GROUPS, stageGroupOf, expansionGroupOf, currentStage, STATUS_ORDER,
+  STAGE_GROUPS, EXPANSION_GROUPS, stageGroupOf, expansionGroupOf, currentStage, STATUS_ORDER,
 } from "../lib/adoption";
 import { PITCH_STATUSES } from "../lib/pitch";
 import { useChartTooltip } from "../lib/useChartTooltip";
@@ -9,17 +9,18 @@ import { TipCard } from "./ChartTooltip";
 // A lab's adoption analytics as four pies (decision Oct 26 2026): Overall, Mandatory, In plan, Not in plan.
 //   • Slice size = how many of that group's parameters sit at each stage. In-plan stages run pale blue (To-Do) →
 //     indigo → teal → light green (Live) → dark green (Adopted); Not-in-plan add-ons coral / orange; closed grey.
-//   • Centre = the group's adoption SCORE (weighted the same way as the lab score — groupAdoption), which is why it
-//     can differ from the share of the "Adopted" slice.
+//   • Centre = that group's SCORE from computeLabScores: Overall (average of the two pipelines), Mandatory, Adoption
+//     pipeline, Expansion pipeline — which is why it can differ from the share of the "Adopted" slice.
 //   • Slices of 8%+ carry their % on the slice; the legend lists every stage (same order and colour in all four
 //     pies) with count and share; hovering a slice or legend row shows the exact stages and which parameters.
 //   • "Show details" = a table of every exact stage × group count.
 const GROUPS = [
-  { key: "overall", title: "Overall", pred: () => true, slices: STAGE_GROUPS, groupOf: stageGroupOf },
-  { key: "mandatory", title: "Mandatory", pred: (r) => r.def.type === "M", slices: STAGE_GROUPS, groupOf: stageGroupOf },
-  // A purchased add-on is on the In-plan track (adoption model v2 — r.category is "Adoption" for it).
-  { key: "inplan", title: "In plan", pred: (r) => r.category === "Adoption", slices: STAGE_GROUPS.filter((g) => g.key !== "notinplan"), groupOf: stageGroupOf },
-  { key: "notinplan", title: "Not in plan", pred: (r) => r.category !== "Adoption", slices: EXPANSION_GROUPS, groupOf: expansionGroupOf },
+  { key: "overall", title: "Overall", score: "overallPct", pred: () => true, slices: STAGE_GROUPS, groupOf: stageGroupOf },
+  { key: "mandatory", title: "Mandatory", score: "mandatoryPct", pred: (r) => r.def.type === "M", slices: STAGE_GROUPS, groupOf: stageGroupOf },
+  // Adoption pipeline = In plan + purchased add-ons (r.category is "Adoption" for both).
+  { key: "inplan", title: "Adoption pipeline", score: "adoptionPct", pred: (r) => r.category === "Adoption", slices: STAGE_GROUPS.filter((g) => g.key !== "notinplan"), groupOf: stageGroupOf },
+  // Expansion pipeline = every Not-in-plan parameter, purchased ones included (they scored 100 here).
+  { key: "notinplan", title: "Expansion pipeline", score: "expansionPct", pred: (r) => !r.inPlan, slices: EXPANSION_GROUPS, groupOf: expansionGroupOf },
 ];
 const LIST_MAX = 8;
 
@@ -43,7 +44,7 @@ function Pie({ group, params, pct, modName, tip }) {
   }
   function tipFor(s) {
     const exact = {};
-    s.items.forEach((r) => { const st = currentStage(r); exact[st] = (exact[st] || 0) + 1; });
+    s.items.forEach((r) => { const st = group.key === "notinplan" ? r.pitch : currentStage(r); exact[st] = (exact[st] || 0) + 1; });
     const rows = [
       ["Parameters", `${s.count} of ${total}`],
       ["Share of " + group.title.toLowerCase(), `${Math.round(s.share * 100)}%`],
@@ -102,18 +103,22 @@ function Pie({ group, params, pct, modName, tip }) {
   );
 }
 
-export default function AdoptionPies({ moduleResults }) {
+export default function AdoptionPies({ scores }) {
+  const { moduleResults } = scores;
   const [details, setDetails] = useState(false);
   const tip = useChartTooltip();
   const all = moduleResults.flatMap((m) => m.params);
   const modByKey = {};
   moduleResults.forEach((m) => m.params.forEach((r) => { modByKey[r.key] = m.mod.name; }));
   const modName = (r) => modByKey[r.key] || "";
-  const groups = GROUPS.map((g) => ({ ...g, params: all.filter(g.pred), pct: groupAdoption(moduleResults, g.pred).pct }));
+  const groups = GROUPS.map((g) => ({ ...g, params: all.filter(g.pred), pct: scores[g.score] }));
   // Every exact stage that occurs, In-plan list first, then the Expansion stages.
   const stages = [...STATUS_ORDER, ...PITCH_STATUSES.map((s) => `exp:${s}`)];
-  const stageOf = (r) => ((r.inPlan || r.purchased) && !r.lost ? currentStage(r) : `exp:${currentStage(r)}`);
-  const rows = stages.map((st) => ({ st, counts: groups.map((g) => g.params.filter((r) => stageOf(r) === st).length) }))
+  // The Expansion-pipeline column counts by Expansion stage (a purchased add-on = "Purchased"); the others by the
+  // stage the parameter is at now.
+  const stageOf = (r, g) => (g.key === "notinplan" ? `exp:${r.pitch}`
+    : (r.inPlan || r.purchased) && !r.lost ? currentStage(r) : `exp:${currentStage(r)}`);
+  const rows = stages.map((st) => ({ st, counts: groups.map((g) => g.params.filter((r) => stageOf(r, g) === st).length) }))
     .filter((row) => row.counts.some(Boolean));
   return (
     <div className="adopt-pies">
@@ -121,7 +126,7 @@ export default function AdoptionPies({ moduleResults }) {
         {groups.map((g) => <Pie key={g.key} group={g} params={g.params} pct={g.pct} modName={modName} tip={tip} />)}
       </div>
       <div className="pie-foot">
-        Slices show how many parameters are at each stage; the centre is the weighted adoption score. Hover a slice for
+        Slices show how many parameters are at each stage; the centre is the weighted score (Overall = average of the Adoption and Expansion pipelines). Hover a slice for
         the exact stages and parameters.
         <button type="button" className="mark-purchased" style={{ marginLeft: 8 }} onClick={() => setDetails((d) => !d)}>
           {details ? "Hide details" : "Show details — count per stage"}
@@ -139,7 +144,7 @@ export default function AdoptionPies({ moduleResults }) {
                 </tr>
               ))}
               <tr style={{ fontWeight: 700 }}><td>Total parameters</td>{groups.map((g) => <td key={g.key}>{g.params.length}</td>)}</tr>
-              <tr style={{ fontWeight: 700 }}><td>Adoption score</td>{groups.map((g) => <td key={g.key}>{g.pct == null ? "—" : `${Math.round(g.pct)}%`}</td>)}</tr>
+              <tr style={{ fontWeight: 700 }}><td>Score</td>{groups.map((g) => <td key={g.key}>{g.pct == null ? "—" : `${Math.round(g.pct)}%`}</td>)}</tr>
             </tbody>
           </table></div>
         </div>
