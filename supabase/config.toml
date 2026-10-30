@@ -1,0 +1,7 @@
+# Only what the CSM Tool's Edge Functions need (project "CSM console", ref fviorzjezigvjevlsdrv).
+project_id = "fviorzjezigvjevlsdrv"
+
+# The MCP connector checks each person's OAuth token itself and must answer the unauthenticated discovery request,
+# so the platform's own JWT check is turned off for it. See supabase/functions/csm-mcp/index.ts.
+[functions.csm-mcp]
+verify_jwt = false

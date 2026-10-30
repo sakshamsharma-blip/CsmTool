@@ -66,7 +66,7 @@ export default function LoginScreen({ onLoggedIn }) {
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 22 }}>
           <img src="/brand/crelio-wordmark.png" alt="CrelioHealth" style={{ height: 30, width: "auto" }} />
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontWeight: 700, fontSize: 14.5, color: "var(--text)" }}>CS Console</div>
+            <div style={{ fontWeight: 700, fontSize: 14.5, color: "var(--text)" }}>CSM GROWTH</div>
             <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>Customer Success workspace for the CS &amp; CSM team</div>
           </div>
         </div>

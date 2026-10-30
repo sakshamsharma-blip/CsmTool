@@ -2,6 +2,16 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 30 2026 — renamed to CSM GROWTH
+- The app is now called **CSM GROWTH** (sidebar, sign-in, browser tab, password reset, consent page, Claude connector).
+
+## Oct 30 2026 — Claude connector (MCP)
+- New read-only **Claude connector**: ask Claude about labs, both pipeline scores, tasks, check-ins, invoices, expansion,
+  feedback and churn. Each person signs in with their own CSM Tool account and sees only what they see in the app. Needs the
+  one-time setup in README → "Claude connector (MCP)" (enable Supabase's OAuth server, deploy the `csm-mcp` function).
+- New page `/oauth/consent` where people allow Claude access. The scoring rules now live in one shared file used by both the
+  app and the connector (no change to any score).
+
 ## Oct 30 2026 — both pipeline scores everywhere
 - Adoption pipeline and Expansion pipeline scores now show next to the Overall score on every screen that measures
   performance: Dashboard (average tiles, By CSM, each lab), My Portfolio (each lab and module, KPI row, chart hover cards,

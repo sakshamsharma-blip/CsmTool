@@ -84,7 +84,7 @@ export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAd
           <img className="mark" src="/brand/crelio-mark.png" alt="CrelioHealth" />
           <div>
             <div className="name">CrelioHealth</div>
-            <div className="sub">CS Console</div>
+            <div className="sub">CSM GROWTH</div>
           </div>
         </div>
         <button

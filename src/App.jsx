@@ -18,6 +18,7 @@ import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import Toast from "./components/Toast";
 import LoginScreen from "./components/LoginScreen";
+import OAuthConsentScreen from "./components/OAuthConsentScreen";
 import AddLabDrawer from "./components/AddLabDrawer";
 import LabDetailView from "./views/LabDetailView";
 import LabsView from "./views/LabsView";
@@ -547,6 +548,10 @@ export default function App() {
   }
   if (SUPABASE_CONFIGURED && !session) {
     return <LoginScreen onLoggedIn={handleLoggedIn} />;
+  }
+  // Claude connector (MCP) consent page — Supabase Auth's OAuth server sends people here after they sign in.
+  if (SUPABASE_CONFIGURED && window.location.pathname.startsWith("/oauth/consent")) {
+    return <OAuthConsentScreen />;
   }
   if (loading) {
     return (

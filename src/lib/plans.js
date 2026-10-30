@@ -42,11 +42,8 @@ export function planIncludesModule(plan, moduleKey) {
   return plan.modules.includes(moduleKey);
 }
 
-export function planIncludesParam(plan, moduleKey, paramName) {
-  if (!plan.modules.includes(moduleKey)) return false;
-  const excluded = plan.excludedParams && plan.excludedParams[moduleKey];
-  return !(excluded && excluded.includes(paramName));
-}
+// One copy, shared with the MCP connector (supabase/functions/_shared/scoring.js).
+export { planIncludesParam } from "../../supabase/functions/_shared/scoring.js";
 
 export async function setPlanModule(planId, moduleKey, included) {
   const { error } = included

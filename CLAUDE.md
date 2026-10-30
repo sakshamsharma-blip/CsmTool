@@ -1,4 +1,4 @@
-# CSM Tool — Project Context & Working Rules
+# CSM GROWTH (the CSM Tool) — Project Context & Working Rules
 
 This file is here so any Claude session (Cowork, Claude Code, etc.) working in this repo starts
 with the same context and follows the same rules. Read it fully before making changes.
@@ -6,6 +6,9 @@ with the same context and follows the same rules. Read it fully before making ch
 (and `README.md` if it affects a newcomer's understanding) as part of the same piece of work.
 
 ## What this is
+
+- **Product name: CSM GROWTH** (decision Oct 30 2026) — shown in the sidebar, sign-in, page title, consent page and the
+  Claude connector (`csm-growth`). "CSM Tool" in older notes and code comments means the same app.
 
 - An internal CrelioHealth tool for Customer Success Managers (CSMs) to track labs (clients):
   adoption of features, collections/MRR, expansion/upsell deals, visits, tasks, lab history.
@@ -286,6 +289,17 @@ with the same context and follows the same rules. Read it fully before making ch
   "Team View" and filter by CSM. This pattern (`useScopedCsm`) is used consistently across
   Dashboard, My Portfolio, Collections, Expansion, Visits, and Tasks — any new portfolio-wide
   screen should follow it too.
+
+- **Claude connector (MCP)** (Oct 30 2026, decision: claude.ai connector, READ-ONLY, each person's own login):
+  `supabase/functions/csm-mcp/index.ts` (Supabase Edge Function, `@modelcontextprotocol/server` + `@supabase/server`'s
+  `withOAuthProtectedResource` / `withSupabase({ auth: 'user' })`), so every query runs as the signed-in person under RLS.
+  Tools only SELECT. Consent page = `src/components/OAuthConsentScreen.jsx` at `/oauth/consent` (App.jsx renders it after
+  sign-in; `vercel.json` rewrites `/oauth/*` to the app). **Scoring rules live in `supabase/functions/_shared/scoring.js`**
+  (constants, `resolveParam`, `computeLabScores`, `averageScores`, `subsetScore`, `planIncludesParam`, …) — pure JS, no
+  imports; `src/lib/adoption.js` and `src/lib/plans.js` re-export from it. Change scoring THERE so the app and the connector
+  stay identical. Setup steps (OAuth server, authorization path, dynamic registration, deploy, add the connector) are in
+  README → "Claude connector (MCP)". Adding a write tool later = a new decision (writes must keep the app's rules:
+  comments, Lab History, task sync).
 
 ## Development workflow rules
 

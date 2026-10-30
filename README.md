@@ -1,4 +1,6 @@
-# CSM Tool
+# CSM GROWTH
+
+CrelioHealth's customer-success app (repo and older notes call it the "CSM Tool").
 
 An internal CrelioHealth tool for the Customer Success team. It replaces the old Excel-based process
 for tracking diagnostic-lab clients: which features each lab has adopted, what they pay (MRR),
@@ -101,6 +103,31 @@ tests in `tests/`, run against demo mode — first time: `npx playwright install
 - `labs.id` is the permanent internal key; `labs.lab_code` is the editable, user-facing "Lab ID".
 - Adoption features are always in scope; Expansion features are pitched and sold.
 - `activity_log.source` accepts only `'system'` and `'checkin'`.
+
+## Claude connector (MCP)
+
+A **read-only** connector lets Claude (claude.ai, Claude Desktop, Claude Code) answer questions from CSM GROWTH's data.
+Each person signs in with their own CSM GROWTH account, so it sees exactly what they see in the app (RLS): a CSM only their
+own labs, a Lead / Admin the team. It cannot change anything.
+
+- Code: `supabase/functions/csm-mcp/index.ts` (Supabase Edge Function) · consent page: `src/components/OAuthConsentScreen.jsx`
+  at `/oauth/consent` (`vercel.json` routes it to the app) · scoring rules shared with the app:
+  `supabase/functions/_shared/scoring.js` (the app's `src/lib/adoption.js` re-exports it, so both always score alike).
+- Tools: `whoami`, `list_labs`, `lab_overview`, `portfolio_scores`, `list_tasks`, `recent_checkins`, `collections_overview`,
+  `expansion_overview`, `feedback_summary`, `churn_log`.
+
+**One-time setup** (Supabase dashboard, project "CSM console"):
+
+1. Authentication → **OAuth Server**: enable it, set **Authorization Path** to `/oauth/consent`, and turn on **dynamic client
+   registration** (Claude registers itself).
+2. Authentication → **URL Configuration**: **Site URL** = `https://csm-tool-two.vercel.app`.
+3. If Claude asks for the `openid` scope, Supabase needs asymmetric JWT signing keys (Project Settings → JWT Keys); with the
+   legacy HS256 secret, ID tokens can't be issued.
+4. Deploy the function: `supabase functions deploy csm-mcp --project-ref fviorzjezigvjevlsdrv` (`supabase/config.toml` turns
+   off the platform JWT check for it — the function checks each person's token itself).
+5. Push the app (consent page + `vercel.json`).
+6. Each person, in claude.ai → Settings → Connectors → **Add custom connector**:
+   `https://fviorzjezigvjevlsdrv.supabase.co/functions/v1/csm-mcp` → sign in with their CSM GROWTH login → **Allow**.
 
 ## Deploying
 
