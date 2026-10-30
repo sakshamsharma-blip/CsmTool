@@ -290,7 +290,9 @@ with the same context and follows the same rules. Read it fully before making ch
   Dashboard, My Portfolio, Collections, Expansion, Visits, and Tasks — any new portfolio-wide
   screen should follow it too.
 
-- **Claude connector (MCP)** (Oct 30 2026, decision: claude.ai connector, READ-ONLY, each person's own login):
+- **Claude connector (MCP)** — **PARKED Oct 30 2026: code is in the repo but `csm-mcp` is NOT deployed** (Supabase's OAuth
+  server is enabled; deploy + connector setup wait for the owner's go-ahead). Decision: claude.ai connector, READ-ONLY, each
+  person's own login:
   `supabase/functions/csm-mcp/index.ts` (Supabase Edge Function, `@modelcontextprotocol/server` + `@supabase/server`'s
   `withOAuthProtectedResource` / `withSupabase({ auth: 'user' })`), so every query runs as the signed-in person under RLS.
   Tools only SELECT. Consent page = `src/components/OAuthConsentScreen.jsx` at `/oauth/consent` (App.jsx renders it after
