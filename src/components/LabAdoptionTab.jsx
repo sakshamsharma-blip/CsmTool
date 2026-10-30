@@ -14,6 +14,7 @@ import PitchStageModal from "./PitchStageModal";
 import TaskDueField from "./TaskDueField";
 import ModuleResources from "./ModuleResources";
 import AdoptionPies from "./AdoptionPies";
+import PipelineScores from "./PipelineScores";
 import { fetchModuleResources } from "../lib/moduleResources";
 
 const field = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
@@ -171,7 +172,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
         {stageFilter && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{all.filter(matchesStage).length} parameter(s)</span>}
       </div>
 
-      {scores.moduleResults.map(({ mod, params: allParams, overallPct }) => {
+      {scores.moduleResults.map(({ mod, params: allParams, overallPct, adoptionPct, expansionPct }) => {
         const params = allParams.filter(matchesStage);
         if (stageFilter && !params.length) return null;
         const isOpen = !!openModules[mod.key] || !!stageFilter;
@@ -185,7 +186,8 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
               <span className="mtag">{stageFilter ? `${params.length} match` : `${inPlanCount}/${params.length} in plan`}</span>
               {resources.some((r) => r.moduleKey === mod.key) && <span className="mres-badge" title="Docs & training videos">📚 {resources.filter((r) => r.moduleKey === mod.key).length}</span>}
               <div className="bar-track"><div className="bar-fill" style={{ width: `${overallPct || 0}%`, background: barColor(overallPct) }}></div></div>
-              <span className="mpct">{pct(overallPct)}</span>
+              <span className="mpct" title="Overall (average of the two pipelines)">{pct(overallPct)}</span>
+              <PipelineScores adoption={adoptionPct} expansion={expansionPct} />
             </div>
             <div className={`module-body${isOpen ? " open" : ""}`}>
               {SUPABASE_CONFIGURED && (

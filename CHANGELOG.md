@@ -2,6 +2,14 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 30 2026 — both pipeline scores everywhere
+- Adoption pipeline and Expansion pipeline scores now show next to the Overall score on every screen that measures
+  performance: Dashboard (average tiles, By CSM, each lab), My Portfolio (each lab and module, KPI row, chart hover cards,
+  module table), the lab's Adoption tab (every module row) and Log Check-in's Adoption Snapshot. A purchased add-on keeps its
+  Expansion 100 while its Adoption score climbs.
+- Adoption tab: the Adoption pipeline pie shows how many of its parameters came from Expansion (purchased) and their
+  rollout score; hover lists tag them "purchased"; "Show details" adds a "…of which from Expansion" column.
+
 ## Oct 30 2026 — two-pipeline scoring, Tasks redesign
 Needs **migration 0043** (run in the CSM console project).
 - **Scoring:** each lab now has an **Adoption pipeline** score (In plan + purchased add-ons: To-Do 0 · In Discussion / Demo

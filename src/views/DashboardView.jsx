@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
-import { fetchAllLabsAdoption, computeSavedLabScores } from "../lib/adoption";
+import { fetchAllLabsAdoption, computeSavedLabScores, averageScores, fmtScore } from "../lib/adoption";
 import { fetchAllPitchStatus } from "../lib/pitch";
 import { fetchAllCollectionsItems, labCollectionsSummary, isItemOpen, itemBalance, AGING_COLORS } from "../lib/collections";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask, getOpenTasksFor } from "../lib/tasks";
@@ -86,7 +86,8 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
   const totalMRR = rows.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
   const activeCount = rows.filter((r) => r.status === "Active").length + rows.reduce((s, r) => s + r.children.filter((c) => c.status === "Active").length, 0);
   const atRiskCount = rows.filter((r) => r.status === "At Risk").length + rows.reduce((s, r) => s + r.children.filter((c) => c.status === "At Risk").length, 0);
-  const avgAdoption = rows.length ? Math.round(rows.reduce((s, r) => s + scoreOf(r).overallPct, 0) / rows.length) : 0;
+  // Both pipelines are tracked everywhere scores show (decision Oct 30 2026): Overall, Adoption pipeline, Expansion pipeline.
+  const avg = averageScores(rows.map(scoreOf));
   // With a Lab Type chosen, only tasks for labs of that type count (lab-less personal tasks drop out).
   const labIdsInView = new Set(labs.map((l) => l.id));
   const tasksInView = labType ? tasks.filter((t) => labIdsInView.has(t.labId)) : tasks;
@@ -152,7 +153,7 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
     const csmRows = allRows.filter((r) => r.csm === name || r.children.some((c) => c.csm === name));
     const labCount = csmRows.length + csmRows.reduce((s, r) => s + r.children.length, 0);
     const mrr = csmRows.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
-    const avgAdopt = csmRows.length ? Math.round(csmRows.reduce((s, r) => s + scoreOf(r).overallPct, 0) / csmRows.length) : 0;
+    const avgAdopt = averageScores(csmRows.map(scoreOf));
     const openTasks = getOpenTasksFor(tasksInView, name).length;
     const ch = churnStats(name);
     return { name, labCount, mrr, avgAdopt, openTasks, ...ch, churnPct: mrr > 0 ? (ch.mrrChurned / mrr) * 100 : null };
@@ -165,14 +166,16 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
 
-      <div className="summary-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 8 }}>
+      <div className="summary-grid" style={{ gridTemplateColumns: "repeat(5,1fr)", marginBottom: 8 }}>
         <div className="stile"><div className="sval">{totalLabs}</div><div className="slabel">Total Labs</div></div>
         <div className="stile"><div className="sval">{rows.length}</div><div className="slabel">Parent Labs (Clients)</div></div>
         <div className="stile"><div className="sval">{childCount}</div><div className="slabel">Child Labs</div></div>
         <div className="stile"><div className="sval" style={{ color: "var(--accent)" }}>{fmtINR(totalMRR)}</div><div className="slabel">Total MRR</div></div>
         <div className="stile"><div className="sval" style={{ color: "var(--ok)" }}>{activeCount}</div><div className="slabel">Active</div></div>
         <div className="stile"><div className="sval" style={{ color: atRiskCount > 0 ? "var(--bad)" : "var(--text)" }}>{atRiskCount}</div><div className="slabel">At Risk</div></div>
-        <div className="stile"><div className="sval">{avgAdoption}%</div><div className="slabel">Avg Adoption</div></div>
+        <div className="stile"><div className="sval">{fmtScore(avg.overall)}</div><div className="slabel">Avg Overall Score</div></div>
+        <div className="stile"><div className="sval" style={{ color: "var(--stg-plan-2)" }}>{fmtScore(avg.adoption)}</div><div className="slabel">Avg Adoption Pipeline</div></div>
+        <div className="stile"><div className="sval" style={{ color: "var(--stg-exp-2)" }}>{fmtScore(avg.expansion)}</div><div className="slabel">Avg Expansion Pipeline</div></div>
         <div className="stile"><div className="sval">{openTaskCount}</div><div className="slabel">Open Tasks</div></div>
       </div>
 
@@ -194,7 +197,7 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
             popup content on the middle tile. None of these three cards hold an edge-to-edge table,
             so it's safe to let their content escape the card bounds. */}
         <div className="table-card" style={{ padding: "16px 18px", overflow: "visible" }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Adoption Health</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Score Health (Overall)</div>
           <BarChart labelWidth={145} data={[
             { label: "Healthy (≥75%)", value: healthy, color: "var(--ok)" },
             { label: "Needs Push (40–74%)", value: needsPush, color: "var(--warn)" },
@@ -256,13 +259,15 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
         <div style={{ marginTop: 18 }}>
           <h3 style={{ fontSize: 14, margin: "18px 0 8px" }}>By CSM</h3>
           <div className="table-card"><div className="table-scroll"><table className="child-mini">
-            <thead><tr><th>CSM</th><th>Labs</th><th>Total MRR</th><th>Avg Adoption</th><th>Open Tasks</th><th>Churned</th><th>MRR Churned</th><th>MRR Contraction</th><th>MRR Churn %</th></tr></thead>
+            <thead><tr><th>CSM</th><th>Labs</th><th>Total MRR</th><th>Avg Overall</th><th>Avg Adoption Pipeline</th><th>Avg Expansion Pipeline</th><th>Open Tasks</th><th>Churned</th><th>MRR Churned</th><th>MRR Contraction</th><th>MRR Churn %</th></tr></thead>
             <tbody>{byCsm.map((c) => (
               <tr key={c.name}>
                 <td className="lab-name clickable" onClick={() => setCsmFilter(c.name)}>{c.name}</td>
                 <td>{c.labCount}</td>
                 <td className="mrr-cell">{fmtINR(c.mrr)}</td>
-                <td>{c.avgAdopt}%</td>
+                <td>{fmtScore(c.avgAdopt.overall)}</td>
+                <td>{fmtScore(c.avgAdopt.adoption)}</td>
+                <td>{fmtScore(c.avgAdopt.expansion)}</td>
                 <td>{c.openTasks}</td>
                 <td>{c.churnCount}</td>
                 <td className="mrr-cell">{fmtINR(c.mrrChurned)}</td>
@@ -290,7 +295,9 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
             </div>
             <div style={{ textAlign: "right", fontSize: 12 }}><div style={{ fontWeight: 700 }}>{fmtMoney(lab.mrr, lab.region)}</div><div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>MRR</div></div>
             <span className={`status-pill status-${lab.status.replace(" ", "")}`}>{lab.status}</span>
-            <div style={{ textAlign: "right", fontSize: 12, width: 48 }}><div style={{ fontWeight: 700, color: ringColor }}>{Math.round(scores.overallPct)}%</div><div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>Adoption</div></div>
+            <div style={{ textAlign: "right", fontSize: 12, width: 52 }}><div style={{ fontWeight: 700, color: ringColor }}>{Math.round(scores.overallPct)}%</div><div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>Overall</div></div>
+            <div style={{ textAlign: "right", fontSize: 12, width: 64 }} title="Adoption pipeline"><div style={{ fontWeight: 700 }}>{fmtScore(scores.adoptionPct)}</div><div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>Adoption</div></div>
+            <div style={{ textAlign: "right", fontSize: 12, width: 64 }} title="Expansion pipeline"><div style={{ fontWeight: 700 }}>{fmtScore(scores.expansionPct)}</div><div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>Expansion</div></div>
             <div style={{ textAlign: "right", fontSize: 11, width: 92 }} title="Lab Health (Sentiment) — from logged visits/check-ins, separate from manual Health Status">
               <span style={{ fontWeight: 700, color: HEALTH_BUCKET_COLORS[sentHealth.bucket] }}>{sentHealth.bucket}</span>
               <div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>Lab Health (Sentiment)</div>

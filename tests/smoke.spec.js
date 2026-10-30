@@ -129,6 +129,9 @@ test("Lab Adoption tab: every parameter is In plan / Not in plan and changes nee
   await page.getByText("iGenetic Diagnostics", { exact: true }).click();
   await page.getByRole("button", { name: "Adoption" }).click();
   await expect(page.locator(".adopt-score-head", { hasText: "Adoption pipeline" })).toContainText("Expansion pipeline");
+  // Every module row shows both pipeline scores next to its Overall %.
+  await expect(page.locator(".module-head").first().locator(".pipe-scores")).toContainText("Adoption");
+  await expect(page.locator(".module-head").first().locator(".pipe-scores")).toContainText("Expansion");
   await page.locator(".module-head").first().click();
   const firstParam = page.locator(".param-block").first();
   await expect(firstParam.getByRole("button", { name: "In plan", exact: true })).toBeVisible();

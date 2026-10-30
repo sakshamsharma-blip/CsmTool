@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useState } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtMoney, toINR, segmentFor } from "../lib/format";
-import { fetchLabAdoption, computeSavedLabScores } from "../lib/adoption";
+import { fetchLabAdoption, computeSavedLabScores, fmtScore } from "../lib/adoption";
+import PipelineScores from "../components/PipelineScores";
 import { fetchLabPitchStatus, PITCH_ACTIVE_STATUSES } from "../lib/pitch";
 import { fetchLabActivity, ACTIVITY_ICONS } from "../lib/activity";
 import { fetchAllVisits, addVisit } from "../lib/visits";
@@ -351,8 +352,8 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
               <div style={{ padding: 12, color: "var(--text-faint)", fontSize: 12 }}>Loading…</div>
             ) : (
               <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Module</th><th>Score</th><th>Status</th><th>Discussed</th></tr></thead>
-                <tbody>{scores.moduleResults.map(({ mod, overallPct, params }) => {
+                <thead><tr><th>Module</th><th title="Average of the two pipelines">Overall</th><th>Adoption</th><th>Expansion</th><th>Status</th><th>Discussed</th></tr></thead>
+                <tbody>{scores.moduleResults.map(({ mod, overallPct, adoptionPct, expansionPct, params }) => {
                   const pct = overallPct == null ? null : Math.round(overallPct);
                   const label = snapshotStatus(params);
                   const open = !!openSnapshot[mod.key];
@@ -365,13 +366,17 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
                           {ticked > 0 && <span className="cat-tag cat-Indigo" style={{ marginLeft: 6 }}>{ticked} param{ticked > 1 ? "s" : ""}</span>}
                         </td>
                         <td className="mrr-cell">{pct == null ? "—" : `${pct}%`}</td>
+                        <td className="mrr-cell">{fmtScore(adoptionPct)}</td>
+                        <td className="mrr-cell">{fmtScore(expansionPct)}</td>
                         <td><span className={`status-chip ${statusChipClass(label)}`} style={{ cursor: "default" }}>{label}</span></td>
                         <td><input type="checkbox" checked={flagged.includes(mod.key)} onChange={() => toggleFlag(mod.key)} title="Discussed" /></td>
                       </tr>
                       {open && params.map((r) => (
                         <tr key={r.key} className="child-row">
                           <td style={{ paddingLeft: 30, fontSize: 12 }}>{r.def.name} <span style={{ color: "var(--text-faint)", fontSize: 11 }}>· {r.inPlan ? "In plan" : r.purchased ? "Purchased" : "Not in plan"}</span></td>
-                          <td className="mrr-cell" style={{ fontSize: 12 }}>{r.score == null ? "n/a" : r.score}</td>
+                          <td></td>
+                          <td className="mrr-cell" style={{ fontSize: 12 }}>{r.adoptionScore == null ? "—" : r.adoptionScore}</td>
+                          <td className="mrr-cell" style={{ fontSize: 12 }}>{r.expansionScore == null ? "—" : r.expansionScore}</td>
                           <td style={{ fontSize: 11.5, color: "var(--text-dim)" }}>{r.inPlan || r.purchased ? r.status : r.pitch}</td>
                           <td><input type="checkbox" checked={discussedParams.includes(r.key)} onChange={() => toggleDiscussedParam(mod.key, r.def.name)} title="Discussed" /></td>
                         </tr>
@@ -453,7 +458,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
                   {Math.round(scores.overallPct)}%
                 </div>
               </div>
-              <div style={{ fontSize: 11.5, color: "var(--text-dim)" }}>Overall Adoption</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-dim)" }}>Overall score<br /><PipelineScores adoption={scores.adoptionPct} expansion={scores.expansionPct} /></div>
             </div>
             <a onClick={() => onDone("adoption")} style={{ display: "block", marginTop: 10, fontSize: 12, color: "var(--accent)", cursor: "pointer" }}>View Adoption tab →</a>
           </div>

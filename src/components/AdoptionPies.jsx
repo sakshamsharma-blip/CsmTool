@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  STAGE_GROUPS, EXPANSION_GROUPS, stageGroupOf, expansionGroupOf, currentStage, STATUS_ORDER,
+  subsetScore, fmtScore, STAGE_GROUPS, EXPANSION_GROUPS, stageGroupOf, expansionGroupOf, currentStage, STATUS_ORDER,
 } from "../lib/adoption";
 import { PITCH_STATUSES } from "../lib/pitch";
 import { useChartTooltip } from "../lib/useChartTooltip";
@@ -24,7 +24,10 @@ const GROUPS = [
 ];
 const LIST_MAX = 8;
 
-function Pie({ group, params, pct, modName, tip }) {
+// A purchased add-on that's now being rolled out (it came in through the Expansion pipeline).
+const fromExpansion = (r) => r.purchased && !r.lost;
+
+function Pie({ group, params, pct, modName, tip, note }) {
   const [hot, setHot] = useState(null);
   const total = params.length;
   const slices = group.slices.map((g) => {
@@ -50,7 +53,11 @@ function Pie({ group, params, pct, modName, tip }) {
       ["Share of " + group.title.toLowerCase(), `${Math.round(s.share * 100)}%`],
       ...Object.entries(exact).filter(() => Object.keys(exact).length > 1).map(([st, n]) => [`· ${st}`, n]),
     ];
-    const list = s.items.slice(0, LIST_MAX).map((r) => `${r.def.name} — ${modName(r)}${r.def.type === "M" ? " · M" : ""}`);
+    // Outside the Expansion pie, say which of these came in through Expansion (purchased add-ons).
+    const tagPurchased = group.key !== "notinplan";
+    const bought = tagPurchased ? s.items.filter(fromExpansion).length : 0;
+    if (bought) rows.push(["Came from Expansion (purchased)", `${bought} of ${s.count}`]);
+    const list = s.items.slice(0, LIST_MAX).map((r) => `${r.def.name} — ${modName(r)}${r.def.type === "M" ? " · M" : ""}${tagPurchased && fromExpansion(r) ? " · purchased" : ""}`);
     return <TipCard color={s.color} title={`${group.title} · ${s.label}`} rows={rows} listTitle={s.count ? "Parameters" : null} list={list} more={s.count - LIST_MAX} />;
   }
   const hotKey = hot;
@@ -69,7 +76,7 @@ function Pie({ group, params, pct, modName, tip }) {
     <div className="pie-card">
       <div className="pie-title">{group.title} <span className="pie-sub">· {total} parameter{total === 1 ? "" : "s"}</span></div>
       <div className="pie-body">
-        <svg viewBox="0 0 160 160" width="150" height="150" role="img" aria-label={`${group.title}: adoption ${pct == null ? "not scored" : Math.round(pct) + "%"}; ${slices.filter((s) => s.count).map((s) => `${s.label} ${s.count}`).join(", ")}`} style={{ flex: "none", overflow: "visible" }}>
+        <svg viewBox="0 0 160 160" width="150" height="150" role="img" aria-label={`${group.title}: score ${pct == null ? "not scored" : Math.round(pct) + "%"}; ${slices.filter((s) => s.count).map((s) => `${s.label} ${s.count}`).join(", ")}`} style={{ flex: "none", overflow: "visible" }}>
           {!total && <circle cx={C} cy={C} r={(R + IR) / 2} fill="none" stroke="var(--surface-3)" strokeWidth={R - IR} />}
           {arcs.map((a) => a.count > 0 && (a.share >= 0.9999
             // A single stage = a whole ring (no seam).
@@ -85,7 +92,7 @@ function Pie({ group, params, pct, modName, tip }) {
             return <text key={`l-${a.key}`} x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize="11" fontWeight="700" fill={a.ink} style={{ pointerEvents: "none", opacity: hotKey && hotKey !== a.key ? 0.35 : 1 }}>{Math.round(a.share * 100)}%</text>;
           })}
           <text x={C} y={C - 5} textAnchor="middle" dominantBaseline="central" fontSize="22" fontWeight="700" fill="var(--text)">{pct == null ? "—" : `${Math.round(pct)}%`}</text>
-          <text x={C} y={C + 15} textAnchor="middle" dominantBaseline="central" fontSize="9.5" fill="var(--text-dim)">adoption score</text>
+          <text x={C} y={C + 15} textAnchor="middle" dominantBaseline="central" fontSize="9.5" fill="var(--text-dim)">score</text>
         </svg>
         <div className="pie-legend">
           {slices.map((s) => (
@@ -99,6 +106,7 @@ function Pie({ group, params, pct, modName, tip }) {
           ))}
         </div>
       </div>
+      {note && <div className="pie-note">{note}</div>}
     </div>
   );
 }
@@ -112,22 +120,35 @@ export default function AdoptionPies({ scores }) {
   moduleResults.forEach((m) => m.params.forEach((r) => { modByKey[r.key] = m.mod.name; }));
   const modName = (r) => modByKey[r.key] || "";
   const groups = GROUPS.map((g) => ({ ...g, params: all.filter(g.pred), pct: scores[g.score] }));
+  // The purchased add-ons inside the Adoption pipeline, shown on their own: how many, and their rollout score.
+  const bought = all.filter(fromExpansion);
+  const boughtPct = subsetScore(moduleResults, fromExpansion, "adoptionScore");
+  const adoptionTotal = groups.find((g) => g.key === "inplan").params.length;
+  const notes = {
+    inplan: bought.length
+      ? <><b>{bought.length}</b> of {adoptionTotal} came from Expansion (purchased) · their rollout score <b>{fmtScore(boughtPct)}</b></>
+      : "None of these came from Expansion yet.",
+  };
+  // "Show details" also has a column for just the purchased add-ons on the Adoption pipeline.
+  const tableCols = groups.flatMap((g) => (g.key === "inplan"
+    ? [g, { key: "fromexp", title: "…of which from Expansion", params: g.params.filter(fromExpansion), pct: boughtPct }]
+    : [g]));
   // Every exact stage that occurs, In-plan list first, then the Expansion stages.
   const stages = [...STATUS_ORDER, ...PITCH_STATUSES.map((s) => `exp:${s}`)];
   // The Expansion-pipeline column counts by Expansion stage (a purchased add-on = "Purchased"); the others by the
   // stage the parameter is at now.
   const stageOf = (r, g) => (g.key === "notinplan" ? `exp:${r.pitch}`
     : (r.inPlan || r.purchased) && !r.lost ? currentStage(r) : `exp:${currentStage(r)}`);
-  const rows = stages.map((st) => ({ st, counts: groups.map((g) => g.params.filter((r) => stageOf(r, g) === st).length) }))
+  const rows = stages.map((st) => ({ st, counts: tableCols.map((g) => g.params.filter((r) => stageOf(r, g) === st).length) }))
     .filter((row) => row.counts.some(Boolean));
   return (
     <div className="adopt-pies">
       <div className="adopt-pies-grid">
-        {groups.map((g) => <Pie key={g.key} group={g} params={g.params} pct={g.pct} modName={modName} tip={tip} />)}
+        {groups.map((g) => <Pie key={g.key} group={g} params={g.params} pct={g.pct} modName={modName} tip={tip} note={notes[g.key]} />)}
       </div>
       <div className="pie-foot">
         Slices show how many parameters are at each stage; the centre is the weighted score (Overall = average of the Adoption and Expansion pipelines). Hover a slice for
-        the exact stages and parameters.
+        the exact stages and parameters ("purchased" marks the ones that came in through Expansion).
         <button type="button" className="mark-purchased" style={{ marginLeft: 8 }} onClick={() => setDetails((d) => !d)}>
           {details ? "Hide details" : "Show details — count per stage"}
         </button>
@@ -135,7 +156,7 @@ export default function AdoptionPies({ scores }) {
       {details && (
         <div className="table-card" style={{ marginTop: 8 }}>
           <div className="table-scroll"><table className="child-mini">
-            <thead><tr><th>Stage</th>{groups.map((g) => <th key={g.key}>{g.title}</th>)}</tr></thead>
+            <thead><tr><th>Stage</th>{tableCols.map((g) => <th key={g.key}>{g.title}</th>)}</tr></thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.st}>
@@ -143,8 +164,8 @@ export default function AdoptionPies({ scores }) {
                   {row.counts.map((c, i) => <td key={i}>{c || <span style={{ color: "var(--text-faint)" }}>0</span>}</td>)}
                 </tr>
               ))}
-              <tr style={{ fontWeight: 700 }}><td>Total parameters</td>{groups.map((g) => <td key={g.key}>{g.params.length}</td>)}</tr>
-              <tr style={{ fontWeight: 700 }}><td>Score</td>{groups.map((g) => <td key={g.key}>{g.pct == null ? "—" : `${Math.round(g.pct)}%`}</td>)}</tr>
+              <tr style={{ fontWeight: 700 }}><td>Total parameters</td>{tableCols.map((g) => <td key={g.key}>{g.params.length}</td>)}</tr>
+              <tr style={{ fontWeight: 700 }}><td>Score</td>{tableCols.map((g) => <td key={g.key}>{fmtScore(g.pct)}</td>)}</tr>
             </tbody>
           </table></div>
         </div>

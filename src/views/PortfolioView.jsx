@@ -14,6 +14,7 @@ import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import PortfolioCharts from "../components/PortfolioCharts";
+import PipelineScores from "../components/PipelineScores";
 import TasksPanel from "../components/TasksPanel";
 import PitchStageModal from "../components/PitchStageModal";
 import InfoTip from "../components/InfoTip";
@@ -167,7 +168,7 @@ export default function PortfolioView({ labs: allLabs, modules, plans, viewer, i
 
       <h3 style={{ fontSize: 14, margin: "0 0 8px", display: "flex", alignItems: "center" }}>
         Labs
-        <InfoTip>Each module lists this lab's add-ons — the parameters marked <b>Not in plan</b> on its Adoption tab. Move them through the Expansion stages (To-Do → Pitching → Trial → Purchased, or Not Required / Not Applicable / Lost); every change needs a comment and is logged to Lab History. <b>Purchased</b> asks Priced or Trial, records the purchase on the Expansion tab and moves the feature onto the In-plan list. <b>Lost after Purchase</b> lowers MRR by the feature's charge. The adoption % uses the same 0–100 ladder as the lab's Adoption tab.</InfoTip>
+        <InfoTip>Each module lists this lab's add-ons — the parameters marked <b>Not in plan</b> on its Adoption tab. Move them through the Expansion stages (To-Do → Pitching → Trial → Purchased, or Not Required / Not Applicable / Lost); every change needs a comment and is logged to Lab History. <b>Purchased</b> asks Priced or Trial, records the purchase on the Expansion tab and moves the feature onto the In-plan list. <b>Lost after Purchase</b> lowers MRR by the feature's charge. Each lab and module shows its Overall score (the average of the two pipelines) plus the Adoption pipeline and Expansion pipeline scores — the same numbers as the lab's Adoption tab.</InfoTip>
       </h3>
       {!rows.length ? (
         <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>No labs assigned to {scopeLabel} yet.</div>
@@ -196,14 +197,15 @@ export default function PortfolioView({ labs: allLabs, modules, plans, viewer, i
               <span className={`status-pill status-${lab.status.replace(" ", "")}`} style={{ flex: "none" }}>{lab.status}</span>
               <div style={{ textAlign: "right", fontSize: 12, width: 52, flex: "none" }}>
                 <div style={{ fontWeight: 700, color: ringColor }}>{Math.round(scores.overallPct)}%</div>
-                <div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>Adoption</div>
+                <div style={{ color: "var(--text-dim)", fontSize: 10.5 }}>Overall</div>
               </div>
+              <PipelineScores adoption={scores.adoptionPct} expansion={scores.expansionPct} />
               <span className="pitch-count-badge">{toPitchCount} to pitch</span>
             </div>
             {isOpen && (
               <>
                 <div style={{ borderTop: "1px solid var(--border)" }}>
-                  {scores.moduleResults.map(({ mod, overallPct, params }) => {
+                  {scores.moduleResults.map(({ mod, overallPct, adoptionPct, expansionPct, params }) => {
                     const isModOpen = expandedModule === mod.key;
                     const pct = overallPct == null ? null : Math.round(overallPct);
                     const barColor = pct == null ? "var(--surface-3)" : pct >= 85 ? "var(--ok)" : pct >= 70 ? "var(--accent)" : pct >= 30 ? "var(--warn)" : "var(--bad)";
@@ -219,6 +221,7 @@ export default function PortfolioView({ labs: allLabs, modules, plans, viewer, i
                           <span className="mtag">{params.length - addOns.length}/{params.length} in plan</span>
                           <div className="bar-track"><div className="bar-fill" style={{ width: `${pct || 0}%`, background: barColor }}></div></div>
                           <span className="mpct">{pct == null ? "—" : `${pct}%`}</span>
+                          <PipelineScores adoption={adoptionPct} expansion={expansionPct} />
                           {modToPitch > 0 && <span className="pitch-count-badge">{modToPitch} to pitch</span>}
                         </div>
                         <div className={`module-body${isModOpen ? " open" : ""}`}>

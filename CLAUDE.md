@@ -80,7 +80,13 @@ with the same context and follows the same rules. Read it fully before making ch
   in Expansion (0). Each pipeline = weighted avg (params by weight in a module, modules by module weight); **Overall =
   simple average of the two** (just one if the other has nothing counted); **Mandatory** = the same using only Mandatory
   parameters. `computeLabScores` returns `overallPct, adoptionPct, expansionPct, mandatoryPct` (+ the same per module);
-  each resolved parameter has `adoptionScore`, `expansionScore` and `score` (the one for the list it's on now). **The
+  each resolved parameter has `adoptionScore`, `expansionScore` and `score` (the one for the list it's on now). **Both
+  pipeline scores are shown wherever performance is measured** (Oct 30 2026): Adoption tab header + module rows, My Portfolio lab
+  and module rows + charts (KPIs, band tooltips, module table), Dashboard tiles / By CSM / lab list, Log Check-in snapshot —
+  `components/PipelineScores.jsx`, `fmtScore` / `averageScores` in `lib/adoption.js` (a lab with nothing in a pipeline is left
+  out of that pipeline's average). A purchased add-on keeps its Expansion 100 while its Adoption score climbs. On the
+  Adoption tab the Adoption-pipeline pie says how many of its parameters came from Expansion and their own rollout score
+  (`subsetScore`), hover lists tag them "purchased", and "Show details" has a "…of which from Expansion" column. **The
   In-plan list only moves forward** (`statusOptions` / `setParamStatus` in `lib/adoption.js`, used by the Adoption tab
   and Tasks). Since Oct 28 2026 anyone may **skip ahead** (new labs need their current stage set directly) and there
   are **no waiting times** (the 7-day Live steps and the 30-day wait before Adopted were removed). Adopted's comment is

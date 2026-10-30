@@ -430,7 +430,7 @@
   .chart-tip-more{color:var(--text-faint); font-style:italic;}
   /* ---------- My Portfolio analytics (components/PortfolioCharts.jsx) ---------- */
   .pf-charts{margin:0 0 18px;}
-  .pf-kpis{display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:10px; margin-bottom:14px;}
+  .pf-kpis{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; margin-bottom:14px;}
   .pf-kpi{background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:11px 13px; box-shadow:var(--shadow-card); cursor:default; outline:none;}
   .pf-kpi:hover, .pf-kpi:focus-visible{box-shadow:var(--shadow-card-hover);}
   .pf-kpi .sval{font-weight:700; font-size:19px;}
@@ -677,6 +677,12 @@
   }
   @media (prefers-reduced-motion: reduce){ .toast{transition:none;} }
 
+  .pie-note{margin-top:8px; padding-top:8px; border-top:1px dashed var(--border); font-size:11.5px; color:var(--text-dim);}
+  /* Both pipeline scores side by side (components/PipelineScores.jsx) */
+  .pipe-scores{display:inline-flex; gap:10px; font-size:11px; color:var(--text-dim); white-space:nowrap; flex:none;}
+  .pipe-scores > span{display:inline-flex; align-items:center; gap:4px;}
+  .pipe-scores i{width:7px; height:7px; border-radius:50%; display:inline-block;}
+  .pipe-scores b{color:var(--text);}
   /* ---------- Tasks page (views/TasksView.jsx, components/TaskDrawer.jsx) ---------- */
   .tk-kpis{display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:14px;}
   .tk-kpi{display:flex; gap:12px; background:var(--surface); border:1px solid var(--border); border-radius:11px; padding:13px 14px; box-shadow:var(--shadow-card);}

@@ -238,6 +238,26 @@ export function expansionGroupOf(r) {
   return r.pitch === "Pitching" ? "exp_pitching" : r.pitch === "Trial" ? "exp_trial" : "exp_todo";
 }
 
+// One pipeline's score for just some of the parameters (e.g. the purchased add-ons inside the Adoption pipeline) — weighted
+// exactly like the lab score: parameters by weight inside a module, then modules by module weight. null = nothing counted.
+export function subsetScore(moduleResults, pred, field) {
+  return moduleAvg(moduleResults.map((m) => ({ mod: m.mod, value: paramAvg(m.params.filter(pred), field) })), "value");
+}
+
+// "42%" / "—" (not scored) — every screen shows the three scores the same way.
+export function fmtScore(v) {
+  return v == null ? "—" : `${Math.round(v)}%`;
+}
+// Average Overall / Adoption pipeline / Expansion pipeline across several labs' computeLabScores results. A lab whose
+// pipeline has nothing counted (null) is left out of that pipeline's average (null when no lab has it).
+export function averageScores(scoreList) {
+  const avgOf = (field) => {
+    const vals = scoreList.map((s) => s[field]).filter((v) => v != null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  };
+  return { overall: scoreList.length ? avgOf("overallPct") : null, adoption: avgOf("adoptionPct"), expansion: avgOf("expansionPct") };
+}
+
 // Same thing — kept under its old name for the screens that score already-saved data (Portfolio, Dashboard…).
 export const computeSavedLabScores = computeLabScores;
 
