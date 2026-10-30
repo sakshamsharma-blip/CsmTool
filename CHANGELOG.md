@@ -2,6 +2,10 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Oct 30 2026 — Claude connector live
+- The read-only CSM GROWTH connector is deployed and connects from claude.ai (Settings → Connectors → Add custom connector:
+  `https://fviorzjezigvjevlsdrv.supabase.co/functions/v1/csm-mcp`, sign in, Allow).
+
 ## Oct 30 2026 — renamed to CSM GROWTH
 - The app is now called **CSM GROWTH** (sidebar, sign-in, browser tab, password reset, consent page, Claude connector).
 
