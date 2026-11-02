@@ -1,4 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
+import { useKpiData } from "../lib/useKpiData";
+import PipelineAnalytics from "../components/PipelineAnalytics";
 import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR } from "../lib/format";
@@ -22,7 +24,9 @@ function emptyForm() {
   return { labId: "", monthlyRevenue: "", annualRevenue: "", dealWonDate: "", expectedLiveDate: "", status: "Pipeline", comments: "" };
 }
 
-export default function ExpansionView({ labs: allLabs, viewer, idByName, onOpenLab, showToast }) {
+export default function ExpansionView({ labs: allLabs, modules, plans, viewer, idByName, onOpenLab, showToast }) {
+  const kpi = useKpiData({ labs: allLabs, modules, plans, idByName });
+  const [tab, setTab] = useSessionState("expansion.tab", "analytics");
   // Same CSM/Manager split every other portfolio-wide screen (Collections, Dashboard, Tasks…)
   // uses — a plain CSM sees only their own deals, a Lead/Admin defaults to their own but can
   // flip to Team View for the consolidated picture across every CSM.
@@ -56,8 +60,8 @@ export default function ExpansionView({ labs: allLabs, viewer, idByName, onOpenL
   if (!SUPABASE_CONFIGURED) {
     return <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>Demo mode — Expansion needs a database connected.</div>;
   }
-  if (loading) return <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading expansion opportunities…</div>;
-  if (error) return <div className="error-banner">Couldn't load expansion opportunities — {error}</div>;
+  if (loading || kpi.loading) return <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading expansion…</div>;
+  if (error || kpi.error) return <div className="error-banner">Couldn't load expansion — {error || kpi.error}</div>;
 
   const scopeLabel = teamAll ? "the whole team" : scopeCsm;
 
@@ -157,12 +161,8 @@ export default function ExpansionView({ labs: allLabs, viewer, idByName, onOpenL
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
-  return (
+  const dealsTab = () => (
     <div>
-      <h1 className="page-title">
-        Expansion
-        <InfoTip>Deal-level upsell tracking (Onboarding → Pipeline → Live → Lost) — distinct from the module/param-level Pitch Pipeline on My Portfolio. A deal here is a whole opportunity (e.g. a new branch, a bundle upgrade) rather than a single module/param add-on.</InfoTip>
-      </h1>
       <p className="page-sub">Expansion opportunities for <b>{scopeLabel}</b>.</p>
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
@@ -289,6 +289,18 @@ export default function ExpansionView({ labs: allLabs, viewer, idByName, onOpenL
         </div>
         {formError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>{formError}</div>}
       </Modal>
+    </div>
+  );
+
+  return (
+    <div>
+      <h1 className="page-title">
+        Expansion
+        <InfoTip>Analytics, CSM Performance and Module-wise show the Expansion pipeline: every Not-in-plan parameter by stage (To-Do 0, Pitching 10, Trial 15, Purchased 100, Lost 0), each client's parent and child labs averaged. Deals &amp; Purchases has whole-opportunity deals (Onboarding → Pipeline → Live → Lost) and every feature bought.</InfoTip>
+      </h1>
+      <p className="page-sub">Track expansion progress, deals and revenue by lab, CSM and module.</p>
+      <PipelineAnalytics pipeline="expansion" page="expansion" labs={allLabs} viewer={viewer} idByName={idByName} onOpenLab={onOpenLab} kpi={kpi}
+        tab={tab} onTab={setTab} extraTabs={[{ key: "deals", label: "Deals & Purchases", render: dealsTab }]} />
     </div>
   );
 }

@@ -54,6 +54,7 @@ export async function fetchLabs(idByName) {
     testimonialVideoUrl: l.testimonial_video_url || "",
     testimonialCollectedBy: l.testimonial_collected_by || null,
     testimonialCollectedAt: l.testimonial_collected_at || null,
+    createdAt: l.created_at || null,
   }));
 }
 
@@ -101,6 +102,18 @@ export async function updateLabBillingMode(labId, billingMode) {
 export async function recordMrrSnapshot(labId, mrr, region, source = "manual") {
   const { error } = await supabase.from("mrr_snapshot").insert({ lab_id: labId, mrr, region, source });
   if (error) throw error;
+}
+
+// Every lab's MRR history, oldest first (RLS scoped) — the KPI page's Retention needs each lab's MRR at a past date.
+export async function fetchAllMrrSnapshots() {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from("mrr_snapshot").select("lab_id,mrr,logged_at")
+      .order("logged_at", { ascending: true }).range(from, from + 999);
+    if (error) throw error;
+    out.push(...(data || []).map((r) => ({ labId: r.lab_id, mrr: Number(r.mrr) || 0, loggedAt: r.logged_at })));
+    if (!data || data.length < 1000) return out;
+  }
 }
 
 export async function fetchMrrHistory(labId) {

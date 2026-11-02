@@ -160,3 +160,35 @@ export function averageScores(scoreList) {
   };
   return { overall: scoreList.length ? avgOf("overallPct") : null, adoption: avgOf("adoptionPct"), expansion: avgOf("expansionPct") };
 }
+
+// One client's scores (decision Nov 2 2026): the simple average of each score across the parent and its child labs, on
+// the "Lab Overall Adoption" tab and on every portfolio-wide screen. `scoreList` = computeLabScores results. A lab with
+// nothing counted in a score is left out of that score's average. moduleResults has one row per module: its averaged
+// scores, and every lab's parameters together (so stage counts cover the whole group).
+export function groupScores(scoreList) {
+  if (scoreList.length === 1) return { ...scoreList[0], labCount: 1 };
+  const avg = (vals) => {
+    const v = vals.filter((x) => x != null);
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  };
+  const counted = (s, pred) => s.moduleResults.some((m) => m.params.some((r) => pred(r) && (r.adoptionScore != null || r.expansionScore != null)));
+  const moduleResults = (scoreList[0]?.moduleResults || []).map((first, i) => {
+    const rows = scoreList.map((s) => s.moduleResults[i]);
+    return {
+      mod: first.mod,
+      params: rows.flatMap((m) => m.params),
+      adoptionPct: avg(rows.map((m) => m.adoptionPct)),
+      expansionPct: avg(rows.map((m) => m.expansionPct)),
+      overallPct: avg(rows.map((m) => m.overallPct)),
+      mandPct: avg(rows.map((m) => m.mandPct)),
+    };
+  });
+  return {
+    overallPct: avg(scoreList.filter((s) => counted(s, () => true)).map((s) => s.overallPct)) ?? 0,
+    adoptionPct: avg(scoreList.map((s) => s.adoptionPct)),
+    expansionPct: avg(scoreList.map((s) => s.expansionPct)),
+    mandatoryPct: avg(scoreList.filter((s) => counted(s, (r) => r.def.type === "M")).map((s) => s.mandatoryPct)) ?? 0,
+    moduleResults,
+    labCount: scoreList.length,
+  };
+}

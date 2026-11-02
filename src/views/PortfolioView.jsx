@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
-import { fetchAllLabsAdoption, computeSavedLabScores, LIVE_STAGES } from "../lib/adoption";
+import { fetchAllLabsAdoption, computeSavedLabScores, groupScores, tagScoresWithLab, LIVE_STAGES } from "../lib/adoption";
 import Paginated from "../components/Pager";
 import {
   fetchAllPitchStatus, applyPitchStageChange, PITCH_OPEN_STATUSES, pitchOptionsFor,
@@ -77,20 +77,28 @@ export default function PortfolioView({ labs: allLabs, modules, plans, viewer, i
   labs.forEach((l) => { labsById[l.id] = l; });
 
   function planOf(lab) { return plans.find((p) => p.id === lab.plan) || plans[0]; }
-  // One score per lab under the v2 adoption model (lib/adoption.js) — every parameter resolved as In plan / Not
-  // in plan (+ purchased, rollout status, pitch stage). Computed once here and reused below.
+  // The adoption model v2 score (lib/adoption.js) of one lab — every parameter resolved as In plan / Not in plan (+ purchased,
+  // rollout status, pitch stage).
+  const ownScores = (lab) => tagScoresWithLab(computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id], pitchByLab[lab.id]), lab);
+  // Each client's own parameters to edit (scoresByLab), and its scores: the parent and its child labs averaged, narrowed to the
+  // chosen CSM's labs (clientScores — decision Nov 2 2026; same numbers as the Adoption and KPI screens).
   const scoresByLab = {};
-  rows.forEach((lab) => { scoresByLab[lab.id] = computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id], pitchByLab[lab.id]); });
+  const clientScores = {};
+  rows.forEach((lab) => {
+    scoresByLab[lab.id] = ownScores(lab);
+    const members = [lab, ...lab.children].filter((l) => !scopeCsm || l.csm === scopeCsm);
+    clientScores[lab.id] = groupScores((members.length ? members : [lab]).map((l) => (l === lab ? scoresByLab[lab.id] : ownScores(l))));
+  });
   const allParamsOf = (lab) => scoresByLab[lab.id].moduleResults.flatMap((m) => m.params);
 
   // Live monitoring — every In-plan / purchased parameter in Live 1–4, with how long it has been live (longest first).
   const liveRows = [];
-  rows.forEach((lab) => scoresByLab[lab.id].moduleResults.forEach(({ mod, params }) => params.forEach((r) => {
+  rows.forEach((lab) => clientScores[lab.id].moduleResults.forEach(({ mod, params }) => params.forEach((r) => {
     if (!(r.inPlan || r.purchased) || r.lost || !LIVE_STAGES.includes(r.status)) return;
     const st = r.state || {};
     const days = st.liveStartedAt ? Math.max(0, Math.floor((Date.now() - new Date(st.liveStartedAt).getTime()) / 86400000)) : null;
     liveRows.push({
-      labId: lab.id, labName: lab.name, module: mod.name, param: r.def.name, stage: r.status, liveSince: st.liveStartedAt, days,
+      labId: r.labId, labName: r.labName, module: mod.name, param: r.def.name, stage: r.status, liveSince: st.liveStartedAt, days,
     });
   })));
   liveRows.sort((a, b) => (b.days ?? -1) - (a.days ?? -1));
@@ -133,7 +141,7 @@ export default function PortfolioView({ labs: allLabs, modules, plans, viewer, i
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
 
-      <PortfolioCharts labs={rows} scoresByLab={scoresByLab} />
+      <PortfolioCharts labs={rows} scoresByLab={clientScores} />
 
       <h3 style={{ fontSize: 14, margin: "18px 0 8px", display: "flex", alignItems: "center" }}>
         Live monitoring
@@ -168,13 +176,13 @@ export default function PortfolioView({ labs: allLabs, modules, plans, viewer, i
 
       <h3 style={{ fontSize: 14, margin: "0 0 8px", display: "flex", alignItems: "center" }}>
         Labs
-        <InfoTip>Each module lists this lab's add-ons — the parameters marked <b>Not in plan</b> on its Adoption tab. Move them through the Expansion stages (To-Do → Pitching → Trial → Purchased, or Not Required / Not Applicable / Lost); every change needs a comment and is logged to Lab History. <b>Purchased</b> asks Priced or Trial, records the purchase on the Expansion tab and moves the feature onto the In-plan list. <b>Lost after Purchase</b> lowers MRR by the feature's charge. Each lab and module shows its Overall score (the average of the two pipelines) plus the Adoption pipeline and Expansion pipeline scores — the same numbers as the lab's Adoption tab.</InfoTip>
+        <InfoTip>Each client's scores average its parent and child labs. Each module lists this lab's add-ons — the parameters marked <b>Not in plan</b> on its Adoption tab. Move them through the Expansion stages (To-Do → Pitching → Trial → Purchased, or Not Required / Not Applicable / Lost); every change needs a comment and is logged to Lab History. <b>Purchased</b> asks Priced or Trial, records the purchase on the Expansion tab and moves the feature onto the In-plan list. <b>Lost after Purchase</b> lowers MRR by the feature's charge. Each lab and module shows its Overall score (the average of the two pipelines) plus the Adoption pipeline and Expansion pipeline scores — the same numbers as the lab's Adoption tab.</InfoTip>
       </h3>
       {!rows.length ? (
         <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>No labs assigned to {scopeLabel} yet.</div>
       ) : rows.map((lab) => {
         const seg = segmentFor(toINR(lab.mrr, lab.region));
-        const scores = scoresByLab[lab.id];
+        const scores = clientScores[lab.id];
         const isOpen = expandedLab === lab.id;
         const ringColor = scores.overallPct >= 85 ? "var(--ok)" : scores.overallPct >= 70 ? "var(--accent)" : scores.overallPct >= 30 ? "var(--warn)" : "var(--bad)";
         const toPitchCount = allParamsOf(lab).filter((r) => !r.inPlan && !r.purchased && PITCH_OPEN_STATUSES.includes(r.pitch)).length;
@@ -187,7 +195,7 @@ export default function PortfolioView({ labs: allLabs, modules, plans, viewer, i
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="lab-name clickable" style={{ fontWeight: 700, fontSize: 13.5 }} onClick={(e) => { e.stopPropagation(); onOpenLab(lab.id); }}>{lab.name}</div>
                 <div style={{ fontSize: 11.3, color: "var(--text-dim)", marginTop: 1 }}>
-                  {lab.id} · {lab.type} Lab{teamAll ? ` · ${lab.csm}` : ""} · <span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span> {SEG_LABELS[seg.code]}
+                  {lab.id} · {lab.type} Lab{scores.labCount > 1 ? ` · scores average ${scores.labCount} labs` : ""}{teamAll ? ` · ${lab.csm}` : ""} · <span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span> {SEG_LABELS[seg.code]}
                 </div>
               </div>
               <div style={{ textAlign: "right", fontSize: 12, flex: "none" }}>
@@ -205,7 +213,8 @@ export default function PortfolioView({ labs: allLabs, modules, plans, viewer, i
             {isOpen && (
               <>
                 <div style={{ borderTop: "1px solid var(--border)" }}>
-                  {scores.moduleResults.map(({ mod, overallPct, adoptionPct, expansionPct, params }) => {
+                  {lab.children.length > 0 && <div className="param-row" style={{ color: "var(--text-dim)", fontSize: 12 }}>The modules below are {lab.name}'s own. Open a child lab from its page to work on its parameters.</div>}
+                  {scoresByLab[lab.id].moduleResults.map(({ mod, overallPct, adoptionPct, expansionPct, params }) => {
                     const isModOpen = expandedModule === mod.key;
                     const pct = overallPct == null ? null : Math.round(overallPct);
                     const barColor = pct == null ? "var(--surface-3)" : pct >= 85 ? "var(--ok)" : pct >= 70 ? "var(--accent)" : pct >= 30 ? "var(--warn)" : "var(--bad)";

@@ -23,6 +23,8 @@ import AddLabDrawer from "./components/AddLabDrawer";
 import LabDetailView from "./views/LabDetailView";
 import LabsView from "./views/LabsView";
 import AdoptionTemplateView from "./views/AdoptionTemplateView";
+import AdoptionView from "./views/AdoptionView";
+import KpiView from "./views/KpiView";
 import CsmSetupView from "./views/CsmSetupView";
 import PortfolioView from "./views/PortfolioView";
 import DashboardView from "./views/DashboardView";
@@ -37,7 +39,7 @@ import LogCheckinView from "./views/LogCheckinView";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 
 // ---- address-bar routing: "#/<screen>", "#/lab/<lab id>/<tab>", "#/lab/<lab id>/<tab>/log-checkin" ----
-const ROUTE_VIEWS = ["list", "dashboard", "portfolio", "collections", "expansion", "tasks", "visits", "adoption-template",
+const ROUTE_VIEWS = ["list", "dashboard", "portfolio", "collections", "expansion", "tasks", "visits", "adoption", "adoption-template", "kpi",
   "reports", "feedback", "resources", "csm-setup"];
 function parseHash() {
   const parts = (window.location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean).map((p) => {
@@ -588,25 +590,37 @@ export default function App() {
           {view === "list" && (
             <LabsView labs={labs} csmNames={csmNames} viewer={viewer} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} onOpenLab={openLabDetail} initialQuery={globalSearchQuery} />
           )}
-          {view === "adoption-template" && (
-            <AdoptionTemplateView
-              modules={modules}
-              plans={plans}
-              onAddModule={handleAddModule}
-              onUpdateModule={handleUpdateModule}
-              onDeleteModule={handleDeleteModule}
-              onAddModuleParam={handleAddModuleParam}
-              onUpdateModuleParam={handleUpdateModuleParam}
-              onDeleteModuleParam={handleDeleteModuleParam}
-              onToggleModule={handleToggleModule}
-              onToggleParam={handleToggleParam}
-              onReorderModules={handleReorderModules}
-              onReorderModuleParams={handleReorderModuleParams}
-              canEdit={viewer.isHead}
-              myProfileId={idByName[myName]}
-              isHead={viewer.isHead}
-              showToast={showToast}
+          {(view === "adoption" || view === "adoption-template") && (
+            <AdoptionView
+              onTemplate={view === "adoption-template"}
+              onNavigate={navigate}
+              labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName}
+              onOpenLab={openLabDetail}
+              onOpenCsm={(name) => { try { sessionStorage.setItem("csm.ui.kpi.csm", JSON.stringify(name)); } catch { /* storage unavailable */ } navigate("kpi"); }}
+              renderTemplate={() => (
+                <AdoptionTemplateView
+                      modules={modules}
+                      plans={plans}
+                      onAddModule={handleAddModule}
+                      onUpdateModule={handleUpdateModule}
+                      onDeleteModule={handleDeleteModule}
+                      onAddModuleParam={handleAddModuleParam}
+                      onUpdateModuleParam={handleUpdateModuleParam}
+                      onDeleteModuleParam={handleDeleteModuleParam}
+                      onToggleModule={handleToggleModule}
+                      onToggleParam={handleToggleParam}
+                      onReorderModules={handleReorderModules}
+                      onReorderModuleParams={handleReorderModuleParams}
+                      canEdit={viewer.isHead}
+                      myProfileId={idByName[myName]}
+                      isHead={viewer.isHead}
+                      showToast={showToast}
+                    />
+              )}
             />
+          )}
+          {view === "kpi" && (
+            <KpiView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "csm-setup" && canManageUsers && (
             <CsmSetupView csmDirectory={csmDirectory} idByName={idByName} onSaveCsm={handleSaveCsm} canChangeRole={!SUPABASE_CONFIGURED || viewer.isAdmin} />
@@ -621,7 +635,7 @@ export default function App() {
             <CollectionsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "expansion" && (
-            <ExpansionView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <ExpansionView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "tasks" && (
             <TasksView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} onPatchLab={handlePatchLab} showToast={showToast} />

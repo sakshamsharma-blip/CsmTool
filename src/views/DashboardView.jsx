@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
-import { fetchAllLabsAdoption, computeSavedLabScores, averageScores, fmtScore } from "../lib/adoption";
+import { fetchAllLabsAdoption, computeSavedLabScores, averageScores, groupScores, fmtScore } from "../lib/adoption";
 import { fetchAllPitchStatus } from "../lib/pitch";
 import { fetchAllCollectionsItems, labCollectionsSummary, isItemOpen, itemBalance, AGING_COLORS } from "../lib/collections";
 import { fetchAllTasks, toggleTaskDone as apiToggleTaskDone, addTask as apiAddTask, getOpenTasksFor } from "../lib/tasks";
@@ -72,13 +72,18 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
   const rows = scopeCsm ? allRows.filter((r) => r.csm === scopeCsm || r.children.some((c) => c.csm === scopeCsm)) : allRows;
 
   function planOf(lab) { return plans.find((p) => p.id === lab.plan) || plans[0]; }
-  function scoreOf(lab) { return computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id], pitchByLab[lab.id]); }
+  function labScore(lab) { return computeSavedLabScores(modules, planOf(lab), adoptionByLab[lab.id], pitchByLab[lab.id]); }
+  // A client's scores: its parent and child labs averaged, narrowed to one CSM's labs when given (decision Nov 2 2026 — same
+  // numbers as the Adoption and KPI screens). A child row in the list below has no children, so it's just its own.
+  function scoreOf(lab, csm = scopeCsm) {
+    const members = [lab, ...(lab.children || [])].filter((l) => !csm || l.csm === csm);
+    return groupScores((members.length ? members : [lab]).map(labScore));
+  }
 
   const visitsByLab = {};
   visits.forEach((v) => { (visitsByLab[v.labId] = visitsByLab[v.labId] || []).push(v); });
-  // Same convention as Adoption Health/scoreOf — read straight off this row's own id, whether
-  // it's a Parent, a childless "sole" lab, or (via the Labs list below) a Child. Not rolled up
-  // across a group, same as adoption isn't either.
+  // Read straight off this row's own id, whether it's a Parent, a childless "sole" lab, or (via
+  // the Labs list below) a Child. Not rolled up across a group.
   function sentimentHealthOf(lab) { return computeSentimentHealth(visitsByLab[lab.id]); }
 
   const childCount = rows.reduce((s, r) => s + r.children.length, 0);
@@ -87,7 +92,7 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
   const activeCount = rows.filter((r) => r.status === "Active").length + rows.reduce((s, r) => s + r.children.filter((c) => c.status === "Active").length, 0);
   const atRiskCount = rows.filter((r) => r.status === "At Risk").length + rows.reduce((s, r) => s + r.children.filter((c) => c.status === "At Risk").length, 0);
   // Both pipelines are tracked everywhere scores show (decision Oct 30 2026): Overall, Adoption pipeline, Expansion pipeline.
-  const avg = averageScores(rows.map(scoreOf));
+  const avg = averageScores(rows.map((r) => scoreOf(r)));
   // With a Lab Type chosen, only tasks for labs of that type count (lab-less personal tasks drop out).
   const labIdsInView = new Set(labs.map((l) => l.id));
   const tasksInView = labType ? tasks.filter((t) => labIdsInView.has(t.labId)) : tasks;
@@ -153,7 +158,7 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
     const csmRows = allRows.filter((r) => r.csm === name || r.children.some((c) => c.csm === name));
     const labCount = csmRows.length + csmRows.reduce((s, r) => s + r.children.length, 0);
     const mrr = csmRows.reduce((s, r) => s + toINR(r.mrr, r.region), 0);
-    const avgAdopt = averageScores(csmRows.map(scoreOf));
+    const avgAdopt = averageScores(csmRows.map((r) => scoreOf(r, name)));
     const openTasks = getOpenTasksFor(tasksInView, name).length;
     const ch = churnStats(name);
     return { name, labCount, mrr, avgAdopt, openTasks, ...ch, churnPct: mrr > 0 ? (ch.mrrChurned / mrr) * 100 : null };

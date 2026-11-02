@@ -2,10 +2,8 @@ import { useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
 import { roleLabel } from "../lib/roles";
 
-// "Live Now — Module 1": everything actually built and wired to real data. Customer Master
-// is a group (Total Labs + Add New Lab), matching the prototype's expandable nav — everything
-// else is a flat item. "Planned" below is the prototype's own roadmap list (its "What's Not
-// Built Yet" section) — grayed out and inert, same as the prototype left it.
+// Customer Master is a group (Total Labs + Add New Lab), matching the prototype's expandable nav — everything else is a
+// flat item. Adoption keeps everything of its own (analytics, CSM performance, module-wise, the template) as tabs inside.
 const LIVE_NAV = [
   { key: "dashboard", icon: "📊", label: "Dashboard" },
   { key: "portfolio", icon: "⭐", label: "My Portfolio" },
@@ -20,7 +18,8 @@ const LIVE_NAV = [
   { key: "expansion", icon: "🔁", label: "Expansion" },
   { key: "tasks", icon: "✅", label: "Tasks" },
   { key: "visits", icon: "📅", label: "Visits & Meetings" },
-  { key: "adoption-template", icon: "📈", label: "Adoption Template" },
+  { key: "adoption", icon: "📈", label: "Adoption", alsoActive: ["adoption-template"] },
+  { key: "kpi", icon: "🎯", label: "KPI Management" },
   { key: "reports", icon: "📑", label: "Financial Reports" },
   { key: "feedback", icon: "💬", label: "Feedback & NPS" },
   { key: "resources", icon: "📚", label: "Resources" },
@@ -30,12 +29,6 @@ const LIVE_NAV = [
 ];
 // "Manage Users" (the old "CSM Setup") moved to the top bar, matching the reference
 // tool — it's Admin/Lead-only, not a regular nav item everyone sees in the sidebar.
-
-const PLANNED_NAV = [
-  { icon: "🎯", label: "KPI Management" },
-  { icon: "⚙️", label: "Automation" },
-  { icon: "🛠️", label: "Settings" },
-];
 
 function readCollapsed() {
   try { return localStorage.getItem("csm_sidebar_collapsed") === "1"; } catch { return false; }
@@ -98,7 +91,6 @@ export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAd
         </button>
       </div>
       <div className="nav">
-        <div className="nav-group-label">Live Now — Module 1</div>
         {LIVE_NAV.map((item) => item.href ? (
           <a
             key={item.key}
@@ -116,7 +108,7 @@ export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAd
         ) : (
           <div key={item.key}>
             <div
-              className={`nav-item${(view === item.key || (item.children && item.children.some((c) => c.key === view))) ? " active" : ""}`}
+              className={`nav-item${(view === item.key || item.alsoActive?.includes(view) || (item.children && item.children.some((c) => c.key === view))) ? " active" : ""}`}
               onClick={() => handleClick(item)}
               title={collapsed ? item.label : undefined}
             >
@@ -136,15 +128,6 @@ export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAd
                 ))}
               </div>
             )}
-          </div>
-        ))}
-
-        <div className="nav-group-label">Planned</div>
-        {PLANNED_NAV.map((item) => (
-          <div key={item.label} className="nav-item disabled" title={collapsed ? `${item.label} — not built in this tool yet` : "Not built in this tool yet"}>
-            <span className="ico">{item.icon}</span>
-            <span className="lbl">{item.label}</span>
-            <span className="planned-tag">Planned</span>
           </div>
         ))}
       </div>

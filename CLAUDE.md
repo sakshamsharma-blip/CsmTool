@@ -304,6 +304,11 @@ with the same context and follows the same rules. Read it fully before making ch
   README → "Claude connector (MCP)". Adding a write tool later = a new decision (writes must keep the app's rules:
   comments, Lab History, task sync).
 
+- **Client-level scores** (decision Nov 2 2026): every portfolio-wide screen (My Portfolio, Dashboard, Adoption, Expansion, KPI, connector `portfolio_scores`) counts each CLIENT once: each score = the simple average across the parent and its child labs (`groupScores` in `_shared/scoring.js`; `clientGroups` in `lib/labRollup.js`), narrowed to a CSM's own labs when scoped to that CSM; a lab with nothing counted in a score is left out of that average. Parents have a **Lab Overall Adoption** tab (`components/LabOverallAdoptionTab.jsx`): the four scores and pies for the group, by-lab and by-module tables. The parent's own data stays on its Adoption tab.
+- **Adoption** (sidebar, one item, `views/AdoptionView.jsx`; Oct/Nov 2026) has tabs Analytics, CSM Performance (Lead / Admin), Module-wise, Template (the Adoption Template, address `#/adoption-template`). **Expansion** (`views/ExpansionView.jsx`) has the same three analytics tabs plus Deals & Purchases (the old screen). Both use `components/PipelineAnalytics.jsx` + `components/Analytics.jsx` (charts) + `lib/useKpiData.js`; Year, Monthly / Quarterly / Half-Yearly / Yearly (`lib/periods.js`, calendar quarters), a Metric dropdown for any of the four scores, CSV export.
+- **Score history**: there is no snapshot table and no scheduled job. A past score = today's `param_states` / `pitch_status` with every later `param_changes` row undone (`lib/scoreHistory.js`), scored by the normal rules with TODAY's template weights and Plans, so changing a weight changes past numbers too. A lab counts only from `labs.created_at`. Any new code that changes a parameter's stage or In plan must keep writing `param_changes` in the formats that file parses.
+- **KPI Management** (sidebar, `views/KpiView.jsx`, `lib/kpi.js`, migration 0044 `kpi_settings` / `kpi_csm_targets`; decision Nov 2 2026). Starting weight / target: Adoption 30 / 75, POC Check-in 10 / 90, Retention 20 / 100, Expansion 15 / 70, Collection 15 / 95, Task Closure 10 / 90. Adoption and Expansion = average pipeline score of the clients at period end. POC Check-in = Proactive check-ins done ÷ owed from each POC's monthly minimum (done capped per POC per month; a running month's full minimum counts). Retention = 1 − (MRR Churned + Contraction in the period) ÷ MRR at the period's start (from `mrr_snapshot`, billing-mode aware, INR). Collection = invoices due in the period so far: collected ÷ total, INR. Task Closure = the owner's one-off tasks due in the period so far: Done ÷ due (no due date / recurring left out; due today counts only once done). Points = min(actual ÷ target, 100%) × weight; KPI score = points ÷ weights counted × 100, a KPI with nothing to measure is left out. Weights (total exactly 100) and team targets are Lead / Admin editable, with optional per-CSM target overrides; not versioned, so a new target also re-reads past periods. If those tables can't be read, the defaults in `lib/kpi.js` apply. A plain CSM sees only their own report. No photos of people. The sidebar's Planned section (Automation, Settings) was removed.
+
 ## Development workflow rules
 
 1. **Research before writing code.** Ground every change in the actual current code — grep/read
@@ -343,13 +348,12 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Fully built & live**: Customer Master (labs, add/list, parent-child hierarchy), Adoption
   Template (seeded from the real module/param catalog), Plans, My Portfolio, Collections
   (invoice upload, Mark Fully Collected, direct MRR editing that
-  respects billing mode, Average MRR card), Dashboard, Tasks, Visits & Meetings, Expansion (deal
-  tracking with Onboarding/Pipeline/Lost/Live MRR + Live ARR tiles), editable Lab Name and Lab ID.
+  respects billing mode, Average MRR card), Dashboard, Tasks, Visits & Meetings, Adoption analytics, Expansion (analytics, deal
+  tracking with Onboarding/Pipeline/Lost/Live MRR + Live ARR tiles), KPI Management, editable Lab Name and Lab ID.
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
-  manual), full Plan CRUD beyond toggling module/param membership, KPI Management,
-  Automation (still "Planned" and greyed out in the sidebar). **Support & Tickets** is a sidebar link that opens
+  manual), full Plan CRUD beyond toggling module/param membership. **Support & Tickets** is a sidebar link that opens
   Flow (https://creliohealthflow.vercel.app/, the CS ↔ Product escalation tracker) in a new tab.
-- Latest migration: `0043_task_management.sql`; **0001–0043 are all applied** (Oct 30 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+- Latest migration: `0044_kpi_settings.sql`; **0001–0044 are all applied** (Nov 2 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).

@@ -13,6 +13,7 @@ import { withOAuthProtectedResource, withSupabase } from 'npm:@supabase/server@1
 import { z } from 'npm:zod@^4.3.6'
 import {
   computeLabScores, mapStateRow, normalizePitch, STATUS_ACTIVE,
+  groupScores,
 } from '../_shared/scoring.js'
 
 // deno-lint-ignore no-explicit-any
@@ -184,20 +185,24 @@ function buildServer(db: Db) {
   })
 
   server.registerTool('portfolio_scores', {
-    description: 'Overall, Adoption pipeline, Expansion pipeline and Mandatory scores for every lab you can see (optionally one CSM\'s or one Lab Type), lowest Overall first, plus the averages.',
+    description: 'Overall, Adoption pipeline, Expansion pipeline and Mandatory scores for every client (parent + children averaged) you can see (optionally one CSM\'s or one Lab Type), lowest Overall first, plus the averages.',
     inputSchema: z.object({
       csm: z.string().optional(),
       lab_type: z.enum(['Pathology', 'Radiology', 'Pathology + Radiology']).optional(),
-      parents_only: z.boolean().default(true).describe('Score parent labs (clients) only, as the app\'s portfolio views do'),
+      parents_only: z.boolean().default(true).describe('One row per client: its parent and child labs averaged, as the app does. Set false for every lab separately'),
     }),
     annotations: READ_ONLY,
   }, async ({ csm, lab_type, parents_only }) => {
-    let labs = await loadLabs(db)
-    if (parents_only) labs = labs.filter((l: Db) => l.hierarchy !== 'Child')
-    if (csm) { const p = await resolveCsmId(db, csm); labs = labs.filter((l: Db) => l.csm === p.name) }
-    if (lab_type) labs = labs.filter((l: Db) => l.labType === lab_type)
+    const allLabs = await loadLabs(db)
+    const csmName = csm ? (await resolveCsmId(db, csm)).name : null
     const ctx = await scoringContext(db)
-    const rows = labs.map((l: Db) => ({ lab: l.name, labId: l.labId, csm: l.csm, ...scoreSummary(ctx.scoresFor(l)) }))
+    // parents_only: each client once, its parent and child labs averaged (narrowed to the CSM's labs when one is given), as the app does.
+    const inScope = (l: Db) => (!csmName || l.csm === csmName) && (!lab_type || l.labType === lab_type)
+    const scored = (parents_only
+      ? allLabs.filter((l: Db) => l.hierarchy !== 'Child').map((l: Db) => ({ lab: l, members: [l, ...allLabs.filter((c: Db) => c.parentId === l.id)].filter(inScope) }))
+      : allLabs.filter(inScope).map((l: Db) => ({ lab: l, members: [l] }))
+    ).filter((x: Db) => x.members.length)
+    const rows = scored.map(({ lab: l, members }: Db) => ({ lab: l.name, labId: l.labId, csm: l.csm, labsAveraged: members.length, ...scoreSummary(groupScores(members.map(ctx.scoresFor))) }))
     rows.sort((a: Db, b: Db) => (a.overall ?? 0) - (b.overall ?? 0))
     const avg = (f: string) => { const v = rows.map((r: Db) => r[f]).filter((x: Db) => x != null); return v.length ? Math.round(v.reduce((a: number, b: number) => a + b, 0) / v.length) : null }
     return json({ labs: rows.length, average: { overall: avg('overall'), adoptionPipeline: avg('adoptionPipeline'), expansionPipeline: avg('expansionPipeline') }, rows })

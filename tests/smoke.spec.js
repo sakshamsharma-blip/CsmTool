@@ -18,6 +18,11 @@ test.afterEach(async ({ page }) => {
 function nav(page, label) {
   return page.locator(".sidebar .nav-item", { hasText: label }).first().click();
 }
+// The Adoption Template is a tab inside Adoption.
+async function openTemplate(page) {
+  await nav(page, "Adoption");
+  await page.getByRole("button", { name: "Template", exact: true }).click();
+}
 
 test("Total Labs shows tiles, the lab list, and search filters it", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Total Labs" })).toBeVisible();
@@ -37,13 +42,26 @@ test("every live screen opens without errors", async ({ page }) => {
   for (const [label, heading] of [
     ["Dashboard", "Dashboard"], ["My Portfolio", "My Portfolio"], ["Collections", "Collections"],
     ["Expansion", "Expansion"], ["Tasks", "Tasks"], ["Visits & Meetings", "Visits & Meetings"],
-    ["Adoption Template", "Adoption Template"], ["Financial Reports", "Financial Reports"],
+    ["Adoption", "Adoption"], ["KPI Management", "KPI Management"], ["Financial Reports", "Financial Reports"],
     ["Feedback & NPS", "Feedback & NPS"], ["Resources", "Resources"],
   ]) {
     await nav(page, label);
     // Database-backed screens show a demo-mode placeholder instead of their heading — either is fine.
     await expect(page.getByRole("heading", { name: heading }).or(page.getByText(/Demo mode —/)).first()).toBeVisible();
   }
+});
+
+test("sidebar: one Adoption item, KPI Management is live, nothing Planned", async ({ page }) => {
+  const sidebar = page.locator(".sidebar");
+  await expect(sidebar.getByText("Planned", { exact: true })).toHaveCount(0);
+  await expect(sidebar.getByText("Automation")).toHaveCount(0);
+  await expect(sidebar.getByText("Settings")).toHaveCount(0);
+  await expect(sidebar.getByText("Adoption Template")).toHaveCount(0);
+  await openTemplate(page);
+  await expect(page).toHaveURL(/#\/adoption-template$/);
+  await expect(page.locator(".sidebar .nav-item.active")).toHaveText(/Adoption/);
+  await nav(page, "KPI Management");
+  await expect(page.getByRole("heading", { name: "KPI Management" })).toBeVisible();
 });
 
 test("display mode toggle switches theme and remembers it", async ({ page }) => {
@@ -77,7 +95,7 @@ test("Add Lab: country and state are type-to-filter dropdowns", async ({ page })
 });
 
 test("Adoption Template: totals must be 100% and Rescale fixes them", async ({ page }) => {
-  await nav(page, "Adoption Template");
+  await openTemplate(page);
   await expect(page.locator(".tmpl-list-foot")).toContainText("100%");
   // Break the selected module's parameter total, then let Rescale bring it back to exactly 100.
   const firstWeight = page.locator(".tparam-row input[type=number]").first();
@@ -96,13 +114,13 @@ test("Adoption Template: totals must be 100% and Rescale fixes them", async ({ p
 
 test("Adoption Template is view-only for a plain CSM", async ({ page }) => {
   await page.locator(".csm-switcher").selectOption("Aditi"); // a CSM in the demo roster
-  await nav(page, "Adoption Template");
+  await openTemplate(page);
   await expect(page.getByText(/View only/)).toBeVisible();
   await expect(page.locator(".tparam-row input[type=number]").first()).toBeDisabled();
 });
 
 test("Adoption Template: edits wait for Save Changes, and modules can be reordered", async ({ page }) => {
-  await nav(page, "Adoption Template");
+  await openTemplate(page);
   await expect(page.getByText("All changes saved.")).toBeVisible();
   const firstName = page.locator(".tparam-row input.pname").first();
   await firstName.fill("Renamed parameter");
@@ -181,7 +199,7 @@ test("Lab Adoption tab: stage pies, forward-only In-plan list and the stage filt
 });
 
 test("Adoption Template: a weight can be 0, and adding a module past 100% asks to make room", async ({ page }) => {
-  await nav(page, "Adoption Template");
+  await openTemplate(page);
   const firstWeight = page.locator(".tparam-row input[type=number]").first();
   await firstWeight.fill("0");
   await page.getByRole("button", { name: "Save Changes" }).click();
@@ -224,11 +242,13 @@ test("Refresh keeps the page, the lab tab and the filters", async ({ page }) => 
   await expect(page.locator(".adopt-score-head")).toBeVisible();
 
   // Another screen, then Back returns to the lab.
-  await nav(page, "Adoption Template");
+  await openTemplate(page);
   await expect(page).toHaveURL(/#\/adoption-template$/);
   await page.reload();
   await expect(page.getByRole("heading", { name: "Adoption Template" })).toBeVisible();
-  await page.goBack();
+  await page.goBack(); // Template → Adoption
+  await expect(page).toHaveURL(/#\/adoption$/);
+  await page.goBack(); // Adoption → the lab
   await expect(page.locator(".adopt-score-head")).toBeVisible();
 });
 

@@ -4,13 +4,13 @@ import { syncItemTask, closeItemTasks } from "./tasks";
 import {
   LIVE_STAGES, STATUS_PROGRESS, STATUS_EXITS, STATUS_ORDER, ROLLOUT_SCORE, PURCHASED_START_STATUS, STATUS_ACTIVE, PITCH_SCORE,
   normalizeStatus, normalizePitch, mapStateRow, planIncludesParam, defaultInPlan, resolveParam, computeLabScores,
-  subsetScore, fmtScore, averageScores,
+  subsetScore, fmtScore, averageScores, groupScores,
 } from "../../supabase/functions/_shared/scoring.js";
 
 export {
   LIVE_STAGES, STATUS_PROGRESS, STATUS_EXITS, STATUS_ORDER, ROLLOUT_SCORE, PURCHASED_START_STATUS, STATUS_ACTIVE, PITCH_SCORE,
   normalizeStatus, normalizePitch, mapStateRow, planIncludesParam, defaultInPlan, resolveParam, computeLabScores,
-  subsetScore, fmtScore, averageScores,
+  subsetScore, fmtScore, averageScores, groupScores,
 };
 
 // ============================================================================================================
@@ -122,6 +122,11 @@ export function expansionGroupOf(r) {
   return r.pitch === "Pitching" ? "exp_pitching" : r.pitch === "Trial" ? "exp_trial" : "exp_todo";
 }
 
+
+// A lab's scores with each parameter labelled with its lab, so a group's charts can say which lab a parameter belongs to.
+export function tagScoresWithLab(scores, lab) {
+  return { ...scores, moduleResults: scores.moduleResults.map((m) => ({ ...m, params: m.params.map((r) => ({ ...r, labId: lab.id, labName: lab.name })) })) };
+}
 
 // Same thing — kept under its old name for the screens that score already-saved data (Portfolio, Dashboard…).
 export const computeSavedLabScores = computeLabScores;

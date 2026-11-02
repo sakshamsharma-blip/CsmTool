@@ -30,6 +30,7 @@ import InfoTip from "../components/InfoTip";
 import Sparkline from "../components/Sparkline";
 import SearchSelect from "../components/SearchSelect";
 import LabAdoptionTab from "../components/LabAdoptionTab";
+import LabOverallAdoptionTab from "../components/LabOverallAdoptionTab";
 import { fetchLabPitchStatus } from "../lib/pitch";
 import Paginated from "../components/Pager";
 import LabContactsCard from "../components/LabContactsCard";
@@ -884,6 +885,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     ...(SUPABASE_CONFIGURED ? [{ key: "contacts", label: "Points of Contact" }] : []),
     ...(lab.type === "Parent" ? [{ key: "childlabs", label: `Child Labs (${children.length})` }] : []),
     { key: "adoption", label: "Adoption" },
+    ...(SUPABASE_CONFIGURED && lab.type === "Parent" ? [{ key: "overalladoption", label: "Lab Overall Adoption" }] : []),
     { key: "collections", label: `Collections${collItems.length ? ` (${collItems.length})` : ""}` },
     { key: "history", label: `Lab History${activity.length ? ` (${activity.length})` : ""}` },
     ...(SUPABASE_CONFIGURED ? [{ key: "documents", label: "Documents" }] : []),
@@ -1426,6 +1428,10 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
             fetchLabPitchStatus(lab.id).then(setPitchMap).catch((err) => console.error(err));
           }}
         />
+      )}
+
+      {tab === "overalladoption" && lab.type === "Parent" && (
+        <LabOverallAdoptionTab key={lab.id} lab={lab} childLabs={children} modules={modules} plans={plans} onOpenLab={onOpenLab} />
       )}
 
       {tab === "collections" && (

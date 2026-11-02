@@ -57,7 +57,7 @@ function Pie({ group, params, pct, modName, tip, note }) {
     const tagPurchased = group.key !== "notinplan";
     const bought = tagPurchased ? s.items.filter(fromExpansion).length : 0;
     if (bought) rows.push(["Came from Expansion (purchased)", `${bought} of ${s.count}`]);
-    const list = s.items.slice(0, LIST_MAX).map((r) => `${r.def.name} — ${modName(r)}${r.def.type === "M" ? " · M" : ""}${tagPurchased && fromExpansion(r) ? " · purchased" : ""}`);
+    const list = s.items.slice(0, LIST_MAX).map((r) => `${r.def.name} — ${modName(r)}${r.def.type === "M" ? " · M" : ""}${tagPurchased && fromExpansion(r) ? " · purchased" : ""}${r.labName ? ` · ${r.labName}` : ""}`);
     return <TipCard color={s.color} title={`${group.title} · ${s.label}`} rows={rows} listTitle={s.count ? "Parameters" : null} list={list} more={s.count - LIST_MAX} />;
   }
   const hotKey = hot;
@@ -111,7 +111,7 @@ function Pie({ group, params, pct, modName, tip, note }) {
   );
 }
 
-export default function AdoptionPies({ scores }) {
+export default function AdoptionPies({ scores, foot }) {
   const { moduleResults } = scores;
   const [details, setDetails] = useState(false);
   const tip = useChartTooltip();
@@ -147,8 +147,8 @@ export default function AdoptionPies({ scores }) {
         {groups.map((g) => <Pie key={g.key} group={g} params={g.params} pct={g.pct} modName={modName} tip={tip} note={notes[g.key]} />)}
       </div>
       <div className="pie-foot">
-        Slices show how many parameters are at each stage; the centre is the weighted score (Overall = average of the Adoption and Expansion pipelines). Hover a slice for
-        the exact stages and parameters ("purchased" marks the ones that came in through Expansion).
+        {foot || <>Slices show how many parameters are at each stage; the centre is the weighted score (Overall = average of the Adoption and Expansion pipelines). Hover a slice for
+        the exact stages and parameters ("purchased" marks the ones that came in through Expansion).</>}
         <button type="button" className="mark-purchased" style={{ marginLeft: 8 }} onClick={() => setDetails((d) => !d)}>
           {details ? "Hide details" : "Show details — count per stage"}
         </button>

@@ -17,12 +17,14 @@ It is **live and in daily use** at `csm-tool-two.vercel.app`, and still being ac
 | Area | What it's for |
 | --- | --- |
 | **Customer Master (Labs)** | Every lab, with Plan, CSM owner, region, Lab Type (Pathology / Radiology / both), parent/child hierarchy, editable Lab Name and Lab ID. Segments A–E by MRR (A ₹1,00,000+ · B ₹75,000+ · C ₹50,000+ · D ₹25,000+ · E below). Filter by Lab Type or Lab Health (Sentiment) on Total Labs; Lab Type is a filter on every lab screen |
+| **Adoption** | Analytics, CSM Performance and Module-wise tabs with trends by month, quarter, half-year or year, plus the Adoption Template tab. Each client counts once (parent and child labs averaged); parents have a Lab Overall Adoption tab |
+| **KPI Management** | Six weighted KPIs per CSM (Adoption, POC Check-in, Retention, Expansion, Collection, Task Closure): team dashboard, CSM report, targets and weights editable by Leads / Admins |
 | **Adoption Template** | The catalog of modules/parameters; each is Adoption (base plan) or Expansion (paid add-on), Mandatory or Optional. Module weights total exactly 100%, and so do each module's parameter weights (one-click Rescale). Editable by CSM Leads / Admins |
 | **Plans** | LIMS Starter/Growth/Advance/Premium/Enterprise, each with a default scope |
 | **My Portfolio / Dashboard** | A CSM's own labs and KPIs; Leads/Admins can switch to Team View |
 | **Collections** | Invoice-driven only: invoices (PDF upload with auto-extraction), MRR, payments. A feature purchase never writes here |
 | **Adoption (per lab)** | Each parameter is In plan (To-Do → In Discussion / Demo → Trial → Onboarding / Setup → Live 1–4 → Adopted, forward only, skipping allowed, no waiting times, or Not Required / Not Applicable / Did Not Meet Requirements) or Not in plan (To-Do → Pitching → Trial → Purchased, or Not Required / Not Applicable / Lost). A purchased add-on moves onto the In-plan list at Onboarding / Setup. Two scores out of 100 — Adoption pipeline and Expansion pipeline — and Overall = their average. Every change needs a comment |
-| **Expansion** | Deal tracking with Pipeline/Lost/Live MRR, plus a **Features purchased** table (deal won date, Priced / Trial price, lost-after-purchase date and reason); add-on pitches are worked from My Portfolio, Tasks and each lab's Adoption tab |
+| **Expansion** | Analytics, CSM Performance and Module-wise tabs for the Expansion pipeline, plus Deals & Purchases: deal tracking with Pipeline/Lost/Live MRR, plus a **Features purchased** table (deal won date, Priced / Trial price, lost-after-purchase date and reason); add-on pitches are worked from My Portfolio, Tasks and each lab's Adoption tab |
 | **Visits & Meetings** | Offline (in-person) visits only: log a past visit, or plan a future one (becomes a task) |
 | **Log Check-in** | Calls, visits, emails, WhatsApp, notes — with sentiment, flagged modules and action items; action items and follow-ups become tasks. Dated today or yesterday only. Each point of contact can have a monthly minimum of proactive check-ins, tracked as done / left and as a per-CSM compliance stat on the Dashboard |
 | **Tasks** | Task management: status (Open / In Progress / On Hold / Done), priority, source (Manual / Adoption / Expansion), KPIs with Resolution TAT and on-time %, overdue aging, grouped table with bulk done, and a side panel with comments, activity history and timeline. Adoption / Expansion items that are under way become tasks automatically. A counter on the sidebar shows new tasks |
@@ -31,8 +33,7 @@ It is **live and in daily use** at `csm-tool-two.vercel.app`, and still being ac
 | **Lab History** | Activity log of everything that happens to a lab |
 | **Health, churn, reports** | Manual Health checks, Lab Health (Sentiment) from check-ins, churn logging, Financial Reports |
 
-**Not real yet:** Zoho Books sync (Collections simulates it), full Plan CRUD, KPI Management, Automation (greyed
-out as "Planned" in the sidebar). Support & Tickets opens Flow, a separate tool.
+**Not real yet:** Zoho Books sync (Collections simulates it), full Plan CRUD. Support & Tickets opens Flow, a separate tool.
 
 ## Who can see what
 
