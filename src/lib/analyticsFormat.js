@@ -1,6 +1,6 @@
 // Shared by the Adoption, Expansion and KPI screens.
 export const fmtPct = (v) => (v == null ? "—" : `${Math.round(v)}%`);
-export const fmtPP = (v) => (v == null ? "—" : `${v > 0 ? "+" : ""}${Math.round(v)} pp`);
+export const fmtPP = (v) => (v == null ? "—" : `${Math.round(v) > 0 ? "+" : ""}${Math.round(v)} pp`);
 // ₹10,44,00,000 → "₹10.44 Cr", ₹3,20,000 → "₹3.20 L" — for tiles and tight table columns.
 export function fmtCompactINR(n) {
   const v = Math.abs(n || 0);

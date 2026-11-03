@@ -18,15 +18,13 @@ import { Tile, Card, TrendChart, ScoreBars, Donut, Heat, Change } from "./Analyt
 import { RANGES, rangeOf, fmtPct, fmtPP, fmtCompactINR, downloadCsv } from "../lib/analyticsFormat";
 
 // The analytics shared by the Adoption and Expansion screens (decision Nov 2 2026): tiles, trend, by CSM, by range, then
-// lab-wise / CSM / module-wise tables. `pipeline` only picks the score shown first and the KPI target it's held against;
-// the Metric dropdown switches to any of the four scores. Everything counts per CLIENT (parent + children averaged, see
+// lab-wise / CSM / module-wise tables. `pipeline` picks the one score the page shows and the KPI target it's held against:
+// each page shows only its own pipeline, never Overall or Mandatory, which mix the two (decision Nov 3 2026). Everything counts per CLIENT (parent + children averaged, see
 // clientGroups / groupScores). Past periods come from replaying param_changes (lib/scoreHistory.js).
-const METRICS = [
-  { key: "adoptionPct", label: "Adoption pipeline", modKey: "adoptionPct" },
-  { key: "expansionPct", label: "Expansion pipeline", modKey: "expansionPct" },
-  { key: "overallPct", label: "Overall", modKey: "overallPct" },
-  { key: "mandatoryPct", label: "Mandatory", modKey: "mandPct" },
-];
+const METRICS = {
+  adoption: { key: "adoptionPct", label: "Adoption pipeline", modKey: "adoptionPct" },
+  expansion: { key: "expansionPct", label: "Expansion pipeline", modKey: "expansionPct" },
+};
 const LINE = "var(--stg-plan-2)";
 const LIST_MAX = 8;
 const avg = (vals) => { const v = vals.filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
@@ -38,14 +36,13 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
   const [year, setYear] = useSessionState(`${page}.year`, thisYear);
   const [gran, setGran] = useSessionState(`${page}.gran`, "Quarterly");
   const [sub, setSub] = useSessionState(`${page}.sub`, "labs");
-  const [metricKey, setMetricKey] = useSessionState(`${page}.metric`, pipeline === "expansion" ? "expansionPct" : "adoptionPct");
   const [fClient, setFClient] = useSessionState(`${page}.client`, "");
   const [pickA, setPickA] = useSessionState(`${page}.compareA`, "");
   const [pickB, setPickB] = useSessionState(`${page}.compareB`, "");
   const tip = useChartTooltip();
 
-  const metric = METRICS.find((m) => m.key === metricKey) || METRICS[0];
-  const kpiKey = metric.key === "expansionPct" ? "expansion" : "adoption";
+  const metric = METRICS[pipeline];
+  const kpiKey = pipeline;
   const { data, clientScores } = kpi;
   const settings = data.settings;
   const target = targetFor(settings, kpiKey, scopeCsm ? idByName?.[scopeCsm] : null);
@@ -71,6 +68,16 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
 
   const curAvg = teamScore(groups, periodB);
   const prevAvg = teamScore(groups, periodA);
+  // Change compares like with like (decision Nov 3 2026): only clients scored in BOTH periods, so a new client joining the
+  // average doesn't read as a fall. `of` = clients scored in either period; `from` / `to` = the averages of those compared.
+  const compareClients = (gs, pA, pB) => {
+    const rows = gs.map((g) => ({ a: scoreOf(g, pA), b: scoreOf(g, pB) })).filter((r) => r.a != null || r.b != null);
+    const both = rows.filter((r) => r.a != null && r.b != null);
+    const from = avg(both.map((r) => r.a)), to = avg(both.map((r) => r.b));
+    return { change: diff(to, from), from, to, count: both.length, of: rows.length };
+  };
+  const compared = compareClients(groups, periodA, periodB);
+  const comparedNote = compared.count ? `On ${compared.count} of ${compared.of} client${compared.of === 1 ? "" : "s"} with both periods` : "No client has both periods";
   const totalLabs = groups.reduce((s, g) => s + g.labs.length, 0);
   const totalMrr = groups.reduce((s, g) => s + g.mrrINR, 0);
   const achievement = curAvg != null && target > 0 ? (curAvg / target) * 100 : null;
@@ -102,7 +109,7 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
       <Tile value={fmtCompactINR(totalMrr)} label="Total MRR" sub={`ARR ${fmtCompactINR(totalMrr * 12)}`} />
       <Tile tone="good" value={fmtPct(curAvg)} label={metric.label} sub={periodB.label} />
       <Tile value={fmtPct(prevAvg)} label="Compared with" sub={periodA.label} />
-      <Tile value={fmtPP(diff(curAvg, prevAvg))} label={`Change, ${gran === "Monthly" ? "MoM" : gran === "Quarterly" ? "QoQ" : gran === "Yearly" ? "YoY" : "HoH"}`} />
+      <Tile value={fmtPP(compared.change)} label={`Change, ${gran === "Monthly" ? "MoM" : gran === "Quarterly" ? "QoQ" : gran === "Yearly" ? "YoY" : "HoH"}`} sub={comparedNote} />
       <Tile value={fmtPct(target)} label="Target" sub={`${KPI_DEFS.find((k) => k.key === kpiKey).label} KPI`} />
       <Tile tone={achievement != null && achievement >= 100 ? "good" : undefined} value={fmtPct(achievement)} label="Target achievement" />
     </div>
@@ -121,10 +128,12 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
   const atOrAbove = scored.filter((r) => r.cur >= target);
   const movers = labRows.filter((r) => diff(r.cur, r.prev) != null).sort((a, b) => (b.cur - b.prev) - (a.cur - a.prev));
   const takeaways = [
-    curAvg != null && prevAvg != null ? `${metric.label} ${diff(curAvg, prevAvg) >= 0 ? "up" : "down"} ${Math.abs(Math.round(diff(curAvg, prevAvg)))} pp (${fmtPct(prevAvg)} → ${fmtPct(curAvg)}).` : curAvg != null ? `${metric.label} is ${fmtPct(curAvg)} for ${periodB.label}; nothing recorded for ${periodA.label} to compare.` : null,
+    compared.change != null
+      ? `${metric.label} ${Math.round(compared.change) === 0 ? "unchanged" : `${compared.change > 0 ? "up" : "down"} ${Math.abs(Math.round(compared.change))} pp`} (${fmtPct(compared.from)} → ${fmtPct(compared.to)}) on the ${compared.count} client${compared.count === 1 ? "" : "s"} with both periods.`
+      : curAvg != null ? `${metric.label} is ${fmtPct(curAvg)} for ${periodB.label}; no client has a score in both periods to compare.` : null,
     scored.length ? `${atOrAbove.length} of ${scored.length} clients at or above the ${fmtPct(target)} target.` : null,
     ranged[3].count ? `${ranged[3].count} client${ranged[3].count === 1 ? " is" : "s are"} below 40% and need focus.` : null,
-    movers.length && movers[0].cur > movers[0].prev ? `Most improved: ${movers[0].g.name} (${fmtPP(movers[0].cur - movers[0].prev)}).` : null,
+    movers.length && Math.round(movers[0].cur - movers[0].prev) > 0 ? `Most improved: ${movers[0].g.name} (${fmtPP(movers[0].cur - movers[0].prev)}).` : null,
   ].filter(Boolean);
 
   const analyticsTab = (
@@ -172,8 +181,9 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
           <div className="an-compare">
             <div><span>{periodA.label}</span><b>{fmtPct(prevAvg)}</b></div>
             <div><span>{periodB.label}</span><b>{fmtPct(curAvg)}</b></div>
-            <div><span>Change</span><b>{fmtPP(diff(curAvg, prevAvg))}</b></div>
+            <div><span>Change</span><b>{fmtPP(compared.change)}</b></div>
           </div>
+          <div className="an-tile-sub" style={{ marginTop: 6 }}>Change: {comparedNote.toLowerCase()}.</div>
           <div className="pf-card-title" style={{ margin: "14px 0 6px" }}>Key takeaways</div>
           {takeaways.length ? <ul className="an-list">{takeaways.map((t) => <li key={t}>{t}</li>)}</ul> : <div className="an-empty" style={{ padding: 0 }}>Nothing to report yet.</div>}
         </div>
@@ -184,7 +194,7 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
   // ---- tab: CSM performance ----
   const csmTab = (
     <CsmPerformance rows={csmRows} groups={groups} periods={periods} periodA={periodA} periodB={periodB} metric={metric} kpiKey={kpiKey} settings={settings} data={data}
-      teamScore={teamScore} scoreOf={scoreOf} clientScores={clientScores} tip={tip} gran={gran} target={target} onOpenLab={onOpenLab} onOpenCsm={onOpenCsm} persist={page} />
+      teamScore={teamScore} compareClients={compareClients} scoreOf={scoreOf} clientScores={clientScores} tip={tip} gran={gran} target={target} onOpenLab={onOpenLab} onOpenCsm={onOpenCsm} persist={page} />
   );
 
   // ---- tab: module-wise ----
@@ -222,9 +232,6 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
             <div className="an-seg" role="group" aria-label="Comparison">
               {GRANULARITIES.map((g) => <button key={g} className={gran === g ? "on" : ""} onClick={() => { setGran(g); setPickA(""); setPickB(""); }}>{g}</button>)}
             </div>
-            <select className="dash-select" value={metric.key} onChange={(e) => setMetricKey(e.target.value)} aria-label="Metric">
-              {METRICS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-            </select>
             <div style={{ minWidth: 190 }}><SearchSelect value={fClient} onChange={setFClient} options={clientOptions} emptyLabel="All clients" placeholder="All clients" inputStyle={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontFamily: "inherit", background: "var(--surface)", color: "var(--text)" }} /></div>
             <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px", marginLeft: "auto" }} onClick={exportCsv}>Export CSV</button>
           </div>
@@ -281,8 +288,8 @@ function TargetTable({ rows, target, onOpenLab }) {
 
 function Insights({ rows, groups, periodB, moduleScoreOf, target, modules, onOpenLab }) {
   const moved = rows.filter((r) => diff(r.cur, r.prev) != null);
-  const up = [...moved].filter((r) => r.cur > r.prev).sort((a, b) => (b.cur - b.prev) - (a.cur - a.prev)).slice(0, 5);
-  const down = [...moved].filter((r) => r.cur < r.prev).sort((a, b) => (a.cur - a.prev) - (b.cur - b.prev)).slice(0, 5);
+  const up = [...moved].filter((r) => Math.round(r.cur - r.prev) > 0).sort((a, b) => (b.cur - b.prev) - (a.cur - a.prev)).slice(0, 5);
+  const down = [...moved].filter((r) => Math.round(r.cur - r.prev) < 0).sort((a, b) => (a.cur - a.prev) - (b.cur - b.prev)).slice(0, 5);
   const low = rows.filter((r) => r.cur != null && r.cur < 40).sort((a, b) => a.cur - b.cur).slice(0, 5);
   const weak = modules.map((m) => ({ m, v: avg(groups.map((g) => moduleScoreOf(g, periodB, m.key))) })).filter((x) => x.v != null && x.v < target).sort((a, b) => a.v - b.v).slice(0, 5);
   const block = (title, items, render) => (
@@ -301,7 +308,7 @@ function Insights({ rows, groups, periodB, moduleScoreOf, target, modules, onOpe
   );
 }
 
-function CsmPerformance({ rows, groups, periods, periodA, periodB, metric, kpiKey, settings, data, teamScore, scoreOf, clientScores, tip, gran, target, onOpenLab, onOpenCsm, persist }) {
+function CsmPerformance({ rows, groups, periods, periodA, periodB, metric, kpiKey, settings, data, teamScore, compareClients, scoreOf, clientScores, tip, gran, target, onOpenLab, onOpenCsm, persist }) {
   const [sub, setSub] = useSessionState(`${persist}.csmSub`, "summary");
   const [fCsm, setFCsm] = useSessionState(`${persist}.csmList`, "");
   if (!rows.length) return <div className="table-card an-empty">Switch to Team View with All CSMs to compare people.</div>;
@@ -316,7 +323,7 @@ function CsmPerformance({ rows, groups, periods, periodA, periodB, metric, kpiKe
       .reduce((s, o) => s + toINR(o.monthlyRevenue, c.labs.find((l) => l.id === o.labId)?.region), 0);
     const risky = c.labs.filter((l) => l.status === "At Risk" || computeSentimentHealth(data.visitsByLab[l.id]).bucket === "At Risk");
     const kpiScore = scoreKpis(k, settings.weights, (key) => targetFor(settings, key, c.id)).total;
-    return { ...c, cur, prev, t, retention: k.retention.value, pipelineMrr, risky, kpiScore };
+    return { ...c, cur, prev, change: compareClients(c.groups, periodA, periodB).change, t, retention: k.retention.value, pipelineMrr, risky, kpiScore };
   });
 
   const cols = (
@@ -347,12 +354,12 @@ function CsmPerformance({ rows, groups, periods, periodA, periodB, metric, kpiKe
       </div>
       {sub === "summary" && (
         <div className="table-card"><div className="table-scroll"><table className="child-mini an-table">
-          <thead><tr><th>CSM</th><th className="c">Labs</th><th>MRR</th><th className="c">{periodA.label}</th><th className="c">{periodB.label}</th><th className="c">Change</th><th className="c">Target</th><th className="c">Achievement</th><th className="c">Retention</th><th>Open deals</th><th className="c">At risk</th><th className="c">KPI score</th><th></th></tr></thead>
+          <thead><tr><th>CSM</th><th className="c">Labs</th><th>MRR</th><th className="c">{periodA.label}</th><th className="c">{periodB.label}</th><th className="c" title="Only clients with a score in both periods">Change</th><th className="c">Target</th><th className="c">Achievement</th><th className="c">Retention</th><th>Open deals</th><th className="c">At risk</th><th className="c">KPI score</th><th></th></tr></thead>
           <tbody>
             {withStats.map((c) => (
               <tr key={c.name}>
                 <td style={{ fontWeight: 600 }}>{c.name}</td><td className="c">{c.labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(c.mrr)}</td>
-                <td className="c"><Heat value={c.prev} /></td><td className="c"><Heat value={c.cur} /></td><td className="c"><Change value={diff(c.cur, c.prev)} /></td>
+                <td className="c"><Heat value={c.prev} /></td><td className="c"><Heat value={c.cur} /></td><td className="c"><Change value={c.change} /></td>
                 <td className="c">{fmtPct(c.t)}</td><td className="c">{c.cur != null && c.t > 0 ? fmtPct((c.cur / c.t) * 100) : "—"}</td>
                 <td className="c">{fmtPct(c.retention)}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(c.pipelineMrr)}</td>
                 <td className="c" {...tip.bind(<TipCard title={`${c.name} · labs at risk`} rows={[["Labs", c.risky.length]]} list={c.risky.slice(0, LIST_MAX).map((l) => l.name)} more={c.risky.length - LIST_MAX} />)} style={{ color: c.risky.length ? "var(--bad)" : undefined, fontWeight: 700 }}>{c.risky.length}</td>
