@@ -115,7 +115,8 @@ own labs, a Lead / Admin the team. It cannot change anything.
   at `/oauth/consent` (`vercel.json` routes it to the app) · scoring rules shared with the app:
   `supabase/functions/_shared/scoring.js` (the app's `src/lib/adoption.js` re-exports it, so both always score alike).
 - Tools: `whoami`, `list_labs`, `lab_overview`, `portfolio_scores`, `list_tasks`, `recent_checkins`, `collections_overview`,
-  `expansion_overview`, `feedback_summary`, `churn_log`.
+  `expansion_overview`, `feedback_summary`, `churn_log`, `how_it_works` (explains how each number and rule works, from
+  `supabase/functions/_shared/howItWorks.js`; when a rule changes, update that file and redeploy).
 
 **One-time setup** (Supabase dashboard, project "CSM console"):
 

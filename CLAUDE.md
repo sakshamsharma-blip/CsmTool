@@ -300,7 +300,10 @@ with the same context and follows the same rules. Read it fully before making ch
   sign-in; `vercel.json` rewrites `/oauth/*` to the app). **Scoring rules live in `supabase/functions/_shared/scoring.js`**
   (constants, `resolveParam`, `computeLabScores`, `averageScores`, `subsetScore`, `planIncludesParam`, …) — pure JS, no
   imports; `src/lib/adoption.js` and `src/lib/plans.js` re-export from it. Change scoring THERE so the app and the connector
-  stay identical. Setup steps (OAuth server, authorization path, dynamic registration, deploy, add the connector) are in
+  stay identical. **`how_it_works(topic)`** (Nov 3 2026) explains each number and rule from `_shared/howItWorks.js`: its score
+  ladders are built from `scoring.js`, the rest is hand-written, so **when a rule changes in the app, update that file too and
+  redeploy**. It explains KPIs and reads the live weights / targets, but returns nobody's KPI score (that calculation lives in
+  the app's `lib/kpi.js` and `lib/useKpiData.js`). Setup steps (OAuth server, authorization path, dynamic registration, deploy, add the connector) are in
   README → "Claude connector (MCP)". Adding a write tool later = a new decision (writes must keep the app's rules:
   comments, Lab History, task sync).
 

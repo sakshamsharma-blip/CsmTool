@@ -1,0 +1,205 @@
+// What the connector's how_it_works tool answers from: how each number and rule in CSM GROWTH works, in plain words.
+// Pure text, no database. The score ladders are built from scoring.js, so they can't drift; everything else is written by
+// hand, so when a rule changes in the app, change it here too and redeploy csm-mcp.
+import { PITCH_SCORE, PURCHASED_START_STATUS, ROLLOUT_SCORE } from "./scoring.js";
+
+const ladder = (scores) => Object.entries(scores).map(([stage, pts]) => `${stage} ${pts == null ? "left out of the score" : pts}`).join(" · ");
+
+export const HOW_IT_WORKS = {
+  adoption_score: {
+    title: "Adoption pipeline score",
+    summary: "How far the features a lab should be using have been rolled out.",
+    explanation: [
+      "Counts every In-plan parameter of the lab, plus add-ons it has purchased. Each is scored by its rollout stage.",
+      `Stage points: ${ladder(ROLLOUT_SCORE)}.`,
+      "A parameter is In plan by default when the lab's Plan includes it and its template category is Adoption. The lab's CSM can change this per parameter, with a comment.",
+      `A purchased add-on joins at ${PURCHASED_START_STATUS} (${ROLLOUT_SCORE[PURCHASED_START_STATUS]}) and climbs from there. A lost add-on leaves this pipeline.`,
+      "Module score = weighted average of its parameters, using parameter weights. Lab score = weighted average of the modules, using module weights. Parameters left out don't count towards the average at all.",
+      "Stages only move forward and may skip ahead. Not Required, Not Applicable and Did Not Meet Requirements can be set from any stage. Only a CSM Lead / Admin can step back. Every change needs a comment.",
+    ],
+    example: "A module has parameters weighted 50 (Adopted = 100), 30 (Live 1 = 50) and 20 (Not Required). Module score = (50×100 + 30×50) ÷ 80 = 81.25. Two modules weighted 60 and 40 scoring 80 and 50 give a lab score of 48 + 20 = 68.",
+    whereInApp: "A lab's Adoption tab, My Portfolio, Dashboard, and the Adoption page in the sidebar.",
+  },
+  expansion_score: {
+    title: "Expansion pipeline score",
+    summary: "How far the features outside a lab's plan have got in being sold.",
+    explanation: [
+      "Counts every Not-in-plan parameter of the lab, scored by its pitch stage.",
+      `Stage points: ${ladder(PITCH_SCORE)}.`,
+      "Weighted the same way as the Adoption pipeline: parameters by weight inside a module, then modules by module weight.",
+      `Purchased scores ${PITCH_SCORE.Purchased} here and keeps that score. The add-on also starts counting in the Adoption pipeline, so it is in both. A lost one counts only here, at 0.`,
+      "Every pitch stage change needs a comment. Lost after Purchase also drops the lab's MRR by the feature's charge and logs a Contraction.",
+    ],
+    example: "A lab with one Not-in-plan parameter at Pitching (10) and another of equal weight at Purchased (100) scores 55 in that module.",
+    whereInApp: "A lab's Adoption tab, My Portfolio, Dashboard, and the Expansion page in the sidebar.",
+  },
+  overall_and_mandatory: {
+    title: "Overall and Mandatory scores",
+    summary: "Overall averages the two pipelines. Mandatory repeats that using only Mandatory parameters.",
+    explanation: [
+      "Overall = simple average of the Adoption and Expansion pipeline scores. If one pipeline has nothing counted, Overall is just the other one.",
+      "Mandatory = the same calculation using only parameters marked Mandatory in the Adoption Template.",
+      "The Adoption and Expansion pages in the sidebar deliberately show only their own pipeline score, because Overall and Mandatory mix the two. Overall stays on lab pages, My Portfolio and Dashboard.",
+    ],
+    example: "Adoption pipeline 70 and Expansion pipeline 30 give Overall 50. With no Not-in-plan parameters counted, Adoption 70 gives Overall 70.",
+    whereInApp: "A lab's Adoption tab, My Portfolio and Dashboard.",
+  },
+  client_scores: {
+    title: "Client-level scores (parent and child labs)",
+    summary: "Portfolio-wide screens count each client once, averaging its parent and child labs.",
+    explanation: [
+      "Each score of a client = simple average across its parent and child labs. It is not weighted by MRR or size.",
+      "A lab with nothing counted in a score is left out of that score's average.",
+      "When the view is scoped to one CSM, only that CSM's labs in the group are averaged.",
+      "A page's score is then the simple average across its clients, so adding a low-scoring client lowers it even when no other client changed.",
+      "Parent labs have a Lab Overall Adoption tab with the group's scores. The parent's own data stays on its Adoption tab.",
+    ],
+    example: "Parent 87.5 and child 57.5 give the client 72.5.",
+    whereInApp: "Lab Overall Adoption tab, My Portfolio, Dashboard, Adoption, Expansion, KPI Management.",
+  },
+  score_history: {
+    title: "Past scores, trends and Change",
+    summary: "Past scores are rebuilt from the change history. Change compares only clients scored in both periods.",
+    explanation: [
+      "Scores aren't saved over time. A past score = today's stages with every later parameter change undone, then scored by the normal rules.",
+      "It uses TODAY's template weights and Plans, so changing a weight also changes past numbers.",
+      "A lab counts only from the date it was added.",
+      "Periods are calendar Monthly, Quarterly, Half-Yearly or Yearly. A period's score is the position at its end.",
+      "Change compares only clients with a score in both periods, and the page says how many. The two period averages shown beside it still cover every scored client, so they may not subtract to the same figure.",
+      "Change is in percentage points: 75 to 78 is +3 pp, not 3%.",
+    ],
+    example: "Five clients are scored this period and one last period. Change uses only the one client in both, and reads \"On 1 of 5 clients with both periods\".",
+    whereInApp: "Adoption and Expansion pages, Analytics, CSM Performance and Module-wise tabs.",
+  },
+  kpi: {
+    title: "KPI Management",
+    summary: "Six KPIs per period, turned into points against targets and combined into a score out of 100.",
+    explanation: [
+      "Adoption and Expansion: average pipeline score of the clients at the end of the period.",
+      "POC Check-in: Proactive check-ins done ÷ owed, from each POC's monthly minimum. Done is capped per POC per month, so extra check-ins with one POC don't cover a miss on another. A running month's full minimum counts.",
+      "Retention: 1 − (MRR Churned + Contraction in the period) ÷ MRR at the period's start, in INR, following billing mode.",
+      "Collection: of invoices due in the period so far, amount collected ÷ invoice total, in INR.",
+      "Task Closure: the owner's one-off tasks due in the period so far, Done ÷ due. Tasks with no due date and recurring tasks are left out. A task due today counts only once it is done.",
+      "Points = min(actual ÷ target, 100%) × weight, so beating a target earns no extra points.",
+      "KPI score = points earned ÷ weights counted × 100. A KPI with nothing to measure in the period is left out, not scored 0.",
+      "A target is the level to reach, not an increase: a target of 78 with an actual of 75 means 3 points to go.",
+      "Weights must total exactly 100. A Lead / Admin edits weights and team targets, and can override a target per CSM. Settings aren't versioned, so a new target also re-reads past periods.",
+      "A plain CSM sees only their own report.",
+      "This connector explains KPIs but doesn't return anyone's KPI score. Those are on the KPI Management page.",
+    ],
+    example: "Adoption with weight 30, target 75 and actual 60 earns (60 ÷ 75) × 30 = 24 points. If Collection (weight 15) has no invoices due, the score is points earned ÷ 85 × 100.",
+    whereInApp: "KPI Management in the sidebar.",
+  },
+  mrr_and_invoices: {
+    title: "MRR, ARR and invoices",
+    summary: "Recurring invoices set a lab's MRR, Pro-Rata invoices add to it, and billing mode decides which labs count.",
+    explanation: [
+      "A recurring invoice SETS MRR to sub total ÷ its months: Monthly 1, Quarterly 3, Half-Yearly 6, Annual 12.",
+      "A Pro-Rata invoice ADDS its sub total to current MRR until the next recurring invoice.",
+      "Editing or deleting an invoice moves MRR only by the difference that change implies, so manual MRR edits made since are kept.",
+      "Purchasing an add-on or adding its charges doesn't change MRR. Invoices do. Lost after Purchase drops MRR by the feature's charge.",
+      "Billing mode: Consolidated counts the parent's own MRR and ignores the children's. Per-Branch (the default) sums the children's and ignores the parent's own.",
+      "ARR = MRR × 12.",
+      "Domestic labs are in INR and ROW labs in USD. USD is converted at a live rate before adding across labs.",
+    ],
+    example: "A ₹60,000 Half-Yearly invoice sets MRR to ₹10,000 and covers 6 months from its date. A ₹2,000 Pro-Rata invoice then makes it ₹12,000 until the next recurring invoice.",
+    whereInApp: "A lab's Collections tab, Lab Details, Collections, Financial Reports.",
+  },
+  collections: {
+    title: "Collections, due dates and overdue",
+    summary: "The due date is the last day to pay. Overdue counts from the next day.",
+    explanation: [
+      "Due date = invoice date + credit days − 1.",
+      "Aging by days overdue: under 15 Current, 15–29 Due Soon, 30–44 Overdue, 45 or more Critical.",
+      "Collections is driven by invoices. Purchases and Lost after Purchase don't write to it, though older manual items may still be listed.",
+    ],
+    example: "An invoice on Oct 1 with 7 credit days is due Oct 7, and Oct 8 is 1 day overdue.",
+    whereInApp: "Collections in the sidebar and a lab's Collections tab.",
+  },
+  churn_and_retention: {
+    title: "Churn, contraction and retention",
+    summary: "Churn is losing a lab's MRR, contraction is losing part of it, and both reduce the Retention KPI.",
+    explanation: [
+      "Churned and Contraction entries are recorded in the churn log with the MRR lost, month and reason. Lost after Purchase logs a Contraction.",
+      "Dashboard tiles are all time, by the lab's CSM: Churn Count, MRR Churned, ARR Churned, MRR Contraction, and MRR Churn %.",
+      "MRR Churn % = MRR Churned ÷ the view's current Total MRR. It doesn't include Contraction.",
+      "The Retention KPI is different: it covers one period, includes Contraction, and divides by MRR at the period's start.",
+    ],
+    example: "Opening MRR ₹10,00,000 with ₹50,000 churned and ₹50,000 contraction in the period gives Retention 90%.",
+    whereInApp: "Dashboard, Financial Reports, KPI Management.",
+  },
+  lab_health: {
+    title: "Lab Health (Sentiment) and Health",
+    summary: "Two separate signals: one computed from check-in sentiment, one set by hand.",
+    explanation: [
+      "Lab Health (Sentiment) uses each check-in's sentiment: Positive 100, Neutral 50, At Risk 0.",
+      "Score = 75% the average of the last 5 + 25% the all-time average.",
+      "75 or more Healthy, 40–74 Needs Attention, under 40 At Risk, no sentiment logged Not Assessed.",
+      "Health is a separate status set by hand through Log Health Check. The two can disagree, and that isn't an error.",
+    ],
+    example: "Last 5 average 40 and all-time average 80 give 0.75×40 + 0.25×80 = 50, Needs Attention.",
+    whereInApp: "Total Labs and a lab's page.",
+  },
+  segments: {
+    title: "Segments",
+    summary: "A letter band from a lab's MRR in INR, computed and not stored.",
+    explanation: [
+      "A Enterprise ₹1,00,000+ · B Premium ₹75,000+ · C Advance ₹50,000+ · D Standard ₹25,000+ · E Essential ₹0–₹24,999.",
+    ],
+    example: "A ROW lab's USD MRR is converted to INR first, then banded.",
+    whereInApp: "Total Labs.",
+  },
+  tasks: {
+    title: "Tasks, overdue and TAT",
+    summary: "Tasks come from people and from Adoption / Expansion stages. TAT is the time from creation to completion.",
+    explanation: [
+      "Status is Open, In Progress, On Hold or Done. Overdue and Due Today are worked out from the due date and aren't stored.",
+      "When a parameter gets under way (In plan: In Discussion / Demo to Live 4; Not in plan: Pitching, Trial) it gets one task, owned by the lab's CSM, with no due date unless one is given. Moving between under-way stages keeps that task.",
+      "A final stage such as Adopted, Purchased, Not Required or a Lost stage marks it Done. Purchased closes the Expansion task and opens an Adoption one at Onboarding / Setup.",
+      "Log Check-in action items and next follow-up dates also become tasks. A future visit becomes a planned-visit task.",
+      "Resolution TAT = completed date − created date. On-time = completed on or before the due date. Recurring tasks have no TAT.",
+      "The Tasks page's Completed, Avg Resolution TAT and On-time % tiles cover the last 30 days, compared with the 30 days before.",
+    ],
+    example: "A task created Oct 1, due Oct 5 and completed Oct 4 has a TAT of 3 days and is on time.",
+    whereInApp: "Tasks in the sidebar and Tasks for Today on Dashboard / My Portfolio.",
+  },
+  checkins_and_pocs: {
+    title: "Check-ins, visits and POC targets",
+    summary: "Each check-in is Proactive or Reactive, dated today or yesterday, and counts towards POC targets when it names the POC.",
+    explanation: [
+      "Every check-in or logged visit must be marked Proactive or Reactive.",
+      "Check-ins and logged visits can only be dated today or yesterday. Leads and Admins aren't exempt.",
+      "Each POC can have a Minimum Proactive Check-ins per Month. Done = the lab's Proactive check-ins this month whose Person Contacted matches the POC's name, so a misspelt name doesn't count.",
+      "Time spent on a lab = the sum of its check-ins' Duration.",
+      "Visits & Meetings covers offline visits only. A past visit goes to Lab History, a future one becomes a planned task. Calls, emails, WhatsApp and notes go through Log Check-in.",
+    ],
+    example: "A POC with a minimum of 2 and 3 Proactive check-ins this month counts as 2 of 2 in compliance figures.",
+    whereInApp: "Log Check-in, a lab's Points of Contact tab, Visits & Meetings, Dashboard.",
+  },
+  feedback_nps: {
+    title: "Feedback and NPS",
+    summary: "Offline feedback recorded by the CSM. The NPS shown is an average out of 10.",
+    explanation: [
+      "Labs give feedback offline (Google Form, Email, WhatsApp) and the CSM records NPS 0–10 and/or a 1–5 rating, with at least one required.",
+      "Average NPS is the average score out of 10, not the promoters-minus-detractors figure used elsewhere.",
+      "Promoters 9–10, passives 7–8, detractors 0–6.",
+      "Recorded on parent labs only. Child-lab responses count under the parent.",
+      "The report's coverage by CSM compares total labs with labs that have feedback.",
+    ],
+    example: "Responses of 10, 8 and 6 give Average NPS 8, with 1 promoter, 1 passive and 1 detractor.",
+    whereInApp: "Feedback & NPS in the sidebar.",
+  },
+  visibility_and_roles: {
+    title: "Who sees and edits what",
+    summary: "A CSM sees their own labs. A CSM Lead / Admin can see the team.",
+    explanation: [
+      "Every CSM sees only their own labs by default. A Lead / Admin can switch to Team View and filter by CSM. The database enforces this.",
+      "This connector signs in as the person using it, so it sees what they see in the app. It can't change anything.",
+      "Only a Lead / Admin can edit the Adoption Template, step a stage back, reassign a CSM, or edit KPI weights and targets. Only the Admin can change a team member's role.",
+    ],
+    example: "A CSM asking about another CSM's lab gets no result, because that lab isn't visible to them.",
+    whereInApp: "The My Labs / Team View switch on portfolio-wide pages.",
+  },
+};
+
+export const HOW_IT_WORKS_TOPICS = Object.keys(HOW_IT_WORKS);
