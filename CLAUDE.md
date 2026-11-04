@@ -12,7 +12,7 @@ with the same context and follows the same rules. Read it fully before making ch
 
 - An internal CrelioHealth tool for Customer Success Managers (CSMs) to track labs (clients):
   adoption of features, collections/MRR, expansion/upsell deals, visits, tasks, lab history.
-- Live and in real use — not a prototype. Deployed at `csm-tool-two.vercel.app`.
+- Live and in real use — not a prototype. Deployed at `creliocsm360.vercel.app`.
 - Repo: `git@github.com:sakshamsharma-blip/CsmTool.git`.
 - Still actively being built out and fixed — expect ongoing changes, not a finished product.
 

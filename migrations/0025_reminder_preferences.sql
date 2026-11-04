@@ -31,7 +31,7 @@ create policy "notification_prefs_scoped" on public.notification_prefs
 --      RESEND_API_KEY         from resend.com (for email)       } either or both;
 --      REMINDER_FROM_EMAIL    e.g. "CS Console <cs@yourdomain>"  } a channel with no
 --      SLACK_WEBHOOK_URL      Slack → Incoming Webhook URL       } credentials is skipped
---      APP_URL                https://csm-tool-two.vercel.app
+--      APP_URL                https://creliocsm360.vercel.app
 -- 2. Deploy the function: supabase/functions/send-reminders (Supabase CLI `supabase functions deploy
 --    send-reminders`, or ask Claude to deploy it through the Supabase connector).
 -- 3. Database → Extensions: enable pg_cron and pg_net, then schedule it daily at 09:00 IST (03:30 UTC):

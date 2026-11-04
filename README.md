@@ -6,7 +6,7 @@ An internal CrelioHealth tool for the Customer Success team. It replaces the old
 for tracking diagnostic-lab clients: which features each lab has adopted, what they pay (MRR),
 upsell/expansion deals, visits and check-ins, follow-up tasks, and a full history per lab.
 
-It is **live and in daily use** at `csm-tool-two.vercel.app`, and still being actively built out.
+It is **live and in daily use** at `creliocsm360.vercel.app`, and still being actively built out.
 
 > Working on this with an AI assistant? Read [CLAUDE.md](CLAUDE.md) first — it holds the business
 > rules, workflow rules (including git/commit rules) and current status. Keep both files up to date
@@ -122,7 +122,7 @@ own labs, a Lead / Admin the team. It cannot change anything.
 
 1. Authentication → **OAuth Server**: enable it, set **Authorization Path** to `/oauth/consent`, and turn on **dynamic client
    registration** (Claude registers itself).
-2. Authentication → **URL Configuration**: **Site URL** = `https://csm-tool-two.vercel.app`.
+2. Authentication → **URL Configuration**: **Site URL** = `https://creliocsm360.vercel.app`.
 3. If Claude asks for the `openid` scope, Supabase needs asymmetric JWT signing keys (Project Settings → JWT Keys); with the
    legacy HS256 secret, ID tokens can't be issued.
 4. Deploy the function: `supabase functions deploy csm-mcp --project-ref fviorzjezigvjevlsdrv` (`supabase/config.toml` turns
