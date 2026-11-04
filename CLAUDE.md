@@ -1,4 +1,4 @@
-# CSM GROWTH (the CSM Tool) — Project Context & Working Rules
+# CSM 360 (the CSM Tool) — Project Context & Working Rules
 
 This file is here so any Claude session (Cowork, Claude Code, etc.) working in this repo starts
 with the same context and follows the same rules. Read it fully before making changes.
@@ -7,8 +7,8 @@ with the same context and follows the same rules. Read it fully before making ch
 
 ## What this is
 
-- **Product name: CSM GROWTH** (decision Oct 30 2026) — shown in the sidebar, sign-in, page title, consent page and the
-  Claude connector (`csm-growth`). "CSM Tool" in older notes and code comments means the same app.
+- **Product name: CSM 360** (decision Nov 4 2026) — shown in the sidebar, sign-in, page title, consent page and the
+  Claude connector (`csm-360`). "CSM GROWTH" (its name from Oct 30 2026) and "CSM Tool" in older notes and code comments mean the same app.
 
 - An internal CrelioHealth tool for Customer Success Managers (CSMs) to track labs (clients):
   adoption of features, collections/MRR, expansion/upsell deals, visits, tasks, lab history.
@@ -293,7 +293,7 @@ with the same context and follows the same rules. Read it fully before making ch
   screen should follow it too.
 
 - **Claude connector (MCP)** — **LIVE since Oct 30 2026**: `csm-mcp` is deployed (Supabase OAuth 2.1 server on) and connects
-  from claude.ai as "CSM GROWTH" (`https://fviorzjezigvjevlsdrv.supabase.co/functions/v1/csm-mcp`). Redeploy after changing
+  from claude.ai as "CSM 360" (`https://fviorzjezigvjevlsdrv.supabase.co/functions/v1/csm-mcp`). Redeploy after changing
   the function or `_shared/scoring.js`: `supabase functions deploy csm-mcp --project-ref fviorzjezigvjevlsdrv --use-api`.
   Decision: claude.ai connector, READ-ONLY, each person's own login:
   `supabase/functions/csm-mcp/index.ts` (Supabase Edge Function, `@modelcontextprotocol/server` + `@supabase/server`'s

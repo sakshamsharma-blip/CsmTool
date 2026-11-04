@@ -1,4 +1,4 @@
-// What the connector's how_it_works tool answers from: how each number and rule in CSM GROWTH works, in plain words.
+// What the connector's how_it_works tool answers from: how each number and rule in CSM 360 works, in plain words.
 // Pure text, no database. The score ladders are built from scoring.js, so they can't drift; everything else is written by
 // hand, so when a rule changes in the app, change it here too and redeploy csm-mcp.
 import { PITCH_SCORE, PURCHASED_START_STATUS, ROLLOUT_SCORE } from "./scoring.js";

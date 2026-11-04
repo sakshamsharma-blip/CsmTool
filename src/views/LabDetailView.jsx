@@ -489,7 +489,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
         invoiceNumber: "", invoiceDate: "", invoiceType: invoiceTypeForCycle(lab.paymentCycle), subTotal: null, total: null, extractedOk: false,
         staleApp,
         problem: staleApp
-          ? "CSM GROWTH was updated while this page was open, so the invoice reader couldn't load. Refresh the page and upload again — or type the details in below."
+          ? "CSM 360 was updated while this page was open, so the invoice reader couldn't load. Refresh the page and upload again — or type the details in below."
           : `This PDF couldn't be read (${err?.message || "unknown error"}) — type the details in below.`,
       });
       setUploadStage("confirm");

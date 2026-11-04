@@ -1,5 +1,5 @@
 // "Lab Health (Sentiment)" — ONE copy, shared by the web app (src/lib/labHealth.js re-exports everything here) and the
-// CSM GROWTH MCP connector. A health signal derived purely from logged visit/check-in sentiment, kept
+// CSM 360 MCP connector. A health signal derived purely from logged visit/check-in sentiment, kept
 // deliberately separate from the manual health_status set via "Log Health Check" (lib/pulse.js).
 // The manual field is a CSM's own periodic judgment call; this one is computed automatically
 // from every sentiment a CSM already records while logging a visit or check-in, so it never

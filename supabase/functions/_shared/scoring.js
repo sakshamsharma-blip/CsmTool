@@ -1,5 +1,5 @@
 // Adoption scoring rules — ONE copy, shared by the web app (src/lib/adoption.js re-exports everything here) and the
-// CSM GROWTH MCP connector (supabase/functions/csm-mcp). Pure functions only: no database, no browser, no Deno APIs.
+// CSM 360 MCP connector (supabase/functions/csm-mcp). Pure functions only: no database, no browser, no Deno APIs.
 //
 // Scoring — TWO pipelines, each scored 0–100 on its own (decision Oct 30 2026):
 //   • Adoption pipeline  = In-plan parameters, plus purchased add-ons (ROLLOUT_SCORE):

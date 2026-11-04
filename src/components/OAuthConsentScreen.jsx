@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 
-// Consent page for the CSM GROWTH Claude connector (MCP, supabase/functions/csm-mcp). Supabase Auth's OAuth 2.1 server
+// Consent page for the CSM 360 Claude connector (MCP, supabase/functions/csm-mcp). Supabase Auth's OAuth 2.1 server
 // sends the person here (Site URL + Authorization Path "/oauth/consent", set in the Supabase dashboard) with an
 // `authorization_id`, after they have signed in. They see who is asking and approve or deny; Supabase then redirects back
 // to Claude. The connector is read-only and runs with the person's own access (RLS), so it sees only what they see here.
@@ -37,14 +37,14 @@ export default function OAuthConsentScreen() {
       <div style={card}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, marginBottom: 18 }}>
           <img src="/brand/crelio-wordmark.png" alt="CrelioHealth" style={{ height: 28, width: "auto" }} />
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Connect {details?.client?.name || "an app"} to CSM GROWTH</div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Connect {details?.client?.name || "an app"} to CSM 360</div>
         </div>
         {error ? <div className="error-banner">{error}</div> : !details ? (
           <div style={{ fontSize: 13, color: "var(--text-dim)", textAlign: "center" }}>Loading…</div>
         ) : (
           <>
             <p style={{ fontSize: 13, lineHeight: 1.5, margin: "0 0 10px" }}>
-              <b>{details.client?.name || "This app"}</b> wants to <b>read</b> your CSM GROWTH data as <b>{details.user?.email}</b>.
+              <b>{details.client?.name || "This app"}</b> wants to <b>read</b> your CSM 360 data as <b>{details.user?.email}</b>.
             </p>
             <ul style={{ fontSize: 12.5, lineHeight: 1.6, margin: "0 0 14px", paddingLeft: 18, color: "var(--text-dim)" }}>
               <li>Read-only: it can't change anything.</li>

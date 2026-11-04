@@ -1,6 +1,6 @@
-// CSM GROWTH connector for Claude (MCP), READ-ONLY (decision Oct 30 2026).
+// CSM 360 connector for Claude (MCP), READ-ONLY (decision Oct 30 2026).
 //
-// Every request carries the person's own CSM GROWTH login (Supabase Auth OAuth 2.1): `withSupabase({ auth: 'user' })`
+// Every request carries the person's own CSM 360 login (Supabase Auth OAuth 2.1): `withSupabase({ auth: 'user' })`
 // verifies the token and hands us a Supabase client scoped to that person, so the same Row Level Security as the app
 // applies — a CSM sees only their own labs, a CSM Lead / Admin sees the team. Nothing here can write: every tool only
 // SELECTs. Scores come from the same rules file the app uses (../_shared/scoring.js).
@@ -124,10 +124,10 @@ async function resolveCsmId(db: Db, csm?: string) {
 // ---------- the server ----------
 function buildServer(db: Db) {
   const server = new McpServer(
-    { name: 'csm-growth', title: 'CSM GROWTH', version: '1.0.0' },
+    { name: 'csm-360', title: 'CSM 360', version: '1.0.0' },
     {
       instructions:
-        'Read-only access to CSM GROWTH, the CrelioHealth customer-success app, as the signed-in person (a CSM sees only their own labs; a CSM Lead / Admin sees the team). ' +
+        'Read-only access to CSM 360, the CrelioHealth customer-success app, as the signed-in person (a CSM sees only their own labs; a CSM Lead / Admin sees the team). ' +
         'Adoption is scored in two pipelines, each out of 100: Adoption (In plan + purchased add-ons) and Expansion (Not-in-plan add-ons; Purchased = 100). Overall = their average. ' +
         'Money is in each lab\'s own currency: INR for Domestic labs, USD for ROW labs — convert before adding across regions. ' +
         'When asked how something works or is calculated, call how_it_works first and answer from it, using the person\'s live data as the example where that helps. If it doesn\'t cover the question, say so rather than guessing. ' +
@@ -136,7 +136,7 @@ function buildServer(db: Db) {
   )
 
   server.registerTool('how_it_works', {
-    description: 'How a number or rule in CSM GROWTH works and is calculated: scores, stage points, KPIs, MRR and invoices, collections, churn and retention, Lab Health, segments, tasks and TAT, check-ins and POC targets, feedback and NPS, who sees what. Call it with no topic for the list.',
+    description: 'How a number or rule in CSM 360 works and is calculated: scores, stage points, KPIs, MRR and invoices, collections, churn and retention, Lab Health, segments, tasks and TAT, check-ins and POC targets, feedback and NPS, who sees what. Call it with no topic for the list.',
     inputSchema: z.object({ topic: z.enum(HOW_IT_WORKS_TOPICS as [string, ...string[]]).optional().describe('Leave out to list the topics') }),
     annotations: READ_ONLY,
   }, async ({ topic }) => {
@@ -148,7 +148,7 @@ function buildServer(db: Db) {
   })
 
   server.registerTool('whoami', {
-    description: 'Who you are signed in as in CSM GROWTH, and your role (CSM, Lead or Admin).',
+    description: 'Who you are signed in as in CSM 360, and your role (CSM, Lead or Admin).',
     inputSchema: z.object({}), annotations: READ_ONLY,
   }, async () => {
     const { data } = await db.auth.getUser()

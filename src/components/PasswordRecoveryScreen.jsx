@@ -63,7 +63,7 @@ export default function PasswordRecoveryScreen({ onDone }) {
             onClick={onDone}
             style={{ width: "100%", border: "none", borderRadius: 8, padding: 11, fontSize: 13.5, fontWeight: 700, background: "var(--brand)", color: "#fff", cursor: "pointer" }}
           >
-            Continue to CSM GROWTH
+            Continue to CSM 360
           </button>
         ) : (
           <form onSubmit={handleSubmit}>

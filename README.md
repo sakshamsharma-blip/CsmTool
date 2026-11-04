@@ -1,4 +1,4 @@
-# CSM GROWTH
+# CSM 360
 
 CrelioHealth's customer-success app (repo and older notes call it the "CSM Tool").
 
@@ -107,8 +107,8 @@ tests in `tests/`, run against demo mode — first time: `npx playwright install
 
 ## Claude connector (MCP)
 
-A **read-only** connector lets Claude (claude.ai, Claude Desktop, Claude Code) answer questions from CSM GROWTH's data.
-Each person signs in with their own CSM GROWTH account, so it sees exactly what they see in the app (RLS): a CSM only their
+A **read-only** connector lets Claude (claude.ai, Claude Desktop, Claude Code) answer questions from CSM 360's data.
+Each person signs in with their own CSM 360 account, so it sees exactly what they see in the app (RLS): a CSM only their
 own labs, a Lead / Admin the team. It cannot change anything.
 
 - Code: `supabase/functions/csm-mcp/index.ts` (Supabase Edge Function) · consent page: `src/components/OAuthConsentScreen.jsx`
@@ -129,7 +129,7 @@ own labs, a Lead / Admin the team. It cannot change anything.
    off the platform JWT check for it — the function checks each person's token itself).
 5. Push the app (consent page + `vercel.json`).
 6. Each person, in claude.ai → Settings → Connectors → **Add custom connector**:
-   `https://fviorzjezigvjevlsdrv.supabase.co/functions/v1/csm-mcp` → sign in with their CSM GROWTH login → **Allow**.
+   `https://fviorzjezigvjevlsdrv.supabase.co/functions/v1/csm-mcp` → sign in with their CSM 360 login → **Allow**.
 
 ## Deploying
 
