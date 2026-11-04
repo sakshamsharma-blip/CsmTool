@@ -79,7 +79,7 @@ export const HOW_IT_WORKS = {
       "POC Check-in: Proactive check-ins done ÷ owed, from each POC's monthly minimum. Done is capped per POC per month, so extra check-ins with one POC don't cover a miss on another. A running month's full minimum counts.",
       "Retention: 1 − (MRR Churned + Contraction in the period) ÷ MRR at the period's start, in INR, following billing mode.",
       "Collection: of invoices due in the period so far, amount collected ÷ invoice total, in INR.",
-      "Task Closure: the owner's one-off tasks due in the period so far, Done ÷ due. Tasks with no due date and recurring tasks are left out. A task due today counts only once it is done.",
+      "Task Closure: the owner's one-off tasks, Done ÷ (Done + past due). A task with a due date belongs to the period it's due in: closed early counts straight away, open counts once its due date has passed. A task with no due date counts in the period it was closed, and not while it's open. Recurring tasks are left out.",
       "Points = min(actual ÷ target, 100%) × weight, so beating a target earns no extra points.",
       "KPI score = points earned ÷ weights counted × 100. A KPI with nothing to measure in the period is left out, not scored 0.",
       "A target is the level to reach, not an increase: a target of 78 with an actual of 75 means 3 points to go.",

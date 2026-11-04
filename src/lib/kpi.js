@@ -1,6 +1,6 @@
 import { supabase } from "../supabaseClient";
 import { toINR } from "./format";
-import { todayISO } from "./dates";
+import { todayISO, toLocalISODate } from "./dates";
 import { isRecurring } from "./tasks";
 import { pocMonthStatus } from "./labContacts";
 import { monthsIn } from "./periods";
@@ -10,7 +10,8 @@ import { monthsIn } from "./periods";
 //   POC Check-in — Proactive check-ins done ÷ owed, from each POC's monthly minimum (done capped per POC, per month).
 //   Retention — 1 − (MRR Churned + Contraction in the period) ÷ MRR at the period's start.
 //   Collection — of invoices due in the period so far: collected ÷ invoice total, in INR.
-//   Task Closure — one-off tasks due in the period so far: Done ÷ due. No due date or recurring = left out.
+//   Task Closure — one-off tasks: Done ÷ (Done + past due), by due date, or by closing date if no due date. Recurring and
+//   open tasks with no due date = left out.
 // Points = min(actual ÷ target, 100%) × weight. KPI score = points earned ÷ weights counted × 100; a KPI with nothing to
 // measure in the period (e.g. no invoices due) is left out rather than scored 0.
 export const KPI_DEFS = [
@@ -19,7 +20,7 @@ export const KPI_DEFS = [
   { key: "retention", label: "Retention", icon: "🛡️", weight: 20, target: 100, info: "1 − (MRR Churned + MRR Contraction in the period) ÷ MRR at the start of the period." },
   { key: "expansion", label: "Expansion", icon: "🔁", weight: 15, target: 70, info: "Average Expansion pipeline score of the clients at the end of the period." },
   { key: "collection", label: "Collection", icon: "💰", weight: 15, target: 95, info: "Invoices due in the period so far: amount collected ÷ invoice total, in INR." },
-  { key: "tasks", label: "Task Closure", icon: "✅", weight: 10, target: 90, info: "One-off tasks due in the period so far: Done ÷ due. Tasks with no due date and recurring tasks are left out." },
+  { key: "tasks", label: "Task Closure", icon: "✅", weight: 10, target: 90, info: "One-off tasks: Done ÷ (Done + past due). A task with a due date belongs to the period it's due in: closed early counts straight away, open counts once its due date has passed. A task with no due date counts in the period it was closed, and not while it's open. Recurring tasks are left out." },
 ];
 
 // ---- settings (migration 0044) ----
@@ -114,9 +115,15 @@ export function computeKpis({ labs, tasks, scores, period, data }) {
   const billed = invoices.reduce((s, i) => s + toINR(i.total, byId[i.labId].region), 0);
   const collected = invoices.reduce((s, i) => s + toINR(Math.min(i.collectedManual, i.total), byId[i.labId].region), 0);
 
-  // A task due today only counts once it's done — it isn't missed until tomorrow.
   const isDone = (t) => t.status === "Done" || t.done;
-  const due = tasks.filter((t) => !isRecurring(t) && t.due && t.due >= period.start && t.due <= period.end && (t.due < today || (t.due === today && isDone(t))));
+  // With a due date: done counts straight away, even if closed early; open counts only once it's missed, after its due date.
+  // No due date (decision Nov 4 2026): counts in the period it was closed. While open it can't be missed, so it's left out.
+  const inPeriod = (d) => d >= period.start && d <= period.end;
+  const due = tasks.filter((t) => {
+    if (isRecurring(t)) return false;
+    if (t.due) return inPeriod(t.due) && (isDone(t) || t.due < today);
+    return isDone(t) && !!t.completedAt && inPeriod(toLocalISODate(new Date(t.completedAt)));
+  });
   const closed = due.filter(isDone).length;
 
   return {
@@ -125,7 +132,7 @@ export function computeKpis({ labs, tasks, scores, period, data }) {
     poc: { value: owed ? (done / owed) * 100 : null, note: owed ? `${done} of ${owed} check-ins` : "No POC minimums set" },
     retention: { value: open > 0 ? Math.max(0, (1 - lost / open) * 100) : null, note: open > 0 ? `${lostRows.length} churn / contraction` : "No MRR at the start", lost },
     collection: { value: billed > 0 ? (collected / billed) * 100 : null, note: billed > 0 ? `${invoices.length} invoice${invoices.length === 1 ? "" : "s"} due` : "No invoices due", billed, collected },
-    tasks: { value: due.length ? (closed / due.length) * 100 : null, note: due.length ? `${closed} of ${due.length} tasks` : "No tasks due" },
+    tasks: { value: due.length ? (closed / due.length) * 100 : null, note: due.length ? `${closed} of ${due.length} tasks` : "No tasks to count" },
   };
 }
 

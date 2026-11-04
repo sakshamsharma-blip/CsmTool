@@ -2,6 +2,9 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Nov 4 2026 — KPI Task Closure counts every closed task
+- A task closed before its due date now counts straight away, and a closed task with no due date counts in the period it was closed.
+
 ## Nov 4 2026 — renamed to CSM 360
 - The app is now called **CSM 360** (sidebar, sign-in, browser tab, password reset, consent page, Claude connector).
 
