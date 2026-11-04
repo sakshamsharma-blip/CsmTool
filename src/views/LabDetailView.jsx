@@ -12,7 +12,7 @@ import {
 import {
   fetchInvoicesForLab, saveInvoice, updateInvoiceCollected, updateInvoice, deleteInvoice,
   INVOICE_TYPES, isRecurringInvoice, invoiceTypeLabel, monthlyEquivalent, coveredUntil, invoiceTypeForCycle,
-  invoiceBalance, isInvoiceOpen, invoiceStatusLabel,
+  invoiceBalance, isInvoiceOpen, invoiceStatusLabel, invoiceLastPayment, invoiceMovesMrr,
 } from "../lib/invoices";
 import { LAB_TYPES, updateLabStatus, updateLabTestimonial, updateLabDetails, updateLabBillingMode, updateLabMRR, fetchMrrHistory } from "../lib/labs";
 import { HEALTH_STATUSES, isHealthyStatus, logLabPulse } from "../lib/pulse";
@@ -111,6 +111,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   const [loadingInvoices, setLoadingInvoices] = useState(SUPABASE_CONFIGURED);
   const [invoicesError, setInvoicesError] = useState(null);
   const [invManualInputs, setInvManualInputs] = useState({});
+  const [invSettleInputs, setInvSettleInputs] = useState({});
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadStage, setUploadStage] = useState("pick"); // "pick" | "extracting" | "confirm"
   const [uploadFile, setUploadFile] = useState(null);
@@ -440,9 +441,14 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   async function handleUpdateInvoiceCollected(inv, overrideAmount) {
     const val = overrideAmount != null ? overrideAmount : parseFloat(invManualInputs[inv.id]);
     if (!Number.isFinite(val) || val < 0) { showToast("Enter a valid amount."); return; }
+    // Blank date with a changed amount = paid today. No payment left = no settlement date.
+    const typed = invSettleInputs[inv.id] ?? inv.settlementDate ?? "";
+    const settlementDate = val === 0 ? null : typed || (val !== inv.collectedManual ? todayISO() : null);
+    if (settlementDate && settlementDate > todayISO()) { showToast("Settlement date can't be in the future."); return; }
     try {
-      const status = await updateInvoiceCollected(inv.id, val, inv.total, lab.id, idByName?.[lab.csm], inv.invoiceNumber, lab.region);
+      const status = await updateInvoiceCollected(inv.id, val, inv.total, lab.id, idByName?.[lab.csm], inv.invoiceNumber, lab.region, settlementDate);
       setInvManualInputs((m) => ({ ...m, [inv.id]: String(val) }));
+      setInvSettleInputs((m) => { const next = { ...m }; delete next[inv.id]; return next; }); // show what was saved
       await loadInvoices();
       showToast(status === "Collected" ? "Invoice marked fully collected." : "Payment logged.");
     } catch (err) { showToast(`⚠ ${err.message}`); }
@@ -453,6 +459,12 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
 
   function openUploadInvoice() {
     setUploadOpen(true); setUploadStage("pick"); setUploadFile(null); setUploadForm(null); setUploadError("");
+  }
+  // For past billing with no PDF to hand: the same confirm form, starting empty.
+  function openManualInvoice() {
+    setUploadFile(null); setUploadError("");
+    setUploadForm({ invoiceNumber: "", invoiceDate: "", invoiceType: invoiceTypeForCycle(lab.paymentCycle), subTotal: null, total: null, extractedOk: true });
+    setUploadStage("confirm"); setUploadOpen(true);
   }
   async function handleInvoiceFileChosen(file) {
     setUploadFile(file);
@@ -490,17 +502,24 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       setUploadError("Fill in the invoice number, date, sub total, and total before saving.");
       return;
     }
+    const collected = f.collected || 0;
+    if (collected < 0) { setUploadError("Amount collected can't be negative."); return; }
+    if (collected > 0 && !f.settlementDate) { setUploadError("Add the settlement date for the amount collected."); return; }
+    if (!collected && f.settlementDate) { setUploadError("Add the amount collected for this settlement date."); return; }
+    if (f.settlementDate && f.settlementDate > todayISO()) { setUploadError("Settlement date can't be in the future."); return; }
     setSavingInvoice(true);
     try {
       const saved = await saveInvoice({
         lab, invoiceNumber: f.invoiceNumber.trim(), invoiceType: f.invoiceType, invoiceDate: f.invoiceDate,
         subTotal: f.subTotal, total: f.total, extractedOk: f.extractedOk, sourceFilename: uploadFile?.name,
-        csmId: idByName?.[lab.csm],
+        csmId: idByName?.[lab.csm], collected, settlementDate: f.settlementDate || null,
       });
       onInvoiceMrrUpdate?.(lab.id, saved.newMrr);
       setUploadOpen(false);
       await loadInvoices();
-      showToast(isRecurringInvoice(f.invoiceType)
+      showToast(!saved.mrrChanged
+        ? "Older invoice saved — MRR unchanged."
+        : isRecurringInvoice(f.invoiceType)
         ? `${invoiceTypeLabel(f.invoiceType)} invoice saved — MRR set to ${fmtMoney(saved.newMrr, lab.region)}, covered until ${new Date(coveredUntil(f.invoiceType, f.invoiceDate) + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}.`
         : `Pro-Rata invoice saved — MRR now ${fmtMoney(saved.newMrr, lab.region)}.`);
     } catch (err) {
@@ -512,7 +531,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
 
   // ---- edit / delete an invoice (MRR moves only by what the change implies — see lib/invoices.js) ----
   function openEditInvoice(inv) {
-    setEditInv({ ...inv, f: { invoiceNumber: inv.invoiceNumber, invoiceType: inv.invoiceType, invoiceDate: inv.invoiceDate, subTotal: String(inv.subTotal), total: String(inv.total) } });
+    setEditInv({ ...inv, f: { invoiceNumber: inv.invoiceNumber, invoiceType: inv.invoiceType, invoiceDate: inv.invoiceDate, subTotal: String(inv.subTotal), total: String(inv.total), settlementDate: inv.settlementDate || "" } });
   }
   async function handleSaveInvoiceEdit() {
     const f = editInv.f;
@@ -520,9 +539,10 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     if (!f.invoiceNumber.trim() || !f.invoiceDate || !Number.isFinite(subTotal) || !Number.isFinite(total) || subTotal < 0 || total < 0) {
       showToast("Fill in the invoice number, date, sub total and total."); return;
     }
+    if (f.settlementDate && f.settlementDate > todayISO()) { showToast("Settlement date can't be in the future."); return; }
     setSavingEdit(true);
     try {
-      const { newMrr } = await updateInvoice(editInv, { invoiceNumber: f.invoiceNumber.trim(), invoiceType: f.invoiceType, invoiceDate: f.invoiceDate, subTotal, total }, lab, invoices, idByName?.[lab.csm]);
+      const { newMrr } = await updateInvoice(editInv, { invoiceNumber: f.invoiceNumber.trim(), invoiceType: f.invoiceType, invoiceDate: f.invoiceDate, subTotal, total, settlementDate: f.settlementDate || null }, lab, invoices, idByName?.[lab.csm]);
       if (newMrr !== (Number(lab.mrr) || 0)) onPatchLab?.(lab.id, { mrr: newMrr });
       setEditInv(null);
       await loadInvoices();
@@ -1191,6 +1211,9 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                 <div className="tmpl-field" style={{ flex: 1 }}><label>Sub Total ({sym})</label><input type="number" min="0" step="0.01" style={fs} value={editInv.f.subTotal} onChange={(e) => setF("subTotal", e.target.value)} /></div>
                 <div className="tmpl-field" style={{ flex: 1 }}><label>Total ({sym})</label><input type="number" min="0" step="0.01" style={fs} value={editInv.f.total} onChange={(e) => setF("total", e.target.value)} /></div>
               </div>
+              {editInv.collectedManual > 0 && (
+                <div className="tmpl-field" style={{ marginTop: 10 }}><label>Settlement Date</label><input type="date" max={todayISO()} style={fs} value={editInv.f.settlementDate} onChange={(e) => setF("settlementDate", e.target.value)} /></div>
+              )}
               <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 10 }}>
                 Due date is recalculated from the invoice date + Credit Days. If this invoice is the one setting MRR (latest recurring invoice, or a later Pro-Rata), MRR moves by the difference.
               </div>
@@ -1445,7 +1468,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
           <div className="table-card" style={{ padding: "6px 20px 20px", overflow: "visible" }}>
             <div style={{ display: "flex", alignItems: "center", fontSize: 11.5, color: "var(--text-faint)", padding: "10px 0 4px" }}>
               How invoices work
-              <InfoTip>Upload an invoice below — its date, amount and type are read automatically and you confirm before saving. A recurring invoice (Monthly / Quarterly / Half-yearly / Annual) sets this lab's MRR to its Sub Total ÷ the months it covers — e.g. a ₹60,000 half-yearly invoice → MRR ₹10,000 — and the lab is billed up to the end of that period. A Pro-Rata invoice adds its Sub Total to the current MRR until the next recurring invoice. Due date is the last day to pay — invoice date + this lab's Credit Days ({lab.creditDays || "30"}) − 1 — so it's overdue from the next day.</InfoTip>
+              <InfoTip>Upload an invoice below — its date, amount and type are read automatically and you confirm before saving. A recurring invoice (Monthly / Quarterly / Half-yearly / Annual) sets this lab's MRR to its Sub Total ÷ the months it covers — e.g. a ₹60,000 half-yearly invoice → MRR ₹10,000 — and the lab is billed up to the end of that period. A Pro-Rata invoice adds its Sub Total to the current MRR until the next recurring invoice. An invoice older than the latest recurring invoice is kept for the record and doesn't change MRR. Due date is the last day to pay — invoice date + this lab's Credit Days ({lab.creditDays || "30"}) − 1 — so it's overdue from the next day.</InfoTip>
             </div>
 
             {(() => {
@@ -1457,7 +1480,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               const openCount = itemSummary.openCount + openInvoices.length;
               const daysOverdue = Math.max(itemSummary.daysOverdue, invOldestDays > 0 ? invOldestDays : 0);
               const bucket = openCount ? (daysOverdue >= 45 ? "Critical" : daysOverdue >= 30 ? "Overdue" : daysOverdue >= 15 ? "Due Soon" : "Current") : "Current";
-              const lastPayment = [itemSummary.lastPayment, ...invoices.map((iv) => iv.collectedAt)].filter(Boolean).sort((a, b) => new Date(b) - new Date(a))[0] || null;
+              const lastPayment = [itemSummary.lastPayment, ...invoices.map(invoiceLastPayment)].filter(Boolean).sort((a, b) => new Date(b) - new Date(a))[0] || null;
               // Average MRR = average per-month "Total" across this lab's recurring invoices (a quarterly invoice
               // counts as its total ÷ 3, half-yearly ÷ 6, annual ÷ 12). Pro-Rata invoices are one-off top-ups and
               // would skew an MRR-labeled average, so they're left out.
@@ -1479,7 +1502,10 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "18px 0 8px" }}>
               <h4 style={{ margin: 0, fontSize: 13 }}>Invoices</h4>
-              <button className="btn btn-primary" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={openUploadInvoice}>⬆ Upload Invoice</button>
+              <span style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={openManualInvoice}>✎ Enter Manually</button>
+                <button className="btn btn-primary" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={openUploadInvoice}>⬆ Upload Invoice</button>
+              </span>
             </div>
             {!invoices.length ? (
               <div style={{ color: "var(--text-faint)", fontSize: 12, padding: "10px 0" }}>No invoices uploaded yet for {lab.name}.</div>
@@ -1509,6 +1535,12 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                               style={{ width: 84, border: "1px solid var(--border)", borderRadius: 6, padding: "4px 6px", fontSize: 11.5 }} />
                             <button className="mark-purchased" onClick={() => handleUpdateInvoiceCollected(inv)}>Update</button>
                           </span>
+                          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 10.5, color: "var(--text-faint)" }} title="The day the payment settled. Blank = today when the amount changes.">
+                            Settled on
+                            <input type="date" max={todayISO()} value={invSettleInputs[inv.id] ?? inv.settlementDate ?? ""} aria-label={`Settlement date for ${inv.invoiceNumber}`}
+                              onChange={(e) => setInvSettleInputs((m) => ({ ...m, [inv.id]: e.target.value }))}
+                              style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "2px 4px", fontSize: 10.5, background: "var(--surface)", color: "var(--text)" }} />
+                          </label>
                           {bal > 0 && (
                             <span style={{ fontSize: 10.5, color: "var(--text-faint)" }}>
                               Owed exactly {inv.total} — <button type="button" onClick={() => handleMarkInvoiceFullyCollected(inv)}
@@ -1594,7 +1626,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
 
             <Modal
               open={uploadOpen}
-              title="Upload Invoice"
+              title={uploadStage === "confirm" && !uploadFile ? "Enter Invoice" : "Upload Invoice"}
               onClose={() => !savingInvoice && setUploadOpen(false)}
               actions={
                 uploadStage === "confirm"
@@ -1617,7 +1649,12 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
               )}
               {uploadStage === "confirm" && uploadForm && (
                 <>
-                  {isRecurringInvoice(uploadForm.invoiceType) && (() => {
+                  {uploadForm.invoiceDate && !invoiceMovesMrr(invoices, uploadForm.invoiceDate) && (
+                    <div className="info-banner" style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 8, fontSize: 12, background: "var(--accent-dim)", color: "var(--info-text)" }}>
+                      This is older than {lab.name}'s latest recurring invoice, so it's saved for the record and <b>MRR won't change</b>.
+                    </div>
+                  )}
+                  {isRecurringInvoice(uploadForm.invoiceType) && (!uploadForm.invoiceDate || invoiceMovesMrr(invoices, uploadForm.invoiceDate)) && (() => {
                     // A Monthly invoice updates THIS lab's own mrr field — but whether that field
                     // is actually what shows up in the group's reported MRR depends on Billing
                     // Mode. Catching a mismatch here is the "doesn't mix the logics" check: it's
@@ -1670,12 +1707,20 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                     </div>
                   </div>
                   <div className="frow">
-                    <div className="field"><label>Sub Total ({nativeCurrency(lab.region) === "USD" ? "$" : "₹"}) {isRecurringInvoice(uploadForm.invoiceType)
+                    <div className="field"><label>Sub Total ({nativeCurrency(lab.region) === "USD" ? "$" : "₹"}) {uploadForm.invoiceDate && !invoiceMovesMrr(invoices, uploadForm.invoiceDate)
+                      ? <span className="hint" style={{ fontWeight: 400 }}>— for the record only</span>
+                      : isRecurringInvoice(uploadForm.invoiceType)
                       ? <span className="hint" style={{ fontWeight: 400 }}>— {uploadForm.invoiceType === "Monthly" ? "becomes this lab's MRR" : `÷ ${INVOICE_TYPES.find((t) => t.value === uploadForm.invoiceType).months} = this lab's MRR${uploadForm.subTotal ? ` (${fmtMoney(monthlyEquivalent(uploadForm.invoiceType, uploadForm.subTotal), lab.region)})` : ""}`}</span>
                       : <span className="hint" style={{ fontWeight: 400 }}>— added to this lab's MRR</span>}</label>
                       <input type="number" min="0" value={uploadForm.subTotal ?? ""} onChange={(e) => setUploadForm((f) => ({ ...f, subTotal: e.target.value === "" ? null : parseFloat(e.target.value) }))} /></div>
                     <div className="field"><label>Total, incl. tax ({nativeCurrency(lab.region) === "USD" ? "$" : "₹"})</label>
                       <input type="number" min="0" value={uploadForm.total ?? ""} onChange={(e) => setUploadForm((f) => ({ ...f, total: e.target.value === "" ? null : parseFloat(e.target.value) }))} /></div>
+                  </div>
+                  <div className="frow">
+                    <div className="field"><label>Amount Collected ({nativeCurrency(lab.region) === "USD" ? "$" : "₹"}) <span className="hint" style={{ fontWeight: 400 }}>— if already paid</span></label>
+                      <input type="number" min="0" value={uploadForm.collected ?? ""} onChange={(e) => setUploadForm((f) => ({ ...f, collected: e.target.value === "" ? null : parseFloat(e.target.value) }))} /></div>
+                    <div className="field"><label>Settlement Date <span className="hint" style={{ fontWeight: 400 }}>— the day it was paid</span></label>
+                      <input type="date" max={todayISO()} value={uploadForm.settlementDate || ""} onChange={(e) => setUploadForm((f) => ({ ...f, settlementDate: e.target.value }))} /></div>
                   </div>
                   {uploadError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>{uploadError}</div>}
                 </>

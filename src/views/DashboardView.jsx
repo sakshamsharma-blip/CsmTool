@@ -98,9 +98,11 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
   const tasksInView = labType ? tasks.filter((t) => labIdsInView.has(t.labId)) : tasks;
   const openTaskCount = getOpenTasksFor(tasksInView, teamAll ? null : scopeCsm).length;
 
-  const healthy = rows.filter((r) => scoreOf(r).overallPct >= 75).length;
-  const needsPush = rows.filter((r) => { const p = scoreOf(r).overallPct; return p >= 40 && p < 75; }).length;
-  const atRiskAdopt = rows.filter((r) => scoreOf(r).overallPct < 40).length;
+  // Adoption Health (decision Nov 4 2026): the Adoption pipeline only. A client with nothing counted in it is in no band.
+  const adoptionScores = rows.map((r) => scoreOf(r).adoptionPct).filter((p) => p != null);
+  const healthy = adoptionScores.filter((p) => p >= 75).length;
+  const needsPush = adoptionScores.filter((p) => p >= 40 && p < 75).length;
+  const atRiskAdopt = adoptionScores.filter((p) => p < 40).length;
 
   // Lab Health (Sentiment) — a separate signal from Adoption Health above: this one is about the
   // relationship/mood coming out of logged visits and check-ins, not feature usage.
@@ -202,7 +204,7 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
             popup content on the middle tile. None of these three cards hold an edge-to-edge table,
             so it's safe to let their content escape the card bounds. */}
         <div className="table-card" style={{ padding: "16px 18px", overflow: "visible" }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Score Health (Overall)</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Adoption Health</div>
           <BarChart labelWidth={145} data={[
             { label: "Healthy (≥75%)", value: healthy, color: "var(--ok)" },
             { label: "Needs Push (40–74%)", value: needsPush, color: "var(--warn)" },

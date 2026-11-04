@@ -16,6 +16,7 @@ import {
   groupScores,
 } from '../_shared/scoring.js'
 import { HOW_IT_WORKS, HOW_IT_WORKS_TOPICS } from '../_shared/howItWorks.js'
+import { computeSentimentHealth } from '../_shared/labHealth.js'
 
 // deno-lint-ignore no-explicit-any
 type Db = any
@@ -45,6 +46,24 @@ async function loadLabs(db: Db) {
     mrr: Number(l.mrr) || 0, status: l.status, health: l.health_status, city: l.city, state: l.state, country: l.country,
     billingMode: l.billing_mode,
   }))
+}
+
+// Every check-in's sentiment you can see (or one lab's), per lab. Paged: Lab Health needs a lab's whole history, and a
+// single request stops at 1000 rows.
+async function sentimentsByLab(db: Db, labId?: string) {
+  const byLab: Record<string, { sentiment: string; visitDate: string }[]> = {}
+  for (let from = 0; ; from += 1000) {
+    let q = db.from('visits').select('lab_id,sentiment,visit_date').not('sentiment', 'is', null)
+    if (labId) q = q.eq('lab_id', labId)
+    const rows = await must<Db[]>(q.order('visit_date', { ascending: false }).order('id', { ascending: true }).range(from, from + 999))
+    rows.forEach((r: Db) => { (byLab[r.lab_id] ||= []).push({ sentiment: r.sentiment, visitDate: r.visit_date }) })
+    if (rows.length < 1000) return byLab
+  }
+}
+
+function labHealthSummary(visits: Db[] | undefined) {
+  const h = computeSentimentHealth(visits)
+  return { result: h.bucket, score: round(h.score), last5Average: round(h.recentAvg), allTimeAverage: round(h.allTimeAvg), checkinsWithSentiment: h.sampleSize }
 }
 
 // Find one lab by its Lab ID or (part of) its name.
@@ -138,18 +157,21 @@ function buildServer(db: Db) {
   })
 
   server.registerTool('list_labs', {
-    description: 'List the labs you can see, with Lab ID, name, Parent/Child, Lab Type, CSM, plan, region, MRR (own currency), status and health. Optional filters.',
+    description: 'List the labs you can see, with Lab ID, name, Parent/Child, Lab Type, CSM, plan, region, MRR (own currency), status, health (set by hand with Log Health Check) and labHealthSentiment (calculated from check-in sentiment). Optional filters.',
     inputSchema: z.object({
       csm: z.string().optional().describe('CSM name (Leads / Admins only see others)'),
       lab_type: z.enum(['Pathology', 'Radiology', 'Pathology + Radiology']).optional(),
       status: z.string().optional().describe('Active, Inactive, At Risk, Churned'),
       region: z.enum(['Domestic', 'ROW']).optional(),
       search: z.string().optional().describe('Part of a lab name, Lab ID or city'),
+      lab_health: z.enum(['Healthy', 'Needs Attention', 'At Risk', 'Not Assessed']).optional().describe('Lab Health (Sentiment) result'),
       limit: z.number().int().min(1).max(500).default(100),
     }),
     annotations: READ_ONLY,
-  }, async ({ csm, lab_type, status, region, search, limit }) => {
-    let labs = await loadLabs(db)
+  }, async ({ csm, lab_type, status, region, search, lab_health, limit }) => {
+    const sentiments = await sentimentsByLab(db)
+    let labs = (await loadLabs(db)).map((l: Db) => ({ ...l, labHealthSentiment: computeSentimentHealth(sentiments[l.id]).bucket }))
+    if (lab_health) labs = labs.filter((l: Db) => l.labHealthSentiment === lab_health)
     if (csm) { const p = await resolveCsmId(db, csm); labs = labs.filter((l: Db) => l.csm === p.name) }
     if (lab_type) labs = labs.filter((l: Db) => l.labType === lab_type)
     if (status) labs = labs.filter((l: Db) => (l.status || '').toLowerCase() === status.toLowerCase())
@@ -160,18 +182,19 @@ function buildServer(db: Db) {
   })
 
   server.registerTool('lab_overview', {
-    description: 'Everything about one lab: details, Overall / Adoption pipeline / Expansion pipeline / Mandatory scores with the score of every module, points of contact with their monthly proactive check-in target and how many are done this month, recent check-ins, open tasks, open invoices, purchased add-ons and recent feedback.',
+    description: 'Everything about one lab: details, manual health and Lab Health (Sentiment) with its score, Overall / Adoption pipeline / Expansion pipeline / Mandatory scores with the score of every module, points of contact with their monthly proactive check-in target and how many are done this month, recent check-ins, open tasks, open invoices, purchased add-ons and recent feedback.',
     inputSchema: z.object({ lab: z.string().min(1).describe('Lab ID or lab name') }),
     annotations: READ_ONLY,
   }, async ({ lab: query }) => {
     const { lab } = await findLab(db, query)
     const month = todayISO().slice(0, 7)
-    const [ctx, contacts, visits, tasks, invoices, purchases, feedback, people] = await Promise.all([
+    const [ctx, sentiments, contacts, visits, tasks, invoices, purchases, feedback, people] = await Promise.all([
       scoringContext(db),
+      sentimentsByLab(db, lab.id),
       must<Db[]>(db.from('lab_contacts').select('*').eq('lab_id', lab.parentId || lab.id)),
       must<Db[]>(db.from('visits').select('visit_type,visit_date,person_name,engagement,sentiment,notes,duration_minutes,csm_id').eq('lab_id', lab.id).order('visit_date', { ascending: false }).limit(50)),
       must<Db[]>(db.from('tasks').select('description,type,status,priority,source,due,owner_id,created_at').eq('lab_id', lab.id).neq('status', 'Done')),
-      must<Db[]>(db.from('invoices').select('invoice_number,invoice_type,invoice_date,due_date,total,collected_manual').eq('lab_id', lab.id).order('invoice_date', { ascending: false }).limit(24)),
+      must<Db[]>(db.from('invoices').select('invoice_number,invoice_type,invoice_date,due_date,total,collected_manual,settlement_date').eq('lab_id', lab.id).order('invoice_date', { ascending: false }).limit(24)),
       must<Db[]>(db.from('feature_purchases').select('label,is_trial,monthly_charge,purchased_on,status,lost_on,lost_comment').eq('lab_id', lab.id)),
       must<Db[]>(db.from('lab_feedback').select('feedback_date,nps_score,rating,source,respondent_name,respondent_designation,comment').eq('lab_id', lab.parentId || lab.id).order('feedback_date', { ascending: false }).limit(10)),
       profilesById(db),
@@ -180,6 +203,7 @@ function buildServer(db: Db) {
     const allVisits = visits
     return json({
       lab: { ...lab, planName: ctx.planById[lab.plan]?.name || lab.plan },
+      labHealthSentiment: labHealthSummary(sentiments[lab.id]),
       scores: {
         ...scoreSummary(s),
         modules: s.moduleResults.map((m: Db) => ({ module: m.mod.name, overall: round(m.overallPct), adoptionPipeline: round(m.adoptionPct), expansionPipeline: round(m.expansionPct) })),
@@ -199,7 +223,7 @@ function buildServer(db: Db) {
   })
 
   server.registerTool('portfolio_scores', {
-    description: 'Overall, Adoption pipeline, Expansion pipeline and Mandatory scores for every client (parent + children averaged) you can see (optionally one CSM\'s or one Lab Type), lowest Overall first, plus the averages.',
+    description: 'Overall, Adoption pipeline, Expansion pipeline and Mandatory scores for every client (parent + children averaged) you can see (optionally one CSM\'s or one Lab Type), lowest Overall first, plus the averages and the Dashboard\'s Adoption Health counts.',
     inputSchema: z.object({
       csm: z.string().optional(),
       lab_type: z.enum(['Pathology', 'Radiology', 'Pathology + Radiology']).optional(),
@@ -216,10 +240,14 @@ function buildServer(db: Db) {
       ? allLabs.filter((l: Db) => l.hierarchy !== 'Child').map((l: Db) => ({ lab: l, members: [l, ...allLabs.filter((c: Db) => c.parentId === l.id)].filter(inScope) }))
       : allLabs.filter(inScope).map((l: Db) => ({ lab: l, members: [l] }))
     ).filter((x: Db) => x.members.length)
-    const rows = scored.map(({ lab: l, members }: Db) => ({ lab: l.name, labId: l.labId, csm: l.csm, labsAveraged: members.length, ...scoreSummary(groupScores(members.map(ctx.scoresFor))) }))
+    const groups = scored.map(({ lab: l, members }: Db) => ({ lab: l, members, s: groupScores(members.map(ctx.scoresFor)) }))
+    const rows = groups.map(({ lab: l, members, s }: Db) => ({ lab: l.name, labId: l.labId, csm: l.csm, labsAveraged: members.length, ...scoreSummary(s) }))
+    // Bands use the unrounded Adoption pipeline score, as the Dashboard does: 74.6 is Needs Push even though it displays as 75.
+    const band = (test: (v: number) => boolean) => groups.filter(({ s }: Db) => s.adoptionPct != null && test(s.adoptionPct)).length
+    const adoptionHealth = { healthy: band((v) => v >= 75), needsPush: band((v) => v >= 40 && v < 75), atRisk: band((v) => v < 40) }
     rows.sort((a: Db, b: Db) => (a.overall ?? 0) - (b.overall ?? 0))
     const avg = (f: string) => { const v = rows.map((r: Db) => r[f]).filter((x: Db) => x != null); return v.length ? Math.round(v.reduce((a: number, b: number) => a + b, 0) / v.length) : null }
-    return json({ labs: rows.length, average: { overall: avg('overall'), adoptionPipeline: avg('adoptionPipeline'), expansionPipeline: avg('expansionPipeline') }, rows })
+    return json({ labs: rows.length, average: { overall: avg('overall'), adoptionPipeline: avg('adoptionPipeline'), expansionPipeline: avg('expansionPipeline') }, adoptionHealth, rows })
   })
 
   server.registerTool('list_tasks', {
@@ -271,10 +299,10 @@ function buildServer(db: Db) {
     let labs = await loadLabs(db)
     if (csm) { const p = await resolveCsmId(db, csm); labs = labs.filter((l: Db) => l.csm === p.name) }
     const byId = Object.fromEntries(labs.map((l: Db) => [l.id, l]))
-    const invoices = await must<Db[]>(db.from('invoices').select('lab_id,invoice_number,invoice_type,invoice_date,due_date,total,collected_manual'))
+    const invoices = await must<Db[]>(db.from('invoices').select('lab_id,invoice_number,invoice_type,invoice_date,due_date,total,collected_manual,settlement_date'))
     const today = Date.parse(todayISO())
     const open = invoices.filter((i: Db) => byId[i.lab_id] && Number(i.collected_manual || 0) < Number(i.total || 0)).map((i: Db) => ({
-      lab: byId[i.lab_id].name, csm: byId[i.lab_id].csm, invoice: i.invoice_number, type: i.invoice_type, invoiceDate: i.invoice_date, dueDate: i.due_date,
+      lab: byId[i.lab_id].name, csm: byId[i.lab_id].csm, invoice: i.invoice_number, type: i.invoice_type, invoiceDate: i.invoice_date, dueDate: i.due_date, lastPaymentSettled: i.settlement_date,
       balance: Number(i.total) - Number(i.collected_manual || 0), currency: byId[i.lab_id].currency,
       daysOverdue: i.due_date ? Math.max(0, Math.round((today - Date.parse(i.due_date)) / 864e5)) : 0,
     })).sort((a: Db, b: Db) => b.daysOverdue - a.daysOverdue)

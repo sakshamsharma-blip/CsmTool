@@ -4,7 +4,7 @@ import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtMoney, toINR } from "../lib/format";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllCollectionsItems, addCollectionsItem, logCollectionsReminder, labCollectionsSummary, daysSince, agingBucket, AGING_COLORS } from "../lib/collections";
-import { fetchAllInvoices, invoiceBalance, isInvoiceOpen } from "../lib/invoices";
+import { fetchAllInvoices, invoiceBalance, isInvoiceOpen, invoiceLastPayment } from "../lib/invoices";
 import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
@@ -86,7 +86,7 @@ export default function CollectionsView({ labs: allLabs, viewer, idByName, onOpe
       const openCount = itemSummary.openCount + openInvoices.length;
       const daysOverdue = Math.max(itemSummary.daysOverdue, invoiceOldestDays);
       const bucket = openCount ? agingBucket(daysOverdue) : "Current";
-      const lastPayment = [itemSummary.lastPayment, ...labInvoices.map((iv) => iv.collectedAt)].filter(Boolean).sort((a, b) => new Date(b) - new Date(a))[0] || null;
+      const lastPayment = [itemSummary.lastPayment, ...labInvoices.map(invoiceLastPayment)].filter(Boolean).sort((a, b) => new Date(b) - new Date(a))[0] || null;
       return { lab, labId, items: labItems, outstanding, openCount, daysOverdue, bucket, lastPayment };
     })
     .filter(Boolean)
@@ -130,7 +130,7 @@ export default function CollectionsView({ labs: allLabs, viewer, idByName, onOpe
     <div>
       <h1 className="page-title">
         Collections
-        <InfoTip>Upload a lab's invoice on its own Collections tab — the invoice date, amount and type (Monthly / Quarterly / Half-yearly / Annual, or a one-off Pro-Rata) are read automatically and you confirm before saving. A recurring invoice sets that lab's MRR to its sub total ÷ the months it covers; either type tracks what's still owed here. Due date is the last day to pay (invoice date + that lab's Credit Days − 1); Days Overdue counts from the next day — e.g. invoice Oct 1 with 7 credit days is due Oct 7 and 1 day overdue on Oct 8.</InfoTip>
+        <InfoTip>Upload a lab's invoice on its own Collections tab — the invoice date, amount and type (Monthly / Quarterly / Half-yearly / Annual, or a one-off Pro-Rata) are read automatically and you confirm before saving. A recurring invoice sets that lab's MRR to its sub total ÷ the months it covers, unless it's older than the lab's latest recurring invoice; either type tracks what's still owed here. Due date is the last day to pay (invoice date + that lab's Credit Days − 1); Days Overdue counts from the next day — e.g. invoice Oct 1 with 7 credit days is due Oct 7 and 1 day overdue on Oct 8.</InfoTip>
       </h1>
       <p className="page-sub">Outstanding dues for labs assigned to <b>{scopeLabel}</b>.</p>
 

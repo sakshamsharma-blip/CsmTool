@@ -59,8 +59,8 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Invoices & MRR** (Oct 2026): invoices are recurring — `Monthly` (1), `Quarterly` (3), `HalfYearly` (6),
   `Annual` (12 months) — or a one-off `ProRata`. A recurring invoice SETS the lab's MRR to sub total ÷ its months
   (₹60,000 half-yearly → MRR ₹10,000) and covers that many months from its invoice date (`coveredUntil`; shown as
-  "Covers … till" and "Billed up to"). A `ProRata` invoice ADDS its sub total to the current MRR until the next
-  recurring invoice. Upload defaults the type from the lab's Payment Cycle unless the PDF's "Invoice For …" line
+  "Covers … till" and "Billed up to"). **Settlement date** (`invoices.settlement_date`, 0045, optional): the day a payment settled, latest one for part payments, not in the future; feeds Last Payment (`invoiceLastPayment`), not the Collection KPI or aging. Older rows stay empty. **Enter Manually** opens the upload form with no PDF, and that form takes an already-collected amount + settlement date. A `ProRata` invoice ADDS its sub total to the current MRR until the next
+  recurring invoice. **Only the newest moves MRR** (decision Nov 4 2026, `invoiceMovesMrr`): an invoice of either type dated before the lab's latest recurring invoice is saved for the record and leaves MRR alone, so past billing can be entered in any order. The newest on record still sets MRR even if it's old. Upload defaults the type from the lab's Payment Cycle unless the PDF's "Invoice For …" line
   says otherwise. Helpers: `INVOICE_TYPES`, `monthlyEquivalent`, `coveredUntil` in `lib/invoices.js`. Editing or
   deleting an invoice moves MRR only by the difference that change implies (`invoiceImpliedMrr` in
   `lib/invoices.js`), so manual MRR edits / Lost-after-Purchase drops made since are kept.
@@ -138,6 +138,7 @@ with the same context and follows the same rules. Read it fully before making ch
     Not Required, Lost…) marks it Done; Purchased closes the Expansion task and opens an Adoption one at Onboarding / Setup.
     All via `syncItemTask` / `closeItemTasks`, called from `setParamStatus`, `setParamInPlan` and `applyPitchStageChange`.
     The item's stage can also be changed from the task panel (Related Items).
+  - **Sort** (Nov 4 2026): default Newest first, one list by `created_at` with Done folded away; also Oldest first, and Due date, which brings back the groups below. Created column added.
   - **Page**: KPI tiles (Total, Overdue, Due Today, Completed / Avg Resolution TAT / On-time % for the last 30 days with ↑↓
     vs the 30 days before), Resolution TAT by source, status distribution, overdue aging; filters (lab, type, status,
     priority, source, due-date range, search); table grouped Overdue / Due Today / Upcoming / No due date / Done (Done
@@ -178,6 +179,7 @@ with the same context and follows the same rules. Read it fully before making ch
   "MRR by State" / "MRR by City" tables (clients, labs, MRR, % of MRR, avg per client, ARR).
 - **SearchSelect** renders its list in a portal on `<body>` (fixed, re-measured every frame while open) so popups
   and scrolling cards can't clip it. Modals scroll when taller than the screen.
+- **Adoption Health** (Dashboard; decision Nov 4 2026, was Score Health on Overall): clients by Adoption pipeline score, 75%+ Healthy, 40–74% Needs Push, under 40% At Risk; a client with nothing counted is in no band. Other Overall-based bands (My Portfolio's labs by band, the Dashboard lab rings) are unchanged.
 - **Financial Reports → MRR Breakdown** starts with "CSM share of the book": labs handled and MRR handled per CSM as %
   of the whole company.
 - **Resources** (sidebar, `views/ResourcesView.jsx`, table `resources`): team-wide docs / training links + a
@@ -195,7 +197,7 @@ with the same context and follows the same rules. Read it fully before making ch
   (`labType` from `useScopedCsm`, remembered per screen) and applied with `filterLabsByLabType` on Dashboard, My Portfolio,
   Collections, Expansion, Visits, Tasks, Financial Reports and Feedback; Total Labs has its own. A child with no type counts as its
   parent's; a Parent stays listed when it or any child matches.
-- **Lab Health (Sentiment)** (`lib/labHealth.js`): from each check-in's sentiment (Positive 100 / Neutral 50 / At Risk 0) — **75% the
+- **Lab Health (Sentiment)** (`supabase/functions/_shared/labHealth.js`, re-exported by `lib/labHealth.js`, so the connector agrees): from each check-in's sentiment (Positive 100 / Neutral 50 / At Risk 0) — **75% the
   last 5, 25% all-time**; ≥75 Healthy, 40–74 Needs Attention, <40 At Risk, none = Not Assessed. Separate from the manual Health
   status set by "Log Health Check".
 - **POC designations** (Oct 30 2026): 12 roles — Owner / Founder / Managing Director; Lab Director - Pathology / - Radiology; IT Manager
@@ -356,7 +358,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership. **Support & Tickets** is a sidebar link that opens
   Flow (https://creliohealthflow.vercel.app/, the CS ↔ Product escalation tracker) in a new tab.
-- Latest migration: `0044_kpi_settings.sql`; **0001–0044 are all applied** (Nov 2 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+- Latest migration: `0045_invoice_settlement_date.sql`; **0001–0044 are applied** (Nov 2 2026), 0045 has to be run before this code deploys. After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).

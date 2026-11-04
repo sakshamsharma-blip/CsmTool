@@ -49,7 +49,7 @@ export function invoiceTypeForCycle(paymentCycle) {
 export async function fetchInvoicesForLab(labId) {
   const { data, error } = await supabase
     .from("invoices")
-    .select("id,lab_id,invoice_number,invoice_type,currency,invoice_date,due_date,sub_total,total,collected_manual,collected_at,extracted_ok,source_filename,csm_id,created_at")
+    .select("id,lab_id,invoice_number,invoice_type,currency,invoice_date,due_date,sub_total,total,collected_manual,collected_at,settlement_date,extracted_ok,source_filename,csm_id,created_at")
     .eq("lab_id", labId)
     .order("invoice_date", { ascending: false });
   if (error) throw error;
@@ -59,7 +59,7 @@ export async function fetchInvoicesForLab(labId) {
 export async function fetchAllInvoices() {
   const { data, error } = await supabase
     .from("invoices")
-    .select("id,lab_id,invoice_number,invoice_type,currency,invoice_date,due_date,sub_total,total,collected_manual,collected_at,extracted_ok,source_filename,csm_id,created_at")
+    .select("id,lab_id,invoice_number,invoice_type,currency,invoice_date,due_date,sub_total,total,collected_manual,collected_at,settlement_date,extracted_ok,source_filename,csm_id,created_at")
     .order("invoice_date", { ascending: false });
   if (error) throw error;
   return (data || []).map(mapRow);
@@ -78,6 +78,7 @@ function mapRow(r) {
     total: Number(r.total) || 0,
     collectedManual: Number(r.collected_manual) || 0,
     collectedAt: r.collected_at,
+    settlementDate: r.settlement_date || null,
     extractedOk: r.extracted_ok,
     sourceFilename: r.source_filename,
     csmId: r.csm_id,
@@ -90,6 +91,10 @@ export function invoiceBalance(inv) {
 export function isInvoiceOpen(inv) {
   return invoiceBalance(inv) > 0;
 }
+// When the last payment came in: the settlement date if one was given, else when it was typed in (older rows).
+export function invoiceLastPayment(inv) {
+  return inv.settlementDate ? `${inv.settlementDate}T12:00:00` : inv.collectedAt;
+}
 export function invoiceStatusLabel(inv) {
   if (!inv.collectedManual) return "Pending";
   return invoiceBalance(inv) > 0 ? "Partially Collected" : "Collected";
@@ -100,12 +105,22 @@ export function invoiceStatusLabel(inv) {
 //  - Recurring (Monthly / Quarterly / Half-yearly / Annual) → MRR is SET to sub total ÷ its months
 //    (a ₹60,000 half-yearly invoice → MRR ₹10,000), and it covers that many months;
 //  - Pro-Rata → its sub_total is ADDED to the current MRR (e.g. an add-on billed mid-cycle), until the next
-//    recurring invoice sets MRR again.
+//    recurring invoice sets MRR again;
+//  - Either type dated before the lab's latest recurring invoice → MRR doesn't change (invoiceMovesMrr).
 // Returns { id, newMrr }.
-export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate, subTotal, total, extractedOk, sourceFilename, csmId }) {
+// `collected` and `settlementDate` are optional: an invoice entered after it was already paid.
+// Does a new invoice move MRR? Only the newest counts (decision Nov 4 2026): one dated before the lab's latest recurring
+// invoice is history, kept for the record, and leaves MRR alone. `labInvoices` = this lab's current invoices.
+export function invoiceMovesMrr(labInvoices, invoiceDate) {
+  return !labInvoices.some((iv) => isRecurringInvoice(iv.invoiceType) && iv.invoiceDate > invoiceDate);
+}
+
+export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate, subTotal, total, extractedOk, sourceFilename, csmId, collected = 0, settlementDate = null }) {
   const creditDays = lab.creditDays;
   const dueDate = dueDateFor(invoiceDate, creditDays);
   const currency = nativeCurrency(lab.region);
+  const existing = await fetchInvoicesForLab(lab.id);
+  const movesMrr = invoiceMovesMrr(existing, invoiceDate);
 
   const { data, error } = await supabase
     .from("invoices")
@@ -118,6 +133,9 @@ export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate
       due_date: dueDate,
       sub_total: subTotal,
       total,
+      collected_manual: collected,
+      collected_at: collected ? new Date().toISOString() : null,
+      settlement_date: settlementDate,
       extracted_ok: extractedOk,
       source_filename: sourceFilename || null,
       csm_id: csmId || null,
@@ -126,10 +144,30 @@ export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate
     .single();
   if (error) throw error;
 
+  if (collected) {
+    logActivity(lab.id, {
+      kind: "Collections Update",
+      title: collected >= total ? "Invoice marked fully collected" : "Payment logged against invoice",
+      meta: `${currency === "USD" ? "$" : "₹"}${Number(collected).toLocaleString("en-IN")} collected against ${invoiceNumber}, settled ${settlementDate}`,
+      csmId,
+    }).catch((err) => console.error(err));
+  }
+
+  if (!movesMrr) {
+    await logActivity(lab.id, {
+      kind: "Invoice Uploaded",
+      title: `${invoiceTypeLabel(invoiceType)} invoice ${invoiceNumber} added — older invoice, MRR unchanged`,
+      meta: `Dated ${invoiceDate}, before the latest recurring invoice; due ${dueDate}`,
+      csmId,
+    }).catch((err) => console.error(err));
+    return { id: data.id, newMrr: Number(lab.mrr) || 0, mrrChanged: false };
+  }
+
   if (isRecurringInvoice(invoiceType)) {
     const previousMrr = Number(lab.mrr) || 0;
     const months = invoiceMonths(invoiceType);
-    const newMrr = monthlyEquivalent(invoiceType, subTotal);
+    // Normally just this invoice's monthly figure; a Pro-Rata invoice dated after it still adds on top.
+    const newMrr = invoiceImpliedMrr([...existing, { invoiceType, invoiceDate, subTotal }]);
     const s$ = currency === "USD" ? "$" : "₹";
     await updateLabMRR(lab.id, newMrr, lab.region);
     await logActivity(lab.id, {
@@ -138,7 +176,7 @@ export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate
       meta: `MRR set to ${s$}${newMrr.toLocaleString("en-IN")}${months > 1 ? ` (${s$}${subTotal.toLocaleString("en-IN")} ÷ ${months} months)` : ""} (was ${s$}${previousMrr.toLocaleString("en-IN")}); covers ${invoiceDate} to ${coveredUntil(invoiceType, invoiceDate)}; due ${dueDate}`,
       csmId,
     }).catch((err) => console.error(err));
-    return { id: data.id, newMrr };
+    return { id: data.id, newMrr, mrrChanged: true };
   }
 
   const sym = currency === "USD" ? "$" : "₹";
@@ -151,14 +189,14 @@ export async function saveInvoice({ lab, invoiceNumber, invoiceType, invoiceDate
     meta: `MRR ${sym}${previousMrr.toLocaleString("en-IN")} → ${sym}${newMrr.toLocaleString("en-IN")} (+${sym}${subTotal.toLocaleString("en-IN")}), ${sym}${total.toLocaleString("en-IN")} due ${dueDate}. The next recurring invoice sets MRR again.`,
     csmId,
   }).catch((err) => console.error(err));
-  return { id: data.id, newMrr };
+  return { id: data.id, newMrr, mrrChanged: true };
 }
 
-export async function updateInvoiceCollected(invoiceId, manualAmount, totalOwed, labId, csmId, invoiceNumber, region) {
+export async function updateInvoiceCollected(invoiceId, manualAmount, totalOwed, labId, csmId, invoiceNumber, region, settlementDate = null) {
   const nowIso = new Date().toISOString();
   const { data: updated, error } = await supabase
     .from("invoices")
-    .update({ collected_manual: manualAmount, collected_at: nowIso })
+    .update({ collected_manual: manualAmount, collected_at: nowIso, settlement_date: settlementDate })
     .eq("id", invoiceId)
     .select("id");
   if (error) throw error;
@@ -171,7 +209,7 @@ export async function updateInvoiceCollected(invoiceId, manualAmount, totalOwed,
   logActivity(labId, {
     kind: "Collections Update",
     title: fullyCollected ? "Invoice marked fully collected" : "Payment logged against invoice",
-    meta: `${region === "ROW" ? "$" : "₹"}${Number(manualAmount).toLocaleString("en-IN")} collected so far against ${invoiceNumber}`,
+    meta: `${region === "ROW" ? "$" : "₹"}${Number(manualAmount).toLocaleString("en-IN")} collected so far against ${invoiceNumber}${settlementDate ? `, settled ${settlementDate}` : ""}`,
     csmId,
   }).catch((err) => console.error(err));
   return fullyCollected ? "Collected" : "Partially Collected";
@@ -209,11 +247,11 @@ async function applyInvoiceMrrDelta(lab, before, after, csmId, why) {
 
 // Edits an invoice's number / type / date / amounts (due date is recomputed from the new date + credit
 // days). `labInvoices` = this lab's current invoices (to work out the MRR effect). Returns { newMrr }.
-export async function updateInvoice(inv, { invoiceNumber, invoiceType, invoiceDate, subTotal, total }, lab, labInvoices, csmId) {
+export async function updateInvoice(inv, { invoiceNumber, invoiceType, invoiceDate, subTotal, total, settlementDate }, lab, labInvoices, csmId) {
   const dueDate = dueDateFor(invoiceDate, lab.creditDays);
   const { data: updated, error } = await supabase.from("invoices").update({
     invoice_number: invoiceNumber, invoice_type: invoiceType, invoice_date: invoiceDate, due_date: dueDate,
-    sub_total: subTotal, total,
+    sub_total: subTotal, total, settlement_date: settlementDate,
   }).eq("id", inv.id).select("id");
   if (error) throw error;
   if (!updated || !updated.length) throw new Error("The invoice wasn't updated — you may not have access to this lab.");
@@ -223,7 +261,7 @@ export async function updateInvoice(inv, { invoiceNumber, invoiceType, invoiceDa
   await logActivity(lab.id, {
     kind: "Invoice Uploaded",
     title: `Invoice ${invoiceNumber} edited`,
-    meta: `${invoiceTypeLabel(invoiceType)}, ${invoiceDate}, sub total ${sym}${subTotal.toLocaleString("en-IN")}, total ${sym}${total.toLocaleString("en-IN")}, due ${dueDate}`,
+    meta: `${invoiceTypeLabel(invoiceType)}, ${invoiceDate}, sub total ${sym}${subTotal.toLocaleString("en-IN")}, total ${sym}${total.toLocaleString("en-IN")}, due ${dueDate}${settlementDate ? `, settled ${settlementDate}` : ""}`,
     csmId,
   }).catch((err) => console.error(err));
   const newMrr = await applyInvoiceMrrDelta(lab, before, after, csmId, `invoice ${invoiceNumber} edited`);

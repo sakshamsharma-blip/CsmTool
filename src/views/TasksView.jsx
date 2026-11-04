@@ -41,6 +41,13 @@ const GROUPS = [
   { key: "none", label: "No due date", cls: "tk-g-upcoming" },
   { key: "done", label: "Done", cls: "tk-g-done" },
 ];
+// Sorting by when a task was created is one list, newest or oldest first, so a new task is easy to find. Sorting by due date keeps GROUPS.
+const CREATED_GROUPS = [
+  { key: "open", label: "Open tasks", cls: "tk-g-upcoming" },
+  GROUPS[GROUPS.length - 1],
+];
+const createdMs = (t) => (t.createdAt ? new Date(t.createdAt).getTime() : 0);
+const SORT_OPTIONS = [["newest", "Newest first"], ["oldest", "Oldest first"], ["due-asc", "Due date, soonest first"], ["due-desc", "Due date, latest first"]];
 function groupOf(t) {
   if (isTaskDoneToday(t)) return "done";
   if (isRecurring(t)) return "today";
@@ -89,7 +96,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
   const [fFrom, setFFrom] = useSessionState("tasks.fFrom", "");
   const [fTo, setFTo] = useSessionState("tasks.fTo", "");
   const [q, setQ] = useSessionState("tasks.q", "");
-  const [sortDir, setSortDir] = useSessionState("tasks.sortDir", "asc");
+  const [sortBy, setSortBy] = useSessionState("tasks.sort", "newest");
 
   const nameById = useMemo(() => { const m = {}; Object.entries(idByName).forEach(([n, id]) => { m[id] = n; }); return m; }, [idByName]);
 
@@ -155,9 +162,13 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
     if (needle && ![t.desc, t.details, labsById[t.labId]?.name, t.owner, t.paramName].some((v) => String(v || "").toLowerCase().includes(needle))) return false;
     return true;
   });
-  const dir = sortDir === "desc" ? -1 : 1;
+  const sortByDue = sortBy === "due-asc" || sortBy === "due-desc";
+  const dir = sortBy === "due-desc" ? -1 : 1;
   const byDue = (a, b) => (a.due && b.due ? dir * a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : 0);
-  const grouped = GROUPS.map((g) => ({ ...g, items: filtered.filter((t) => groupOf(t) === g.key).sort(byDue) }));
+  const byCreated = (a, b) => (sortBy === "oldest" ? createdMs(a) - createdMs(b) : createdMs(b) - createdMs(a));
+  const grouped = sortByDue
+    ? GROUPS.map((g) => ({ ...g, items: filtered.filter((t) => groupOf(t) === g.key).sort(byDue) }))
+    : CREATED_GROUPS.map((g) => ({ ...g, items: filtered.filter((t) => (groupOf(t) === "done") === (g.key === "done")).sort(byCreated) }));
   const anyFilter = fLab || fType || fStatus || fPriority || fSource || fFrom || fTo || q;
   const canEdit = (t) => isHead || t.owner === currentCSM;
   const openTask = openId ? tasks.find((t) => t.id === openId) : null;
@@ -293,6 +304,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
           <input type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} aria-label="Due from" /> –
           <input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} aria-label="Due to" />
         </span>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sort tasks">{SORT_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         <input type="text" placeholder="🔍 Search tasks…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 180 }} />
         {anyFilter && <span className="clear" onClick={clearFilters}>Clear</span>}
       </div>
@@ -310,18 +322,19 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
           <table className="child-mini tk-table">
             <thead><tr>
               <th style={{ width: 28 }}></th><th>Task</th><th>Lab</th><th>Type</th><th>Source</th><th>Priority</th>
-              <th className="clickable" onClick={() => setSortDir(sortDir === "asc" ? "desc" : "asc")} title="Sort by due date">Due date {sortDir === "asc" ? "↑" : "↓"}</th>
+              <th className="clickable" onClick={() => setSortBy(sortBy === "newest" ? "oldest" : "newest")} title="Sort by when the task was created">Created {sortBy === "newest" ? "↓" : sortBy === "oldest" ? "↑" : ""}</th>
+              <th className="clickable" onClick={() => setSortBy(sortBy === "due-asc" ? "due-desc" : "due-asc")} title="Sort by due date">Due date {sortBy === "due-asc" ? "↑" : sortBy === "due-desc" ? "↓" : ""}</th>
               <th title="Overdue: days late · Upcoming: days left">Days</th><th>Status</th><th>Owner</th><th>Resolution TAT</th><th title="Comments">💬</th>
             </tr></thead>
             <tbody>
-              {!filtered.length && <tr><td colSpan="12" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>{anyFilter ? "No tasks match these filters." : `No tasks for ${scopeLabel} yet.`}</td></tr>}
+              {!filtered.length && <tr><td colSpan="13" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>{anyFilter ? "No tasks match these filters." : `No tasks for ${scopeLabel} yet.`}</td></tr>}
               {grouped.map((g) => {
                 if (!g.items.length) return null;
                 const collapsed = g.key === "done" && !doneOpen;
                 const limit = shown[g.key] || PAGE;
                 return [
                   <tr key={`h-${g.key}`} className={`tk-group ${g.cls}`}>
-                    <td colSpan="12">
+                    <td colSpan="13">
                       <span className="clickable" onClick={() => g.key === "done" && setDoneOpen(!doneOpen)}>
                         {g.key === "done" ? (doneOpen ? "▾ " : "▸ ") : "▾ "}{g.label} ({g.items.length})
                       </span>
@@ -346,6 +359,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
                         <td>{taskTypeLabel(t)}</td>
                         <td>{t.source}</td>
                         <td><span className="tk-prio"><i style={{ background: PRIORITY_COLORS[t.priority] }} />{t.priority}</span></td>
+                        <td style={{ whiteSpace: "nowrap" }}>{t.createdAt ? new Date(t.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—"}</td>
                         <td style={{ whiteSpace: "nowrap" }}>{isRecurring(t) ? repeatLabel(t) : t.due ? fmtDue(t.due) : <span style={{ color: "var(--text-faint)" }}>Not set</span>}</td>
                         <td style={{ fontWeight: 700, color: late ? "var(--bad)" : "var(--text-dim)" }}>{late != null ? `${late}d` : left != null ? `${left}d` : "—"}</td>
                         <td><span className={`tk-status ${STATUS_PILL[label] || "tk-st-open"}`}>{label}</span></td>
@@ -356,7 +370,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
                     );
                   })),
                   ...(!collapsed && g.items.length > limit ? [
-                    <tr key={`m-${g.key}`}><td colSpan="12" style={{ textAlign: "center" }}>
+                    <tr key={`m-${g.key}`}><td colSpan="13" style={{ textAlign: "center" }}>
                       <span className="clear" onClick={() => setShown((s) => ({ ...s, [g.key]: limit + PAGE }))}>Show {Math.min(PAGE, g.items.length - limit)} more</span>
                     </td></tr>,
                   ] : []),
