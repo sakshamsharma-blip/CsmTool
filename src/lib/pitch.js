@@ -56,6 +56,29 @@ export async function fetchLabPitchStatus(labId) {
   return map;
 }
 
+// Expected live date and description of each feature expansion (migration 0047), keyed "<lab>|<module>|<param>".
+// Reads every column so it still works before that migration has run.
+export async function fetchFeatureDetails() {
+  const { data, error } = await supabase.from("pitch_status").select("*").not("param_name", "is", null);
+  if (error) throw error;
+  return Object.fromEntries((data || []).map((r) => [`${r.lab_id}|${r.module_key}|${r.param_name}`, { expectedLive: r.expected_live_date || null, description: r.description || "" }]));
+}
+
+// Upserted with the stage it's at now, so a stage change never touches these two and these never move the stage.
+export async function saveFeatureDetails({ labId, moduleKey, paramName, stage, expectedLive, description, label, csmId }) {
+  const { error } = await supabase.from("pitch_status").upsert(
+    { lab_id: labId, module_key: moduleKey, param_name: paramName, status: stage, expected_live_date: expectedLive || null, description: description || null },
+    { onConflict: "lab_id,module_key,param_name" }
+  );
+  if (error) throw error;
+  logActivity(labId, {
+    kind: "Expansion Update",
+    title: `${label} details updated`,
+    meta: [expectedLive ? `Expected live ${expectedLive}` : null, description || null].filter(Boolean).join(" · ") || null,
+    csmId,
+  }).catch((err) => console.error(err));
+}
+
 async function upsertPitchStatus(labId, moduleKey, paramName, status) {
   const { error } = await supabase.from("pitch_status").upsert(
     { lab_id: labId, module_key: moduleKey, param_name: paramName, status },

@@ -14,7 +14,7 @@ export function expansionRows(opps, purchases, localDate = (ts) => String(ts || 
     liveFrom: o.status === "Live" ? o.dealWonDate || localDate(o.createdAt) : null, liveUntil: null,
   }));
   const features = (purchases || []).map((p) => ({
-    id: `purchase-${p.id}`, kind: "Feature", labId: p.labId, title: p.label || p.paramName || "", moduleKey: p.moduleKey || null,
+    id: `purchase-${p.id}`, purchaseId: p.id, paramName: p.paramName || null, kind: "Feature", labId: p.labId, title: p.label || p.paramName || "", moduleKey: p.moduleKey || null,
     monthly: p.monthlyCharge || 0, annual: (p.monthlyCharge || 0) * 12, status: p.status === "Lost" ? "Lost" : p.isTrial ? "Onboarding" : "Live", isTrial: !!p.isTrial,
     startedOn: p.purchasedOn || null, expectedLive: null, note: p.lostComment || "", chargesAddedOn: p.chargesAddedOn || null,
     liveFrom: p.isTrial ? null : p.chargesAddedOn || p.purchasedOn, liveUntil: p.lostOn || null,

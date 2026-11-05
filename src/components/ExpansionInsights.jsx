@@ -7,7 +7,7 @@ import { fmtCompactINR, fmtPct } from "../lib/analyticsFormat";
 import { TipCard } from "./ChartTooltip";
 import { Tile, Card, Donut, ValueTrend, ValueBars } from "./Analytics";
 
-// Expansion → Deals & Purchases: the numbers above the list. `rows` = expansionRows for the labs in view, `groups` = their
+// Expansion → Deals & Purchases: the numbers above the list. `rows` = buildExpansionItems for the labs in view, `groups` = their
 // clients. Everything is in INR. "Now" reads today; the trend reads each of the last six month-ends.
 const STATUS_ORDER = ["Pipeline", "Onboarding", "Live", "Lost"];
 const STATUS_COLOR = { Pipeline: "var(--stg-plan-2)", Onboarding: "var(--stg-plan-3)", Live: "var(--stg-plan-5)", Lost: "var(--stg-exp-3)" };
@@ -77,7 +77,7 @@ export default function ExpansionInsights({ rows, labs, groups, modules, showByC
         <Card title="Expansion MRR trend" info="Expansion MRR at each month-end: priced purchases and Live deals, leaving out anything lost by then. This month reads today.">
           <ValueTrend points={trend} fmt={fmtCompactINR} bind={tip.bind} />
         </Card>
-        <Card title="By status" info="Every purchased feature and manual deal. A priced purchase is Live, a trial is Onboarding.">
+        <Card title="By status" info="Every expansion. Feature: Pitching = Pipeline, Trial = Onboarding, Purchased = Live (a purchased trial stays Onboarding). Manual: its own status.">
           <Donut centre={rows.length} centreLabel="items" bind={tip.bind} slices={byStatus.map((s) => ({
             key: s.status, label: s.status, count: s.count, color: STATUS_COLOR[s.status],
             tip: <TipCard color={STATUS_COLOR[s.status]} title={s.status} rows={[["Items", s.count], ["Monthly", fmtCompactINR(s.mrr)]]} />,

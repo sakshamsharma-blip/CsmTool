@@ -63,6 +63,19 @@ export async function addPurchaseCharges(id, amount, labId, csmId, label, region
   }).catch((err) => console.error(err));
 }
 
+// Corrects a priced purchase's monthly charge. Only Expansion MRR reads it; the lab's MRR moves with invoices.
+export async function updatePurchaseCharge(id, amount, previous, labId, csmId, label, region) {
+  const { error } = await supabase.from("feature_purchases").update({ monthly_charge: amount }).eq("id", id);
+  if (error) throw error;
+  const sym = region === "ROW" ? "$" : "₹";
+  logActivity(labId, {
+    kind: "Expansion Update",
+    title: "Feature charge changed",
+    meta: `${label || "Feature"}: ${sym}${Number(previous).toLocaleString("en-IN")} → ${sym}${Number(amount).toLocaleString("en-IN")}/mo. MRR follows invoices`,
+    csmId,
+  }).catch((err) => console.error(err));
+}
+
 export async function markPurchaseLost(id, comment) {
   const { error } = await supabase.from("feature_purchases")
     .update({ status: "Lost", lost_on: todayISO(), lost_comment: (comment || "").trim() || null }).eq("id", id);
