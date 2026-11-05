@@ -1,11 +1,15 @@
 import { useEffect, useState, useMemo } from "react";
 import { useKpiData } from "../lib/useKpiData";
 import PipelineAnalytics from "../components/PipelineAnalytics";
+import ExpansionInsights from "../components/ExpansionInsights";
+import TasksView from "./TasksView";
 import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
-import { fmtINR, fmtMoney, toINR } from "../lib/format";
-import { computeLabRollup, flattenRollup } from "../lib/labRollup";
-import { fetchAllExpansionOpportunities, addExpansionOpportunity, updateExpansionOpportunity, EXPANSION_STATUSES } from "../lib/expansion";
+import { fmtINR, fmtUSD, fmtMoney, toINR } from "../lib/format";
+import { todayISO, toLocalISODate } from "../lib/dates";
+import { downloadCsv } from "../lib/analyticsFormat";
+import { computeLabRollup, flattenRollup, clientGroups } from "../lib/labRollup";
+import { fetchAllExpansionOpportunities, addExpansionOpportunity, updateExpansionOpportunity, EXPANSION_STATUSES, expansionRows } from "../lib/expansion";
 import { filterLabsByLabType } from "../lib/labs";
 import { fetchAllPurchases } from "../lib/purchases";
 import { useScopedCsm } from "../lib/useScopedCsm";
@@ -21,16 +25,17 @@ const STATUS_COLORS = { Onboarding: "var(--accent)", Pipeline: "var(--text-dim)"
 const inputStyle = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
 
 function emptyForm() {
-  return { labId: "", monthlyRevenue: "", annualRevenue: "", dealWonDate: "", expectedLiveDate: "", status: "Pipeline", comments: "" };
+  return { labId: "", title: "", moduleKey: "", monthlyRevenue: "", annualRevenue: "", dealWonDate: "", expectedLiveDate: "", status: "Pipeline", comments: "" };
 }
 
-export default function ExpansionView({ labs: allLabs, modules, plans, viewer, idByName, onOpenLab, showToast }) {
+export default function ExpansionView({ labs: allLabs, modules, plans, viewer, idByName, onOpenLab, onPatchLab, showToast }) {
   const kpi = useKpiData({ labs: allLabs, modules, plans, idByName });
   const [tab, setTab] = useSessionState("expansion.tab", "analytics");
   // Same CSM/Manager split every other portfolio-wide screen (Collections, Dashboard, Tasks…)
   // uses — a plain CSM sees only their own deals, a Lead/Admin defaults to their own but can
   // flip to Team View for the consolidated picture across every CSM.
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "expansion");
+  const scopedCsm = useScopedCsm(viewer, "expansion");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = scopedCsm;
   const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
 
   const [items, setItems] = useState([]);
@@ -44,10 +49,13 @@ export default function ExpansionView({ labs: allLabs, modules, plans, viewer, i
   const [formError, setFormError] = useState("");
   const [fLab, setFLab] = useSessionState("expansion.fLab", "");
   const [fStatus, setFStatus] = useSessionState("expansion.fStatus", "");
+  const [fKind, setFKind] = useSessionState("expansion.fKind", "");
+  const [q, setQ] = useSessionState("expansion.q", "");
+  const [dealsView, setDealsView] = useSessionState("expansion.dealsView", "deals");
 
-  async function loadAll() {
+  async function loadAll(quiet = false) {
     if (!SUPABASE_CONFIGURED) { setLoading(false); return; }
-    setLoading(true);
+    if (!quiet) setLoading(true);
     setError(null);
     try {
       setItems(await fetchAllExpansionOpportunities());
@@ -72,33 +80,32 @@ export default function ExpansionView({ labs: allLabs, modules, plans, viewer, i
   const labsById = {};
   labs.forEach((l) => { labsById[l.id] = l; });
 
-  const scoped = items.filter((i) => flatIds.has(i.labId));
-
-  // Same "convert to INR before summing across labs" rule Collections/Total Labs use — labs can
-  // be in different native currencies. MRR is summed per status from monthly_revenue; Live ARR
-  // sums the deal's own annual_revenue (not monthly x 12) since that's the field CSMs actually
-  // enter and it can legitimately differ from a straight x12 (e.g. a non-calendar contract term).
-  function mrrSumFor(status) {
-    return scoped
-      .filter((i) => i.status === status)
-      .reduce((s, i) => s + toINR(i.monthlyRevenue, labsById[i.labId]?.region), 0);
-  }
-  const onboardingMRR = mrrSumFor("Onboarding");
-  const pipelineMRR = mrrSumFor("Pipeline");
-  const liveMRR = mrrSumFor("Live");
-  const lostMRR = mrrSumFor("Lost");
-  const liveARR = scoped
-    .filter((i) => i.status === "Live")
-    .reduce((s, i) => s + toINR(i.annualRevenue, labsById[i.labId]?.region), 0);
-
+  const groups = clientGroups(labs, scopeCsm);
+  const moduleName = Object.fromEntries(modules.map((m) => [m.key, m.name]));
+  const allExpansion = expansionRows(items, purchases, (ts) => toLocalISODate(new Date(ts)));
+  const scoped = allExpansion.filter((r) => flatIds.has(r.labId));
   const labOptions = [];
   allRows.forEach((r) => { labOptions.push(r); r.children.forEach((c) => labOptions.push(c)); });
-  // Tiles above stay whole-portfolio; the filters only narrow the table.
-  const shown = scoped.filter((i) => (!fLab || i.labId === fLab) && (!fStatus || i.status === fStatus));
 
-  // Features bought through the Adoption tab's Purchased stage — when, at what price (or trial), and if lost, when.
-  const shownPurchases = purchases.filter((p) => flatIds.has(p.labId) && (!fLab || p.labId === fLab));
+  // The numbers above stay whole-portfolio; the type tabs and filters only narrow the list.
+  const needle = q.trim().toLowerCase();
+  const filteredNoKind = scoped.filter((r) => (!fLab || r.labId === fLab) && (!fStatus || r.status === fStatus)
+    && (!needle || [r.title, labsById[r.labId]?.name, moduleName[r.moduleKey], labsById[r.labId]?.csm].some((v) => String(v || "").toLowerCase().includes(needle))));
+  const shown = fKind ? filteredNoKind.filter((r) => r.kind === fKind) : filteredNoKind;
   const fmtDay = (d) => (d ? new Date(d + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" }) : "—");
+
+  // The list is wide, so it shows each lab's own currency; hovering an amount gives both.
+  const native = (amount, lab) => (lab.region === "ROW" ? fmtUSD(amount) : fmtINR(amount));
+
+  function download() {
+    const rows = [["Lab", "Title", "Type", "Module", "Monthly", "Annual", "Currency", "Monthly (INR)", "Annual (INR)", "Status", "Trial", "Won / purchased", "Expected live", "Lost on", "Owner", "Notes"]];
+    shown.forEach((r) => {
+      const lab = labsById[r.labId];
+      rows.push([lab?.name, r.title, r.kind === "Feature" ? "Feature Purchased" : "Manual", moduleName[r.moduleKey] || "", r.monthly, r.annual, lab?.region === "ROW" ? "USD" : "INR",
+        Math.round(toINR(r.monthly, lab?.region)), Math.round(toINR(r.annual, lab?.region)), r.status, r.isTrial ? "Yes" : "", r.startedOn || "", r.expectedLive || "", r.liveUntil || "", lab?.csm || "", r.note]);
+    });
+    downloadCsv(`expansion-deals-${todayISO()}.csv`, rows);
+  }
 
   function openAdd() {
     setEditingId(null);
@@ -110,6 +117,8 @@ export default function ExpansionView({ labs: allLabs, modules, plans, viewer, i
     setEditingId(item.id);
     setForm({
       labId: item.labId,
+      title: item.title || "",
+      moduleKey: item.moduleKey || "",
       monthlyRevenue: item.monthlyRevenue ? String(item.monthlyRevenue) : "",
       annualRevenue: item.annualRevenue ? String(item.annualRevenue) : "",
       dealWonDate: item.dealWonDate || "",
@@ -134,12 +143,15 @@ export default function ExpansionView({ labs: allLabs, modules, plans, viewer, i
 
   async function handleSave() {
     if (!form.labId) { setFormError("Select a lab."); return; }
+    if (!form.title.trim()) { setFormError("Give the expansion a title."); return; }
     if (!form.monthlyRevenue || parseFloat(form.monthlyRevenue) <= 0) { setFormError("Enter a monthly revenue amount."); return; }
     setFormError("");
     const lab = labsById[form.labId];
     const csmId = idByName?.[lab?.csm];
     const payload = {
       labId: form.labId,
+      title: form.title.trim(),
+      moduleKey: form.moduleKey,
       monthlyRevenue: parseFloat(form.monthlyRevenue) || 0,
       annualRevenue: parseFloat(form.annualRevenue) || 0,
       dealWonDate: form.dealWonDate,
@@ -157,105 +169,101 @@ export default function ExpansionView({ labs: allLabs, modules, plans, viewer, i
         showToast("Expansion opportunity added.");
       }
       setModalOpen(false);
-      await loadAll();
+      await loadAll(true);
+      kpi.reload?.();
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
+  const openTaskCount = kpi.data.tasks.filter((t) => t.source === "Expansion" && t.status !== "Done" && (!scopeCsm || t.owner === scopeCsm)).length;
+  const KIND_TABS = [["", "All Expansions", filteredNoKind.length], ["Feature", "Feature Purchased", filteredNoKind.filter((r) => r.kind === "Feature").length], ["Manual", "Manual Expansion", filteredNoKind.filter((r) => r.kind === "Manual").length]];
+
   const dealsTab = () => (
     <div>
-      <p className="page-sub">Expansion opportunities for <b>{scopeLabel}</b>.</p>
+      <p className="page-sub">Expansion revenue, deals and tasks for <b>{scopeLabel}</b>.</p>
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
 
-      <div className="summary-grid" style={{ gridTemplateColumns: "repeat(5,1fr)", marginBottom: 18 }}>
-        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Onboarding }}>{fmtINR(onboardingMRR)}</div><div className="slabel">Onboarding MRR</div></div>
-        <div className="stile"><div className="sval">{fmtINR(pipelineMRR)}</div><div className="slabel">Pipeline MRR</div></div>
-        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Lost }}>{fmtINR(lostMRR)}</div><div className="slabel">Lost MRR</div></div>
-        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Live }}>{fmtINR(liveMRR)}</div><div className="slabel">Live MRR</div></div>
-        <div className="stile"><div className="sval" style={{ color: STATUS_COLORS.Live }}>{fmtINR(liveARR)}</div><div className="slabel">Live ARR</div></div>
+      <ExpansionInsights rows={scoped} labs={flat} groups={groups} modules={modules} showByCsm={teamAll} />
+
+      <div className="tabbar" style={{ margin: "18px 0 12px" }}>
+        <button className={`tabbtn${dealsView === "deals" ? " active" : ""}`} onClick={() => setDealsView("deals")}>Deals &amp; Purchases ({scoped.length})</button>
+        <button className={`tabbtn${dealsView === "tasks" ? " active" : ""}`} onClick={() => setDealsView("tasks")}>Expansion Tasks ({openTaskCount} open)</button>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-        <div className="filters" style={{ marginBottom: 0 }}>
-          <SearchSelect value={fLab} onChange={setFLab} options={labSelectOptions(labOptions.filter((l) => flatIds.has(l.id)))} emptyLabel="All labs" placeholder="All labs" />
-          <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-            <option value="">All statuses</option>
-            {EXPANSION_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
-          </select>
-          {(fLab || fStatus) && <span className="clear" onClick={() => { setFLab(""); setFStatus(""); }}>Clear filters</span>}
-        </div>
-        <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={openAdd}>+ Add Expansion Opportunity</button>
-      </div>
-
-      {!shown.length ? (
-        <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>{scoped.length ? "No opportunities match these filters." : `No expansion opportunities for ${scopeLabel} yet.`}</div>
+      {dealsView === "tasks" ? (
+        <TasksView labs={allLabs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={onOpenLab} onPatchLab={onPatchLab} showToast={showToast}
+          fixedSource="Expansion" scoped={scopedCsm} onStageChanged={() => { loadAll(true); kpi.reload?.(); }} />
       ) : (
-        <div className="table-card"><Paginated items={shown}>{(pageRows) => (<div className="table-scroll"><table className="child-mini">
-          <thead><tr><th>Lab</th><th>Monthly Revenue</th><th>Annual Revenue</th><th>Deal Won</th><th>Expected Live</th><th>Status</th><th>Comments</th><th></th></tr></thead>
-          <tbody>{pageRows.map((item) => {
-            const lab = labsById[item.labId];
-            if (!lab) return null;
-            return (
-              <tr key={item.id}>
-                <td className="lab-name clickable" onClick={() => onOpenLab(item.labId)}>{lab.name}</td>
-                <td className="mrr-cell">{fmtMoney(item.monthlyRevenue, lab.region)}</td>
-                <td className="mrr-cell">{fmtMoney(item.annualRevenue, lab.region)}</td>
-                <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>
-                  {item.dealWonDate ? new Date(item.dealWonDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" }) : "—"}
-                </td>
-                <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>
-                  {item.expectedLiveDate ? new Date(item.expectedLiveDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" }) : "—"}
-                </td>
-                <td><span className="status-chip" style={{ background: "transparent", border: `1px solid ${STATUS_COLORS[item.status]}`, color: STATUS_COLORS[item.status], cursor: "default" }}>{item.status}</span></td>
-                <td style={{ fontSize: 11.5, color: "var(--text-dim)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.comments}>{item.comments || "—"}</td>
-                <td><span className="mark-purchased" onClick={() => openEdit(item)}>Edit</span></td>
-              </tr>
-            );
-          })}</tbody>
-        </table></div>)}</Paginated></div>
-      )}
+        <>
+          <div className="filters" style={{ alignItems: "center" }}>
+            {KIND_TABS.map(([k, label, n]) => <button key={k} className={`btn ${fKind === k ? "btn-primary" : "btn-ghost"}`} style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={() => setFKind(k)}>{label} ({n})</button>)}
+            <SearchSelect value={fLab} onChange={setFLab} options={labSelectOptions(labOptions.filter((l) => flatIds.has(l.id)))} emptyLabel="All labs" placeholder="All labs" />
+            <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} aria-label="Status">
+              <option value="">All statuses</option>
+              {EXPANSION_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+            </select>
+            <input type="text" placeholder="🔍 Search expansions…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 170 }} />
+            {(fLab || fStatus || q) && <span className="clear" onClick={() => { setFLab(""); setFStatus(""); setQ(""); }}>Clear filters</span>}
+            <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={download}>Download</button>
+              <button className="btn btn-primary" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={openAdd}>+ Add Expansion</button>
+            </span>
+          </div>
 
-      <h3 style={{ fontSize: 14, margin: "26px 0 4px", display: "flex", alignItems: "center" }}>
-        Features purchased
-        <InfoTip>Every feature a lab bought through the Adoption tab's Purchased stage — recorded here (not in Collections): when it was bought, Priced or Trial, the monthly charge, and when it was lost if it was later marked Lost after Purchase. MRR changes only through invoices (and a lost feature's charge is taken off MRR and logged as a Contraction in Financial Reports).</InfoTip>
-      </h3>
-      <p className="page-sub" style={{ marginTop: 0 }}>Deals won from a feature pitch, and any later losses.</p>
-      {!shownPurchases.length ? (
-        <div className="table-card" style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>No features purchased yet for {scopeLabel}.</div>
-      ) : (
-        <div className="table-card"><Paginated items={shownPurchases}>{(pageRows) => (<div className="table-scroll"><table className="child-mini">
-          <thead><tr><th>Lab</th><th>Feature</th><th>Deal won</th><th>Price</th><th>Charges added</th><th>Status</th><th>Lost on</th><th>Lost reason</th></tr></thead>
-          <tbody>{pageRows.map((p) => {
-            const lab = labsById[p.labId];
-            if (!lab) return null;
-            return (
-              <tr key={p.id}>
-                <td className="lab-name clickable" onClick={() => onOpenLab(lab.id)}>{lab.name}</td>
-                <td>{p.label}</td>
-                <td style={{ whiteSpace: "nowrap" }}>{fmtDay(p.purchasedOn)}</td>
-                <td className="mrr-cell">{p.isTrial ? <span className="cat-tag cat-Warn">Trial</span> : `${fmtMoney(p.monthlyCharge, lab.region)}/mo`}</td>
-                <td style={{ whiteSpace: "nowrap" }}>{fmtDay(p.chargesAddedOn)}</td>
-                <td><span className="status-chip" style={{ background: "transparent", border: `1px solid ${p.status === "Lost" ? "var(--bad)" : "var(--ok)"}`, color: p.status === "Lost" ? "var(--bad)" : "var(--ok)", cursor: "default" }}>{p.status === "Lost" ? "Lost after Purchase" : "Active"}</span></td>
-                <td style={{ whiteSpace: "nowrap" }}>{fmtDay(p.lostOn)}</td>
-                <td style={{ fontSize: 11.5, color: "var(--text-dim)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.lostComment}>{p.lostComment || "—"}</td>
-              </tr>
-            );
-          })}</tbody>
-        </table></div>)}</Paginated></div>
+          {!shown.length ? (
+            <div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>{scoped.length ? "Nothing matches these filters." : `No expansions for ${scopeLabel} yet.`}</div>
+          ) : (
+            <div className="table-card"><Paginated items={shown}>{(pageRows) => (<div className="table-scroll"><table className="child-mini">
+              <thead><tr><th>Lab</th><th>Expansion</th><th>Type</th><th>Module</th><th>Monthly</th><th>Annual</th><th>Status</th><th>Won</th><th>Expected live</th><th>Owner</th><th></th></tr></thead>
+              <tbody>{pageRows.map((r) => {
+                const lab = labsById[r.labId];
+                if (!lab) return null;
+                return (
+                  <tr key={r.id}>
+                    <td className="lab-name clickable" onClick={() => onOpenLab(r.labId)}>{lab.name}</td>
+                    <td title={r.note || undefined} style={{ whiteSpace: "normal", minWidth: 130 }}>{r.title || <span style={{ color: "var(--text-faint)" }}>Untitled</span>}{r.isTrial && <span className="cat-tag cat-Warn"> Trial</span>}</td>
+                    <td><span className={`cat-tag cat-${r.kind === "Feature" ? "Adoption" : "Expansion"}`}>{r.kind === "Feature" ? "Feature" : "Manual"}</span></td>
+                    <td style={{ fontSize: 11.5, whiteSpace: "normal" }}>{moduleName[r.moduleKey] || "—"}</td>
+                    <td className="mrr-cell" title={r.isTrial ? undefined : fmtMoney(r.monthly, lab.region)}>{r.isTrial ? "—" : native(r.monthly, lab)}</td>
+                    <td className="mrr-cell" title={r.isTrial ? undefined : fmtMoney(r.annual, lab.region)}>{r.isTrial ? "—" : native(r.annual, lab)}</td>
+                    <td><span className="status-chip" style={{ background: "transparent", border: `1px solid ${STATUS_COLORS[r.status] || "var(--border)"}`, color: STATUS_COLORS[r.status] || "var(--text-dim)", cursor: "default" }}>{r.status}</span></td>
+                    <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }} title={r.chargesAddedOn ? `Charges added ${fmtDay(r.chargesAddedOn)}` : undefined}>{fmtDay(r.startedOn)}</td>
+                    <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{r.status === "Lost" && r.liveUntil ? `Lost ${fmtDay(r.liveUntil)}` : fmtDay(r.expectedLive)}</td>
+                    <td>{lab.csm || "—"}</td>
+                    <td>{r.kind === "Manual"
+                      ? <span className="mark-purchased" onClick={() => openEdit(items.find((i) => i.id === r.dealId))}>Edit</span>
+                      : <span className="mark-purchased" title="Purchases change through their stage on the lab's Adoption tab" onClick={() => onOpenLab(r.labId, "adoption")}>Open</span>}</td>
+                  </tr>
+                );
+              })}</tbody>
+            </table></div>)}</Paginated></div>
+          )}
+        </>
       )}
 
       <Modal
         open={modalOpen}
-        title={editingId ? "Edit Expansion Opportunity" : "Add Expansion Opportunity"}
+        title={editingId ? "Edit Expansion" : "Add Expansion"}
         onClose={() => setModalOpen(false)}
         actions={[
           { label: "Cancel", className: "btn-ghost", onClick: () => setModalOpen(false) },
-          { label: editingId ? "Save Changes" : "Add Opportunity", className: "btn-primary", onClick: handleSave },
+          { label: editingId ? "Save Changes" : "Add Expansion", className: "btn-primary", onClick: handleSave },
         ]}
       >
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
           <label>Lab</label>
           <SearchSelect value={form.labId} onChange={(v) => setField("labId", v)} options={labSelectOptions(labOptions)} placeholder="Search a lab…" inputStyle={inputStyle} disabled={!!editingId} />
+        </div>
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>Expansion Title</label>
+          <input value={form.title} onChange={(e) => setField("title", e.target.value)} placeholder="e.g. Extra logins for all centres" style={inputStyle} />
+        </div>
+        <div className="tmpl-field" style={{ marginBottom: 12 }}>
+          <label>Module (optional)</label>
+          <select value={form.moduleKey} onChange={(e) => setField("moduleKey", e.target.value)} style={inputStyle}>
+            <option value="">Not tied to a module</option>
+            {modules.map((m) => <option key={m.key} value={m.key}>{m.name}</option>)}
+          </select>
         </div>
         <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           <div className="tmpl-field" style={{ flex: 1 }}>
@@ -296,9 +304,9 @@ export default function ExpansionView({ labs: allLabs, modules, plans, viewer, i
     <div>
       <h1 className="page-title">
         Expansion
-        <InfoTip>Analytics, CSM Performance and Module-wise show the Expansion pipeline: every Not-in-plan parameter by stage (To-Do 0, Pitching 10, Trial 15, Purchased 100, Lost 0), each client's parent and child labs averaged. Deals &amp; Purchases has whole-opportunity deals (Onboarding → Pipeline → Live → Lost) and every feature bought.</InfoTip>
+        <InfoTip>Analytics, CSM Performance and Module-wise show the Expansion pipeline: every Not-in-plan parameter by stage (To-Do 0, Pitching 10, Trial 15, Purchased 100, Lost 0), each client's parent and child labs averaged. Deals &amp; Purchases has whole-opportunity deals (Onboarding → Pipeline → Live → Lost) and every feature bought. Expansion MRR and ARR are only the revenue from expansion: priced purchased features plus Live deals, not the lab's total MRR. They don't move with invoices.</InfoTip>
       </h1>
-      <p className="page-sub">Track expansion progress, deals and revenue by lab, CSM and module.</p>
+      <p className="page-sub">Track expansion progress, deals, tasks and revenue by lab, CSM and module.</p>
       <PipelineAnalytics pipeline="expansion" page="expansion" labs={allLabs} viewer={viewer} idByName={idByName} onOpenLab={onOpenLab} kpi={kpi}
         tab={tab} onTab={setTab} extraTabs={[{ key: "deals", label: "Deals & Purchases", render: dealsTab }]} />
     </div>

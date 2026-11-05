@@ -1,18 +1,23 @@
 import { supabase } from "../supabaseClient";
 import { logActivity } from "./activity";
 
+// What counts as Expansion MRR / ARR lives with the connector's copy of the rules.
+export { expansionRows, isLiveOn, revenueOn } from "../../supabase/functions/_shared/expansionRevenue.js";
+
 // Expansion Opportunities — deal-level upsell tracking (Onboarding/Pipeline/Live/Lost), separate
 // from the module/param-level Pitch Pipeline on My Portfolio. Amounts are stored in the lab's own
 // native currency, same convention as collections_items/invoices — see src/lib/format.js's
 // toINR/toUSD/fmtMoney(amount, lab.region) for conversion at display time.
 export const EXPANSION_STATUSES = ["Onboarding", "Pipeline", "Live", "Lost"];
 
-const COLUMNS = "id,lab_id,monthly_revenue,annual_revenue,deal_won_date,expected_live_date,status,comments,csm_id,created_at,updated_at";
+const COLUMNS = "id,lab_id,title,module_key,monthly_revenue,annual_revenue,deal_won_date,expected_live_date,status,comments,csm_id,created_at,updated_at";
 
 function mapRow(r) {
   return {
     id: r.id,
     labId: r.lab_id,
+    title: r.title || "",
+    moduleKey: r.module_key || null,
     monthlyRevenue: Number(r.monthly_revenue) || 0,
     annualRevenue: Number(r.annual_revenue) || 0,
     dealWonDate: r.deal_won_date,
@@ -34,9 +39,11 @@ export async function fetchAllExpansionOpportunities() {
   return (data || []).map(mapRow);
 }
 
-export async function addExpansionOpportunity({ labId, monthlyRevenue, annualRevenue, dealWonDate, expectedLiveDate, status, comments, csmId }, labName) {
+export async function addExpansionOpportunity({ labId, title, moduleKey, monthlyRevenue, annualRevenue, dealWonDate, expectedLiveDate, status, comments, csmId }, labName) {
   const { error } = await supabase.from("expansion_opportunities").insert({
     lab_id: labId,
+    title: title || null,
+    module_key: moduleKey || null,
     monthly_revenue: monthlyRevenue || 0,
     annual_revenue: annualRevenue || 0,
     deal_won_date: dealWonDate || null,
@@ -54,10 +61,12 @@ export async function addExpansionOpportunity({ labId, monthlyRevenue, annualRev
   }).catch((err) => console.error(err));
 }
 
-export async function updateExpansionOpportunity(id, { labId, monthlyRevenue, annualRevenue, dealWonDate, expectedLiveDate, status, comments, csmId }, labName) {
+export async function updateExpansionOpportunity(id, { labId, title, moduleKey, monthlyRevenue, annualRevenue, dealWonDate, expectedLiveDate, status, comments, csmId }, labName) {
   const { error } = await supabase
     .from("expansion_opportunities")
     .update({
+      title: title || null,
+      module_key: moduleKey || null,
       monthly_revenue: monthlyRevenue || 0,
       annual_revenue: annualRevenue || 0,
       deal_won_date: dealWonDate || null,

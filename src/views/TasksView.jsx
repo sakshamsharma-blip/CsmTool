@@ -69,9 +69,13 @@ function Delta({ value, goodWhenUp = true, unit = "%" }) {
   return <span className={`tk-delta ${good ? "good" : "bad"}`} title="Last 30 days vs the 30 days before">{up ? "↑" : "↓"} {Math.abs(Math.round(value))}{unit === "pts" ? " pts" : "%"}</span>;
 }
 
-export default function TasksView({ labs: allLabs, modules, plans, viewer, idByName, onOpenLab, onPatchLab, showToast }) {
+// `fixedSource` shows this same page for one source only, inside another screen (Expansion → Deals & Purchases): no header, Add
+// Task or source filter, and the screen's own scope is passed in as `scoped`. `onStageChanged` tells that screen a stage moved.
+export default function TasksView({ labs: allLabs, modules, plans, viewer, idByName, onOpenLab, onPatchLab, showToast, fixedSource, scoped, onStageChanged }) {
   const { currentCSM } = viewer;
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "tasks");
+  const ownScope = useScopedCsm(viewer, "tasks");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll, labType, setLabType } = scoped || ownScope;
+  const ns = fixedSource ? `tasks.${fixedSource}` : "tasks";
   const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
 
   const [tasks, setTasks] = useState([]);
@@ -85,18 +89,18 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
   const [selected, setSelected] = useState([]);      // ticked rows (bulk Mark as Done)
   const [pending, setPending] = useState(null);      // an item stage change waiting for its confirm dialog
   const [shown, setShown] = useState({});            // rows shown per group ("Show more")
-  const [doneOpen, setDoneOpen] = useSessionState("tasks.doneOpen", false);
+  const [doneOpen, setDoneOpen] = useSessionState(`${ns}.doneOpen`, false);
 
   // Filters (remembered across a refresh)
-  const [fLab, setFLab] = useSessionState("tasks.fLab", "");
-  const [fType, setFType] = useSessionState("tasks.fType", "");
-  const [fStatus, setFStatus] = useSessionState("tasks.fStatus", "");
-  const [fPriority, setFPriority] = useSessionState("tasks.fPriority", "");
-  const [fSource, setFSource] = useSessionState("tasks.fSource", "");
-  const [fFrom, setFFrom] = useSessionState("tasks.fFrom", "");
-  const [fTo, setFTo] = useSessionState("tasks.fTo", "");
-  const [q, setQ] = useSessionState("tasks.q", "");
-  const [sortBy, setSortBy] = useSessionState("tasks.sort", "newest");
+  const [fLab, setFLab] = useSessionState(`${ns}.fLab`, "");
+  const [fType, setFType] = useSessionState(`${ns}.fType`, "");
+  const [fStatus, setFStatus] = useSessionState(`${ns}.fStatus`, "");
+  const [fPriority, setFPriority] = useSessionState(`${ns}.fPriority`, "");
+  const [fSource, setFSource] = useSessionState(`${ns}.fSource`, "");
+  const [fFrom, setFFrom] = useSessionState(`${ns}.fFrom`, "");
+  const [fTo, setFTo] = useSessionState(`${ns}.fTo`, "");
+  const [q, setQ] = useSessionState(`${ns}.q`, "");
+  const [sortBy, setSortBy] = useSessionState(`${ns}.sort`, "newest");
 
   const nameById = useMemo(() => { const m = {}; Object.entries(idByName).forEach(([n, id]) => { m[id] = n; }); return m; }, [idByName]);
 
@@ -132,7 +136,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
   const actorId = idByName[currentCSM];
 
   // Tasks in view: owner scope (My Labs / one CSM / whole team) + Lab Type. A recurring task only shows on the days it's due.
-  const inScope = tasks.filter((t) => (!scopeCsm || t.owner === scopeCsm)
+  const inScope = tasks.filter((t) => (!fixedSource || t.source === fixedSource) && (!scopeCsm || t.owner === scopeCsm)
     && (!labType || labsById[t.labId])
     && (!isRecurring(t) || isTaskDueToday(t)));
 
@@ -231,23 +235,30 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
       setPending(null);
       showToast(message);
       await loadAll(true);
+      onStageChanged?.();
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
 
+  // Open tasks by the item's current stage (shown when locked to one source).
+  const openByStage = {};
+  inScope.filter((t) => !isTaskDoneToday(t)).forEach((t) => {
+    const stage = t.paramName ? pitchByLab[t.labId]?.[`param:${t.moduleKey}|${t.paramName}`] || "Not set" : "Not set";
+    openByStage[stage] = (openByStage[stage] || 0) + 1;
+  });
   const distTotal = Object.values(dist).reduce((s, v) => s + v, 0);
   const agingMax = Math.max(1, ...aging.map((a) => a.count));
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+      {!fixedSource && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h1 className="page-title">Tasks</h1>
           <p className="page-sub">Everything on <b>{scopeLabel}</b>'s plate — personal to-dos, follow-ups, reminders, and Adoption / Expansion items in progress.</p>
         </div>
         <button className="btn btn-primary" onClick={() => setAddOpen(true)}>+ Add Task</button>
-      </div>
+      </div>}
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
+      {!fixedSource && <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />}
 
       <div className="tk-kpis">
         <div className="tk-kpi"><span className="tk-kpi-ico" style={{ color: "var(--accent)" }}>☰</span><div><label>Total Tasks</label><b>{kpi.total}</b><Delta value={kpi.totalChange} goodWhenUp={false} /><span>All active tasks</span></div></div>
@@ -259,6 +270,17 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
       </div>
 
       <div className="tk-panels">
+        {fixedSource ? (
+          <div className="table-card tk-panel">
+            <div className="tk-panel-title">Open Tasks by Stage <InfoTip>Open {fixedSource} tasks by the stage the item is at now, with the average days from creation to Done over the last 30 days.</InfoTip></div>
+            <div className="tk-src-cards">
+              {Object.entries(openByStage).map(([stage, count]) => (
+                <div key={stage} className="tk-src-card" style={{ borderTopColor: "var(--stg-exp-2)" }}><label>{stage}</label><b>{count}</b><span>open</span></div>
+              ))}
+              <div className="tk-src-card" style={{ borderTopColor: "var(--ok)" }}><label>Resolution TAT</label><b>{fmtDays(kpi.avgTat)}</b><span>{kpi.completed} completed</span></div>
+            </div>
+          </div>
+        ) : (
         <div className="table-card tk-panel">
           <div className="tk-panel-title">Resolution TAT by Task Source <InfoTip>Average days from creation to Done for tasks completed in the last 30 days, by where they came from. Arrows compare with the 30 days before (down is better).</InfoTip></div>
           <div className="tk-src-cards">
@@ -271,6 +293,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
             ))}
           </div>
         </div>
+        )}
         <div className="table-card tk-panel">
           <div className="tk-panel-title">Task Status Distribution <InfoTip>Open tasks by status (Overdue = open and past its due date), plus tasks completed in the last 30 days.</InfoTip></div>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -299,7 +322,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
         <select value={fType} onChange={(e) => setFType(e.target.value)}><option value="">All types</option>{TYPE_FILTERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}><option value="">All status</option>{STATUS_FILTERS.map((s) => <option key={s} value={s}>{s}</option>)}</select>
         <select value={fPriority} onChange={(e) => setFPriority(e.target.value)}><option value="">All priority</option>{TASK_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}</select>
-        <select value={fSource} onChange={(e) => setFSource(e.target.value)}><option value="">All sources</option>{TASK_SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+        {!fixedSource && <select value={fSource} onChange={(e) => setFSource(e.target.value)}><option value="">All sources</option>{TASK_SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}</select>}
         <span className="tk-range" title="Due date range">Due
           <input type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} aria-label="Due from" /> –
           <input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} aria-label="Due to" />
@@ -381,22 +404,23 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
         </div>
       </div>
 
-      <div className="tk-panels" style={{ gridTemplateColumns: team ? "1.4fr 1fr" : "1fr", marginTop: 18 }}>
+      <div className="tk-panels" style={{ gridTemplateColumns: team && !fixedSource ? "1.4fr 1fr" : "1fr", marginTop: 18 }}>
         {team && (
           <div className="table-card tk-panel">
             <div className="tk-panel-title">Team TAT Summary <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>(last 30 days)</span></div>
             <div className="table-scroll"><table className="child-mini">
-              <thead><tr><th>CSM</th><th>Created</th><th>Completed</th><th>Avg. TAT</th><th>Manual TAT</th><th>Adoption TAT</th><th>Expansion TAT</th><th>On-time %</th></tr></thead>
+              <thead><tr><th>CSM</th><th>Created</th><th>Completed</th><th>Avg. TAT</th>{!fixedSource && <><th>Manual TAT</th><th>Adoption TAT</th><th>Expansion TAT</th></>}<th>On-time %</th></tr></thead>
               <tbody>{team.map((r) => (
                 <tr key={r.key}>
                   <td>{r.key}</td><td>{r.created}</td><td>{r.completed}</td><td>{fmtDays(r.avgTat)}</td>
-                  {["Manual", "Adoption", "Expansion"].map((src) => <td key={src}>{fmtDays(r.tatBySource[src])}</td>)}
+                  {!fixedSource && ["Manual", "Adoption", "Expansion"].map((src) => <td key={src}>{fmtDays(r.tatBySource[src])}</td>)}
                   <td><OnTime pct={r.onTimePct} /></td>
                 </tr>
               ))}</tbody>
             </table></div>
           </div>
         )}
+        {!fixedSource && (
         <div className="table-card tk-panel">
           <div className="tk-panel-title">Task Source Wise Completion <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>(last 30 days)</span></div>
           <div className="table-scroll"><table className="child-mini">
@@ -409,6 +433,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
             ))}</tbody>
           </table></div>
         </div>
+        )}
       </div>
 
       <AddTaskModal open={addOpen} onClose={() => setAddOpen(false)} onSubmit={(p) => { handleAdd(p); setAddOpen(false); }}

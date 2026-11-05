@@ -157,6 +157,51 @@ export function Donut({ slices, centre, centreLabel, bind }) {
   );
 }
 
+// One line of amounts over periods, for money rather than scores. `points` = [{ label, value, tip }], `fmt` prints a value.
+export function ValueTrend({ points, fmt, bind }) {
+  const W = 380, H = 190, L = 52, R = 14, T = 22, B = 22;
+  const max = Math.max(...points.map((p) => p.value || 0));
+  const x = (i) => (points.length < 2 ? (L + W - R) / 2 : L + (i * (W - L - R)) / (points.length - 1));
+  const y = (v) => T + (max ? (max - v) / max : 1) * (H - T - B);
+  const ticks = max ? [0, max / 2, max] : [0];
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={points.map((p) => `${p.label} ${fmt(p.value)}`).join(", ")}>
+      {ticks.map((t) => (
+        <g key={t}>
+          <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeWidth="1" />
+          <text x={L - 6} y={y(t)} textAnchor="end" dominantBaseline="central" fontSize="10" fill="var(--text-faint)">{fmt(t)}</text>
+        </g>
+      ))}
+      {points.map((p, i) => <text key={p.label} x={x(i)} y={H - 6} textAnchor="middle" fontSize="10" fill="var(--text-dim)">{p.label}</text>)}
+      <polyline points={points.map((p, i) => `${x(i)},${y(p.value)}`).join(" ")} fill="none" stroke="var(--stg-plan-5)" strokeWidth="2" strokeLinejoin="round" />
+      {points.map((p, i) => (
+        <g key={p.label} {...(bind && p.tip ? bind(p.tip) : {})} style={{ outline: "none" }}>
+          <circle cx={x(i)} cy={y(p.value)} r="12" fill="transparent" />
+          <circle cx={x(i)} cy={y(p.value)} r="4" fill="var(--stg-plan-5)" stroke="var(--surface)" strokeWidth="2" />
+        </g>
+      ))}
+      <text x={Math.min(x(points.length - 1), W - R - 24)} y={y(points[points.length - 1].value) - 10} textAnchor="middle" fontSize="10.5" fontWeight="700" fill="var(--text)">{fmt(points[points.length - 1].value)}</text>
+    </svg>
+  );
+}
+
+// Sideways bars of amounts, longest = the largest. `items` = [{ key, label, value, tip }].
+export function ValueBars({ items, fmt, bind, color = "var(--stg-plan-5)" }) {
+  if (!items.length) return <div className="an-empty">Nothing live yet.</div>;
+  const max = Math.max(...items.map((it) => it.value));
+  return (
+    <div>
+      {items.map((it) => (
+        <div key={it.key} className="pf-hbar" style={{ gridTemplateColumns: "104px 1fr 72px" }} {...(bind && it.tip ? bind(it.tip) : {})}>
+          <span className="pf-hbar-label" title={it.label}>{it.label}</span>
+          <div className="pf-hbar-track"><div style={{ width: `${max ? (it.value / max) * 100 : 0}%`, background: color }} /></div>
+          <b className="pf-hbar-val">{fmt(it.value)}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // A KPI's actual as a ring; green when the target is met, amber within 10 points, red otherwise.
 export function Ring({ value, target, size = 84 }) {
   const R = 34, C = 2 * Math.PI * R;

@@ -635,7 +635,7 @@ export default function App() {
             <CollectionsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "expansion" && (
-            <ExpansionView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <ExpansionView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} onPatchLab={handlePatchLab} showToast={showToast} />
           )}
           {view === "tasks" && (
             <TasksView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} onPatchLab={handlePatchLab} showToast={showToast} />

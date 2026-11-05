@@ -17,6 +17,7 @@ import {
 } from '../_shared/scoring.js'
 import { HOW_IT_WORKS, HOW_IT_WORKS_TOPICS } from '../_shared/howItWorks.js'
 import { computeSentimentHealth } from '../_shared/labHealth.js'
+import { expansionRows, revenueOn } from '../_shared/expansionRevenue.js'
 
 // deno-lint-ignore no-explicit-any
 type Db = any
@@ -311,7 +312,7 @@ function buildServer(db: Db) {
   })
 
   server.registerTool('expansion_overview', {
-    description: 'Expansion deals (Onboarding / Pipeline / Live / Lost with monthly and annual revenue) and every purchased add-on (price or trial, purchase date, Active or Lost after Purchase).',
+    description: 'Expansion MRR and ARR (only the revenue from expansion, not the lab\'s total MRR), expansion deals (title, module, Onboarding / Pipeline / Live / Lost with monthly and annual revenue) and every purchased add-on (price or trial, purchase date, Active or Lost after Purchase).',
     inputSchema: z.object({ lab: z.string().optional() }),
     annotations: READ_ONLY,
   }, async ({ lab }) => {
@@ -320,12 +321,18 @@ function buildServer(db: Db) {
     let labId: string | null = null
     if (lab) labId = (await findLab(db, lab)).lab.id
     const [deals, purchases] = await Promise.all([
-      must<Db[]>(db.from('expansion_opportunities').select('lab_id,status,monthly_revenue,annual_revenue,deal_won_date,expected_live_date,comments')),
-      must<Db[]>(db.from('feature_purchases').select('lab_id,label,is_trial,monthly_charge,purchased_on,status,lost_on,lost_comment')),
+      must<Db[]>(db.from('expansion_opportunities').select('lab_id,title,module_key,status,monthly_revenue,annual_revenue,deal_won_date,expected_live_date,comments,created_at')),
+      must<Db[]>(db.from('feature_purchases').select('lab_id,label,module_key,is_trial,monthly_charge,purchased_on,charges_added_on,status,lost_on,lost_comment')),
     ])
     const keep = (r: Db) => byId[r.lab_id] && (!labId || r.lab_id === labId)
     const named = (r: Db) => ({ ...r, lab: byId[r.lab_id].name, currency: byId[r.lab_id].currency, lab_id: undefined })
-    return json({ deals: deals.filter(keep).map(named), purchases: purchases.filter(keep).map(named) })
+    const rows = expansionRows(
+      deals.filter(keep).map((d: Db) => ({ labId: d.lab_id, title: d.title, moduleKey: d.module_key, monthlyRevenue: Number(d.monthly_revenue) || 0, annualRevenue: Number(d.annual_revenue) || 0, dealWonDate: d.deal_won_date, status: d.status, createdAt: d.created_at })),
+      purchases.filter(keep).map((p: Db) => ({ labId: p.lab_id, label: p.label, moduleKey: p.module_key, monthlyCharge: Number(p.monthly_charge) || 0, isTrial: p.is_trial, purchasedOn: p.purchased_on, chargesAddedOn: p.charges_added_on, status: p.status, lostOn: p.lost_on })),
+    )
+    // Kept per currency: the connector has no exchange rate, so INR and USD aren't added together here.
+    const revenue = (cur: string) => { const r = revenueOn(rows.filter((x: Db) => byId[x.labId].currency === cur), todayISO()); return { mrr: r.mrr, arr: r.arr, liveItems: r.count } }
+    return json({ expansionRevenue: { INR: revenue('INR'), USD: revenue('USD') }, deals: deals.filter(keep).map(named), purchases: purchases.filter(keep).map(named) })
   })
 
   server.registerTool('feedback_summary', {

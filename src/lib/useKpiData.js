@@ -9,6 +9,7 @@ import { fetchChurnLog } from "./churn";
 import { fetchAllInvoices } from "./invoices";
 import { fetchAllMrrSnapshots } from "./labs";
 import { fetchAllTasks } from "./tasks";
+import { fetchAllPurchases } from "./purchases";
 import { fetchAllExpansionOpportunities } from "./expansion";
 import { defaultKpiSettings, fetchKpiSettings } from "./kpi";
 import { asOfMs } from "./periods";
@@ -31,15 +32,15 @@ export function useKpiData({ labs, modules, plans, idByName }) {
     setState((s) => ({ ...s, loading: !s.data, error: null }));
     try {
       const nameById = Object.fromEntries(Object.entries(idByName || {}).map(([name, id]) => [id, name]));
-      const [adoptionByLab, pitchByLab, changesByLab, contacts, visits, churn, invoices, snaps, tasks, opps, settings] = await Promise.all([
+      const [adoptionByLab, pitchByLab, changesByLab, contacts, visits, churn, invoices, snaps, tasks, opps, settings, purchases] = await Promise.all([
         fetchAllLabsAdoption(), fetchAllPitchStatus(), fetchAllParamChanges(), fetchAllLabContacts(), fetchAllVisits(), fetchChurnLog(),
         fetchAllInvoices(), fetchAllMrrSnapshots(), fetchAllTasks(nameById), fetchAllExpansionOpportunities(),
-        fetchKpiSettings().catch(() => defaultKpiSettings()),
+        fetchKpiSettings().catch(() => defaultKpiSettings()), fetchAllPurchases().catch(() => []),
       ]);
       cache.current = new Map();
       setState({
         loading: false, error: null,
-        data: { adoptionByLab, pitchByLab, changesByLab, contacts, visits, visitsByLab: groupBy(visits), churn, invoices, snapsByLab: groupBy(snaps), tasks, opps, settings },
+        data: { adoptionByLab, pitchByLab, changesByLab, contacts, visits, visitsByLab: groupBy(visits), churn, invoices, snapsByLab: groupBy(snaps), tasks, opps, settings, purchases },
       });
     } catch (err) {
       setState({ loading: false, error: err.message || "Failed to load.", data: null });

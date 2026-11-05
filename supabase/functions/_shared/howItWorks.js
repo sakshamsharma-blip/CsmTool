@@ -33,6 +33,22 @@ export const HOW_IT_WORKS = {
     example: "A lab with one Not-in-plan parameter at Pitching (10) and another of equal weight at Purchased (100) scores 55 in that module.",
     whereInApp: "A lab's Adoption tab, My Portfolio, Dashboard, and the Expansion page in the sidebar.",
   },
+  expansion_revenue: {
+    title: "Expansion MRR and ARR",
+    summary: "Only the revenue that came from expansion, separate from a lab's total MRR.",
+    explanation: [
+      "Expansion MRR = priced purchased features + manual deals at status Live. Expansion ARR is the same, using 12 × the charge for a feature and the deal's own annual value for a deal.",
+      "A purchased feature counts from when it became priced until it was lost. A Live deal counts from its deal-won date, or else from when it was added.",
+      "Trials, Pipeline, Onboarding and Lost items add nothing.",
+      "It doesn't come from invoices and doesn't change a lab's MRR, which follows invoices. The two are recorded separately, so Expansion MRR can differ from what invoices show.",
+      "On the Expansion page's Analytics, CSM Performance and Module-wise tabs it reads the end of the chosen period. On Deals & Purchases it reads today, and the trend reads each month-end.",
+      "On Deals & Purchases a priced purchase shows as Live, a trial as Onboarding and a lost one as Lost. Live share = Live items ÷ all items. Account averages cover clients with Live expansion revenue.",
+      "Expansion Tasks there is the Tasks page limited to tasks with Source Expansion, so a change in either place shows in both.",
+      "All totals are in INR in the app, with USD converted at a live rate.",
+    ],
+    example: "A feature priced ₹1,000/month, another on trial, and a Live deal of ₹2,000/month with ₹30,000 annual value give Expansion MRR ₹3,000 and ARR ₹42,000.",
+    whereInApp: "The Expansion page, on every tab.",
+  },
   overall_and_mandatory: {
     title: "Overall and Mandatory scores",
     summary: "Overall averages the two pipelines. Mandatory repeats that using only Mandatory parameters.",

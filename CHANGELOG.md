@@ -2,6 +2,10 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Nov 5 2026 — Expansion MRR, analytics and tasks
+- Every Expansion tab shows Expansion MRR and ARR (only revenue from expansion) instead of total MRR.
+- Deals & Purchases has tiles, charts, one list of purchases and manual deals, and an Expansion Tasks view. Manual deals have a title and module (migration 0046).
+
 ## Nov 4 2026 — KPI Task Closure counts every closed task
 - A task closed before its due date now counts straight away, and a closed task with no due date counts in the period it was closed.
 

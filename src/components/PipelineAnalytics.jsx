@@ -6,7 +6,8 @@ import { clientGroups } from "../lib/labRollup";
 import { filterLabsByLabType } from "../lib/labs";
 import { labSelectOptions } from "../lib/selectOptions";
 import { GRANULARITIES, periodsFor, periodContaining, previousPeriod, isFuture } from "../lib/periods";
-import { todayISO } from "../lib/dates";
+import { todayISO, toLocalISODate } from "../lib/dates";
+import { expansionRows, revenueOn } from "../lib/expansion";
 import { toINR } from "../lib/format";
 import { computeSentimentHealth } from "../lib/labHealth";
 import { KPI_DEFS, computeKpis, scoreKpis, targetFor } from "../lib/kpi";
@@ -79,7 +80,20 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
   const compared = compareClients(groups, periodA, periodB);
   const comparedNote = compared.count ? `On ${compared.count} of ${compared.of} client${compared.of === 1 ? "" : "s"} with both periods` : "No client has both periods";
   const totalLabs = groups.reduce((s, g) => s + g.labs.length, 0);
-  const totalMrr = groups.reduce((s, g) => s + g.mrrINR, 0);
+  // Money shown beside the scores. On Expansion it's only the revenue from expansion, as at the end of the period being looked
+  // at (decision Nov 5 2026); on Adoption it's the client's whole MRR.
+  const isExpansion = pipeline === "expansion";
+  const revenueRows = useMemo(() => (isExpansion ? expansionRows(data.opps, data.purchases, (ts) => toLocalISODate(new Date(ts))) : []), [isExpansion, data.opps, data.purchases]);
+  const regionByLab = useMemo(() => Object.fromEntries(allLabs.map((l) => [l.id, l.region])), [allLabs]);
+  const moneyAsOf = periodB.end < today ? periodB.end : today;
+  const moneyOf = (g) => {
+    if (!isExpansion) return { mrr: g.mrrINR, arr: g.mrrINR * 12 };
+    const ids = new Set(g.labs.map((l) => l.id));
+    return revenueOn(revenueRows.filter((r) => ids.has(r.labId)), moneyAsOf, (amount, labId) => toINR(amount, regionByLab[labId]));
+  };
+  const money = { label: isExpansion ? "Expansion MRR" : "MRR", showArr: isExpansion, of: moneyOf };
+  const totalMrr = groups.reduce((s, g) => s + moneyOf(g).mrr, 0);
+  const totalArr = groups.reduce((s, g) => s + moneyOf(g).arr, 0);
   const achievement = curAvg != null && target > 0 ? (curAvg / target) * 100 : null;
 
   const trend = periods.map((p) => ({
@@ -92,7 +106,7 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
     if (!teamAll) return [];
     return teamNames.map((name) => {
       const gs = clientGroups(labs, name);
-      return { name, id: idByName?.[name], groups: gs, labs: gs.flatMap((g) => g.labs), clients: gs.length, mrr: gs.reduce((s, g) => s + g.mrrINR, 0) };
+      return { name, id: idByName?.[name], groups: gs, labs: gs.flatMap((g) => g.labs), clients: gs.length };
     }).filter((c) => c.clients > 0);
   }, [teamAll, teamNames, labs, idByName]);
 
@@ -106,7 +120,7 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
   const tiles = (
     <div className="an-tiles">
       <Tile value={groups.length} label="Clients" sub={`${totalLabs} labs`} />
-      <Tile value={fmtCompactINR(totalMrr)} label="Total MRR" sub={`ARR ${fmtCompactINR(totalMrr * 12)}`} />
+      <Tile value={fmtCompactINR(totalMrr)} label={isExpansion ? "Expansion MRR" : "Total MRR"} sub={`${isExpansion ? "Expansion " : ""}ARR ${fmtCompactINR(totalArr)}`} />
       <Tile tone="good" value={fmtPct(curAvg)} label={metric.label} sub={periodB.label} />
       <Tile value={fmtPct(prevAvg)} label="Compared with" sub={periodA.label} />
       <Tile value={fmtPP(compared.change)} label={`Change, ${gran === "Monthly" ? "MoM" : gran === "Quarterly" ? "QoQ" : gran === "Yearly" ? "YoY" : "HoH"}`} sub={comparedNote} />
@@ -122,7 +136,7 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
     const cells = periods.map((p) => scoreOf(g, p));
     const first = cells.find((v) => v != null) ?? null;
     return { g, cells, cur: scoreOf(g, periodB), prev: scoreOf(g, periodA), first };
-  }).sort((a, b) => (b.g.mrrINR - a.g.mrrINR));
+  }).sort((a, b) => (moneyOf(b.g).mrr - moneyOf(a.g).mrr));
 
   const scored = labRows.filter((r) => r.cur != null);
   const atOrAbove = scored.filter((r) => r.cur >= target);
@@ -168,7 +182,7 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
       </div>
       <div className="an-side-layout">
         <div style={{ minWidth: 0 }}>
-          {sub === "labs" && <LabWiseTable rows={labRows} periods={periods} periodA={periodA} periodB={periodB} onOpenLab={onOpenLab} />}
+          {sub === "labs" && <LabWiseTable money={money} rows={labRows} periods={periods} periodA={periodA} periodB={periodB} onOpenLab={onOpenLab} />}
           {sub === "targets" && <TargetTable rows={labRows} target={target} onOpenLab={onOpenLab} />}
           {sub === "insights" && <Insights rows={labRows} groups={groups} periodB={periodB} moduleScoreOf={moduleScoreOf} target={target} modules={kpi.data.modules} onOpenLab={onOpenLab} />}
         </div>
@@ -193,7 +207,7 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
 
   // ---- tab: CSM performance ----
   const csmTab = (
-    <CsmPerformance rows={csmRows} groups={groups} periods={periods} periodA={periodA} periodB={periodB} metric={metric} kpiKey={kpiKey} settings={settings} data={data}
+    <CsmPerformance money={money} rows={csmRows} groups={groups} periods={periods} periodA={periodA} periodB={periodB} metric={metric} kpiKey={kpiKey} settings={settings} data={data}
       teamScore={teamScore} compareClients={compareClients} scoreOf={scoreOf} clientScores={clientScores} tip={tip} gran={gran} target={target} onOpenLab={onOpenLab} onOpenCsm={onOpenCsm} persist={page} />
   );
 
@@ -213,8 +227,8 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
   const extra = extraTabs.find((t) => t.key === activeTab);
 
   function exportCsv() {
-    const rows = [["Client", "CSM", "MRR (INR)", ...periods.map((p) => p.label), "Change"]];
-    labRows.forEach((r) => rows.push([r.g.name, r.g.csm, Math.round(r.g.mrrINR), ...r.cells.map((v) => (v == null ? "" : Math.round(v))), diff(r.cur, r.prev) == null ? "" : Math.round(r.cur - r.prev)]));
+    const rows = [["Client", "CSM", `${money.label} (INR)`, ...(money.showArr ? ["Expansion ARR (INR)"] : []), ...periods.map((p) => p.label), "Change"]];
+    labRows.forEach((r) => rows.push([r.g.name, r.g.csm, Math.round(moneyOf(r.g).mrr), ...(money.showArr ? [Math.round(moneyOf(r.g).arr)] : []), ...r.cells.map((v) => (v == null ? "" : Math.round(v))), diff(r.cur, r.prev) == null ? "" : Math.round(r.cur - r.prev)]));
     downloadCsv(`${page}-${metric.label.replace(/\s+/g, "-").toLowerCase()}-${year}-${gran.toLowerCase()}.csv`, rows);
   }
 
@@ -247,17 +261,18 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
   );
 }
 
-function LabWiseTable({ rows, periods, periodA, periodB, onOpenLab }) {
+function LabWiseTable({ rows, periods, periodA, periodB, onOpenLab, money }) {
   if (!rows.length) return <div className="table-card an-empty">No clients in view.</div>;
   return (
     <div className="table-card"><Paginated items={rows}>{(page) => (
       <div className="table-scroll"><table className="child-mini an-table">
-        <thead><tr><th>Client</th><th>CSM</th><th>MRR</th>{periods.map((p) => <th key={p.key} className="c">{p.label}{p.range && <div className="an-th-sub">{p.range}</div>}</th>)}<th className="c">Change<div className="an-th-sub">{periodA.label} → {periodB.label}</div></th></tr></thead>
+        <thead><tr><th>Client</th><th>CSM</th><th>{money.label}</th>{money.showArr && <th>Expansion ARR</th>}{periods.map((p) => <th key={p.key} className="c">{p.label}{p.range && <div className="an-th-sub">{p.range}</div>}</th>)}<th className="c">Change<div className="an-th-sub">{periodA.label} → {periodB.label}</div></th></tr></thead>
         <tbody>{page.map((r) => (
           <tr key={r.g.id}>
             <td className="lab-name clickable" onClick={() => onOpenLab(r.g.id, r.g.labs.length > 1 ? "overalladoption" : "adoption")}>{r.g.name}{r.g.labs.length > 1 && <span className="an-count"> · {r.g.labs.length} labs</span>}</td>
             <td>{r.g.csm || "—"}</td>
-            <td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(r.g.mrrINR)}</td>
+            <td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(money.of(r.g).mrr)}</td>
+            {money.showArr && <td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(money.of(r.g).arr)}</td>}
             {r.cells.map((v, i) => <td key={periods[i].key} className="c"><Heat value={v} /></td>)}
             <td className="c"><Change value={diff(r.cur, r.prev)} /></td>
           </tr>
@@ -308,7 +323,7 @@ function Insights({ rows, groups, periodB, moduleScoreOf, target, modules, onOpe
   );
 }
 
-function CsmPerformance({ rows, groups, periods, periodA, periodB, metric, kpiKey, settings, data, teamScore, compareClients, scoreOf, clientScores, tip, gran, target, onOpenLab, onOpenCsm, persist }) {
+function CsmPerformance({ money, rows, groups, periods, periodA, periodB, metric, kpiKey, settings, data, teamScore, compareClients, scoreOf, clientScores, tip, gran, target, onOpenLab, onOpenCsm, persist }) {
   const [sub, setSub] = useSessionState(`${persist}.csmSub`, "summary");
   const [fCsm, setFCsm] = useSessionState(`${persist}.csmList`, "");
   if (!rows.length) return <div className="table-card an-empty">Switch to Team View with All CSMs to compare people.</div>;
@@ -323,20 +338,20 @@ function CsmPerformance({ rows, groups, periods, periodA, periodB, metric, kpiKe
       .reduce((s, o) => s + toINR(o.monthlyRevenue, c.labs.find((l) => l.id === o.labId)?.region), 0);
     const risky = c.labs.filter((l) => l.status === "At Risk" || computeSentimentHealth(data.visitsByLab[l.id]).bucket === "At Risk");
     const kpiScore = scoreKpis(k, settings.weights, (key) => targetFor(settings, key, c.id)).total;
-    return { ...c, cur, prev, change: compareClients(c.groups, periodA, periodB).change, t, retention: k.retention.value, pipelineMrr, risky, kpiScore };
+    return { ...c, mrr: c.groups.reduce((s, g) => s + money.of(g).mrr, 0), arr: c.groups.reduce((s, g) => s + money.of(g).arr, 0), cur, prev, change: compareClients(c.groups, periodA, periodB).change, t, retention: k.retention.value, pipelineMrr, risky, kpiScore };
   });
 
   const cols = (
     <Card title={`By CSM · ${periodB.label}`} info="Dashed line = the team target. Click a bar for the CSM's KPI report.">
-      <ScoreBars target={target} bind={tip.bind} items={withStats.map((c) => ({ key: c.name, label: c.name, value: c.cur, onClick: onOpenCsm ? () => onOpenCsm(c.name) : undefined, tip: <TipCard title={c.name} rows={[["Score", fmtPct(c.cur)], ["Target", fmtPct(c.t)], ["Clients", c.clients], ["MRR", fmtCompactINR(c.mrr)]]} /> }))} />
+      <ScoreBars target={target} bind={tip.bind} items={withStats.map((c) => ({ key: c.name, label: c.name, value: c.cur, onClick: onOpenCsm ? () => onOpenCsm(c.name) : undefined, tip: <TipCard title={c.name} rows={[["Score", fmtPct(c.cur)], ["Target", fmtPct(c.t)], ["Clients", c.clients], [money.label, fmtCompactINR(c.mrr)]]} /> }))} />
     </Card>
   );
   const allLabsCount = rows.reduce((s, c) => s + c.labs.length, 0);
   const share = (
     <Card title="Labs by CSM">
-      <Donut centre={allLabsCount} centreLabel="labs" bind={tip.bind} slices={rows.map((c, i) => ({
+      <Donut centre={allLabsCount} centreLabel="labs" bind={tip.bind} slices={withStats.map((c, i) => ({
         key: c.name, label: c.name, count: c.labs.length, color: `var(--an-cat-${(i % 8) + 1})`,
-        tip: <TipCard title={c.name} rows={[["Labs", c.labs.length], ["Clients", c.clients], ["MRR", fmtCompactINR(c.mrr)]]} />,
+        tip: <TipCard title={c.name} rows={[["Labs", c.labs.length], ["Clients", c.clients], [money.label, fmtCompactINR(c.mrr)]]} />,
       }))} />
     </Card>
   );
@@ -354,11 +369,11 @@ function CsmPerformance({ rows, groups, periods, periodA, periodB, metric, kpiKe
       </div>
       {sub === "summary" && (
         <div className="table-card"><div className="table-scroll"><table className="child-mini an-table">
-          <thead><tr><th>CSM</th><th className="c">Labs</th><th>MRR</th><th className="c">{periodA.label}</th><th className="c">{periodB.label}</th><th className="c" title="Only clients with a score in both periods">Change</th><th className="c">Target</th><th className="c">Achievement</th><th className="c">Retention</th><th>Open deals</th><th className="c">At risk</th><th className="c">KPI score</th><th></th></tr></thead>
+          <thead><tr><th>CSM</th><th className="c">Labs</th><th>{money.label}</th>{money.showArr && <th>Expansion ARR</th>}<th className="c">{periodA.label}</th><th className="c">{periodB.label}</th><th className="c" title="Only clients with a score in both periods">Change</th><th className="c">Target</th><th className="c">Achievement</th><th className="c">Retention</th><th>Open deals</th><th className="c">At risk</th><th className="c">KPI score</th><th></th></tr></thead>
           <tbody>
             {withStats.map((c) => (
               <tr key={c.name}>
-                <td style={{ fontWeight: 600 }}>{c.name}</td><td className="c">{c.labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(c.mrr)}</td>
+                <td style={{ fontWeight: 600 }}>{c.name}</td><td className="c">{c.labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(c.mrr)}</td>{money.showArr && <td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(c.arr)}</td>}
                 <td className="c"><Heat value={c.prev} /></td><td className="c"><Heat value={c.cur} /></td><td className="c"><Change value={c.change} /></td>
                 <td className="c">{fmtPct(c.t)}</td><td className="c">{c.cur != null && c.t > 0 ? fmtPct((c.cur / c.t) * 100) : "—"}</td>
                 <td className="c">{fmtPct(c.retention)}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(c.pipelineMrr)}</td>
@@ -384,8 +399,8 @@ function CsmPerformance({ rows, groups, periods, periodA, periodB, metric, kpiKe
           <div className="filters"><select value={fCsm} onChange={(e) => setFCsm(e.target.value)}><option value="">All CSMs</option>{rows.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}</select></div>
           <div className="table-card"><Paginated items={listed.flatMap((c) => c.groups.map((g) => ({ c, g })))}>{(page) => (
             <div className="table-scroll"><table className="child-mini an-table">
-              <thead><tr><th>Client</th><th>CSM</th><th className="c">Labs</th><th>MRR</th><th className="c">{periodB.label}</th></tr></thead>
-              <tbody>{page.map(({ c, g }) => <tr key={`${c.name}|${g.id}`}><td className="lab-name clickable" onClick={() => onOpenLab(g.id)}>{g.name}</td><td>{c.name}</td><td className="c">{g.labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(g.mrrINR)}</td><td className="c"><Heat value={scoreOf(g, periodB)} /></td></tr>)}</tbody>
+              <thead><tr><th>Client</th><th>CSM</th><th className="c">Labs</th><th>{money.label}</th>{money.showArr && <th>Expansion ARR</th>}<th className="c">{periodB.label}</th></tr></thead>
+              <tbody>{page.map(({ c, g }) => <tr key={`${c.name}|${g.id}`}><td className="lab-name clickable" onClick={() => onOpenLab(g.id)}>{g.name}</td><td>{c.name}</td><td className="c">{g.labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(money.of(g).mrr)}</td>{money.showArr && <td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(money.of(g).arr)}</td>}<td className="c"><Heat value={scoreOf(g, periodB)} /></td></tr>)}</tbody>
             </table></div>
           )}</Paginated></div>
         </>
