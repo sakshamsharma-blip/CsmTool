@@ -103,6 +103,9 @@
     margin-bottom:2px; transition:background .12s ease, color .12s ease;
   }
   .nav-item .ico{width:21px; text-align:center; flex:none; font-size:18px;}
+  :root{ --ic-primary:#2563EB; --ic-success:#16A34A; --ic-purple:#8B5CF6; --ic-warning:#F59E0B; --ic-pink:#EC4899; --ic-teal:#14B8A6; --ic-orange:#F97316; --ic-sky:#0EA5E9; --ic-red:#E11D48; }
+  .nav-item .ico.nav-tile{width:26px; height:26px; border-radius:8px; color:#fff; display:inline-flex; align-items:center; justify-content:center;}
+  .sidebar.collapsed .nav-item .ico.nav-tile{width:26px;}
   .nav-item .lbl{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .nav-item:hover{background:var(--bg);}
   .nav-item.active{background:var(--accent-dim); color:var(--accent); font-weight:600; box-shadow:inset 3px 0 0 var(--accent);}

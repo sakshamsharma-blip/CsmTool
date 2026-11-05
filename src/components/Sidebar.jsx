@@ -1,31 +1,32 @@
 import { useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
 import { roleLabel } from "../lib/roles";
+import NavIcon from "./NavIcons";
 
 // Customer Master is a group (Total Labs + Add New Lab), matching the prototype's expandable nav — everything else is a
 // flat item. Adoption keeps everything of its own (analytics, CSM performance, module-wise, the template) as tabs inside.
 const LIVE_NAV = [
-  { key: "dashboard", icon: "📊", label: "Dashboard" },
-  { key: "portfolio", icon: "⭐", label: "My Portfolio" },
+  { key: "dashboard", icon: "dashboard", color: "primary", label: "Dashboard" },
+  { key: "portfolio", icon: "portfolio", color: "purple", label: "My Portfolio" },
   {
-    key: "customer-master", icon: "☰", label: "Customer Master",
+    key: "customer-master", icon: "customers", color: "teal", label: "Customer Master",
     children: [
       { key: "list", label: "Total Labs" },
       { key: "__add-lab", label: "+ Add New Lab" },
     ],
   },
-  { key: "collections", icon: "💰", label: "Collections" },
-  { key: "expansion", icon: "🔁", label: "Expansion" },
-  { key: "tasks", icon: "✅", label: "Tasks" },
-  { key: "visits", icon: "📅", label: "Visits & Meetings" },
-  { key: "adoption", icon: "📈", label: "Adoption", alsoActive: ["adoption-template"] },
-  { key: "kpi", icon: "🎯", label: "KPI Management" },
-  { key: "reports", icon: "📑", label: "Financial Reports" },
-  { key: "feedback", icon: "💬", label: "Feedback & NPS" },
-  { key: "resources", icon: "📚", label: "Resources" },
+  { key: "collections", icon: "collections", color: "warning", label: "Collections" },
+  { key: "expansion", icon: "expansion", color: "success", label: "Expansion" },
+  { key: "tasks", icon: "tasks", color: "purple", label: "Tasks" },
+  { key: "visits", icon: "visits", color: "pink", label: "Visits & Meetings" },
+  { key: "adoption", icon: "adoption", color: "sky", label: "Adoption", alsoActive: ["adoption-template"] },
+  { key: "kpi", icon: "kpi", color: "red", label: "KPI Management" },
+  { key: "reports", icon: "reports", color: "success", label: "Financial Reports" },
+  { key: "feedback", icon: "feedback", color: "purple", label: "Feedback & NPS" },
+  { key: "resources", icon: "resources", color: "primary", label: "Resources" },
   // Support & Tickets lives in a separate tool (Flow, CrelioHealth's CS ↔ Product escalation tracker) — this item
   // opens it in a new tab rather than a screen inside the console.
-  { key: "__support", icon: "🎫", label: "Support & Tickets", href: "https://creliohealthflow.vercel.app/" },
+  { key: "__support", icon: "support", color: "orange", label: "Support & Tickets", href: "https://creliohealthflow.vercel.app/" },
 ];
 // "Manage Users" (the old "CSM Setup") moved to the top bar, matching the reference
 // tool — it's Admin/Lead-only, not a regular nav item everyone sees in the sidebar.
@@ -101,7 +102,7 @@ export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAd
             title={collapsed ? `${item.label} (opens Flow in a new tab)` : "Opens Flow in a new tab"}
             style={{ textDecoration: "none" }}
           >
-            <span className="ico">{item.icon}</span>
+            <NavIcon name={item.icon} color={item.color} />
             <span className="lbl">{item.label}</span>
             {!collapsed && <span className="nav-caret" aria-hidden="true">↗</span>}
           </a>
@@ -112,7 +113,7 @@ export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAd
               onClick={() => handleClick(item)}
               title={collapsed ? item.label : undefined}
             >
-              <span className="ico">{item.icon}</span>
+              <NavIcon name={item.icon} color={item.color} />
               <span className="lbl">{item.label}</span>
               {item.key === "tasks" && newTaskCount > 0 && (
                 <span className="nav-count" title={`${newTaskCount} new task${newTaskCount === 1 ? "" : "s"} since you last opened Tasks`}>{newTaskCount > 99 ? "99+" : newTaskCount}</span>
