@@ -7,6 +7,7 @@ import InfoTip from "../components/InfoTip";
 
 // The one Adoption screen (decision Nov 2 2026): Analytics, CSM Performance, Module-wise and the Adoption Template all live
 // here as tabs. The Template tab has its own address (#/adoption-template) and renders without waiting for the score data.
+// Only a CSM Lead / Admin gets the Template tab (decision Nov 16 2026); App.jsx sends anyone else back to Analytics.
 export default function AdoptionView({ onTemplate, onNavigate, renderTemplate, labs, modules, plans, viewer, idByName, onOpenLab, onOpenCsm }) {
   const [tab, setTab] = useSessionState("adoption.tab", "analytics");
   const { isHead } = useScopedCsm(viewer, "adoption");
@@ -22,11 +23,11 @@ export default function AdoptionView({ onTemplate, onNavigate, renderTemplate, l
       {[["analytics", "Analytics"], ...(isHead ? [["csm", "CSM Performance"]] : []), ["modules", "Module-wise"]].map(([k, l]) => (
         <button key={k} className="tabbtn" onClick={() => selectTab(k)}>{l}</button>
       ))}
-      <button className={`tabbtn${onTemplate ? " active" : ""}`} onClick={() => selectTab("template")}>Template</button>
+      {isHead && <button className={`tabbtn${onTemplate ? " active" : ""}`} onClick={() => selectTab("template")}>Template</button>}
     </div>
   );
 
-  if (onTemplate) return <div>{bar}{renderTemplate()}</div>;
+  if (onTemplate && isHead) return <div>{bar}{renderTemplate()}</div>;
   const head = (
     <>
       <h1 className="page-title">Adoption
@@ -42,7 +43,7 @@ export default function AdoptionView({ onTemplate, onNavigate, renderTemplate, l
     <div>
       {head}
       <PipelineAnalytics pipeline="adoption" page="adoption" labs={labs} viewer={viewer} idByName={idByName} onOpenLab={onOpenLab} onOpenCsm={onOpenCsm} kpi={kpi}
-        tab={tab} onTab={selectTab} extraTabs={[{ key: "template", label: "Template" }]} />
+        tab={tab} onTab={selectTab} extraTabs={isHead ? [{ key: "template", label: "Template" }] : []} />
     </div>
   );
 }

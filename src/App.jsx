@@ -188,6 +188,10 @@ export default function App() {
     if (!loading && view === "csm-setup" && !viewer.isHead) {
       setView("list");
     }
+    // The Adoption Template is for CSM Leads / Admins only (decision Nov 16 2026); anyone else lands on Adoption's analytics.
+    if (!loading && view === "adoption-template" && !viewer.isHead) {
+      setView("adoption");
+    }
   }, [loading, view, viewer]);
   // A refreshed / shared lab link whose lab isn't visible (deleted, or not this person's) falls back to Total Labs.
   useEffect(() => {

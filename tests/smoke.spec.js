@@ -112,11 +112,14 @@ test("Adoption Template: totals must be 100% and Rescale fixes them", async ({ p
   await expect(page.getByText("Parameters total: 100% / 100%")).toBeVisible();
 });
 
-test("Adoption Template is view-only for a plain CSM", async ({ page }) => {
+test("Adoption Template is hidden from a plain CSM", async ({ page }) => {
   await page.locator(".csm-switcher").selectOption("Aditi"); // a CSM in the demo roster
-  await openTemplate(page);
-  await expect(page.getByText(/View only/)).toBeVisible();
-  await expect(page.locator(".tparam-row input[type=number]").first()).toBeDisabled();
+  await nav(page, "Adoption");
+  await expect(page.getByRole("button", { name: "Template", exact: true })).toHaveCount(0);
+  // Its address sends a CSM back to Adoption instead of opening the template.
+  await page.evaluate(() => { location.hash = "#/adoption-template"; });
+  await expect(page.getByRole("button", { name: "Template", exact: true })).toHaveCount(0);
+  await expect(page.locator(".tparam-row")).toHaveCount(0);
 });
 
 test("Adoption Template: edits wait for Save Changes, and modules can be reordered", async ({ page }) => {
