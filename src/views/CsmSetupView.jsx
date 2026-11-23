@@ -10,7 +10,7 @@ export default function CsmSetupView({ csmDirectory, idByName, onSaveCsm, canCha
       <div className="toolbar">
         <div>
           <h1 className="page-title">Manage Users</h1>
-          <p className="page-sub">Your team roster — who's a CSM Lead vs. a CSM. Visible to Admin and CSM Lead only.</p>
+          <p className="page-sub">Your team roster — who's a CSM Lead or Manager vs. a CSM. Visible to Admin, CSM Lead and Manager only.</p>
         </div>
         <button className="btn btn-primary" onClick={() => setModalState({})}>+ Add Team Member</button>
       </div>
@@ -24,7 +24,7 @@ export default function CsmSetupView({ csmDirectory, idByName, onSaveCsm, canCha
           {csmDirectory.map((c) => (
             <tr key={c.name} style={c.active === false ? { opacity: 0.55 } : undefined}>
               <td>{c.name}</td>
-              <td><span className={`pill ${c.role === "Admin" ? "pill-admin" : c.role === "Lead" ? "pill-parent" : "pill-child"}`}>{roleLabel(c.role)}</span></td>
+              <td><span className={`pill ${c.role === "Admin" ? "pill-admin" : c.role === "Lead" || c.role === "Manager" ? "pill-parent" : "pill-child"}`}>{roleLabel(c.role)}</span></td>
               <td>{c.active === false ? <span className="status-pill status-Inactive">Inactive</span> : <span className="status-pill status-Active">Active</span>}</td>
               <td style={{ textAlign: "right" }}>
                 <span style={{ color: "var(--accent)", fontSize: "12.5px", cursor: "pointer" }} onClick={() => setModalState({ ...c, id: idByName[c.name] })}>Edit</span>

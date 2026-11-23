@@ -11,12 +11,14 @@
 // `labs` and every lab-owned table). If a future change to this function or to a component's
 // isHead check ever seems to loosen who can see what, check migration 0012's policies too —
 // they're the ones actually keeping the data scoped, independent of anything in src/.
+// A Manager (migration 0050) has exactly a CSM Lead's access; only the label differs.
 export function hasLeadAccess(role) {
-  return role === "Lead" || role === "Admin";
+  return role === "Lead" || role === "Manager" || role === "Admin";
 }
 
 export function roleLabel(role) {
   if (role === "Admin") return "Admin";
   if (role === "Lead") return "CSM Lead";
+  if (role === "Manager") return "Manager";
   return "Customer Success Manager";
 }

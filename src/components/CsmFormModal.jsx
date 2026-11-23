@@ -48,7 +48,7 @@ export default function CsmFormModal({ open, editing, onClose, onSave, canChange
           // Only the Admin can change an existing team member's role (enforced in the database too —
           // migration 0021). A Lead can still add people and edit their name / active status.
           <>
-            <input value={role === "Lead" ? "CSM Lead" : "CSM"} disabled style={{ color: "var(--text-dim)", background: "var(--bg)" }} />
+            <input value={role === "Lead" ? "CSM Lead" : role === "Manager" ? "Manager" : "CSM"} disabled style={{ color: "var(--text-dim)", background: "var(--bg)" }} />
             <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 5 }}>
               Only the Admin can change someone's role.
             </div>
@@ -57,6 +57,7 @@ export default function CsmFormModal({ open, editing, onClose, onSave, canChange
           <select value={role} onChange={(e) => setRole(e.target.value)}>
             <option value="CSM">CSM</option>
             <option value="Lead">CSM Lead</option>
+            <option value="Manager">Manager (same access as CSM Lead)</option>
           </select>
         )}
       </div>

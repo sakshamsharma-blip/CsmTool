@@ -184,8 +184,8 @@ with the same context and follows the same rules. Read it fully before making ch
 - **SearchSelect** renders its list in a portal on `<body>` (fixed, re-measured every frame while open) so popups
   and scrolling cards can't clip it. Modals scroll when taller than the screen.
 - **Adoption Health** (Dashboard; decision Nov 4 2026, was Score Health on Overall): clients by Adoption pipeline score, 75%+ Healthy, 40–74% Needs Push, under 40% At Risk; a client with nothing counted is in no band. Other Overall-based bands (My Portfolio's labs by band, the Dashboard lab rings) are unchanged.
-- **Financial Reports → MRR Breakdown** starts with "CSM share of the book": labs handled and MRR handled per CSM as %
-  of the whole company.
+- **Financial Reports → MRR Breakdown** starts with "CSM share of the book": per CSM, clients (parent labs, by the parent's CSM)
+  and MRR handled, each as % of the whole company, plus ARR and a Grand Total row (Nov 2026; no lab count).
 - **Resources** (sidebar, `views/ResourcesView.jsx`, table `resources`): team-wide docs / training links + a
   roll-up of every module's links. Each resource has a **Region** — All / Domestic / ROW (0041); the region filter
   for Domestic or ROW also shows "All regions" resources.
@@ -365,12 +365,12 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership. **Support & Tickets** is a sidebar link that opens
   Flow (https://creliohealthflow.vercel.app/, the CS ↔ Product escalation tracker) in a new tab.
-- Latest migration: `0049_visit_followup_time.sql`; **0001–0049 are all applied** (Nov 23 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+- Latest migration: `0050_manager_role.sql`; **0001–0050 are all applied** (Nov 23 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).
 - Leaked-password protection is NOT on — it needs Supabase's Pro plan.
-- **Roles**: only the Admin can change a team member's role (UI locks the field; DB trigger in 0021).
+- **Roles**: CSM, CSM Lead (`Lead`), **Manager** (`Manager`, 0050, Nov 23 2026: exactly a Lead's access everywhere, only the label differs — `hasLeadAccess` in `lib/roles.js` and `private.is_lead_or_admin()` in the database both include it; wherever these notes say "Lead / Admin", Manager is included) and Admin. Only the Admin can change a team member's role (UI locks the field; DB trigger in 0021).
 - Template weights: 0019 scaled the over-100 groups to 100; 0023 scales any remaining group (Branding
   Solutions, 55%) to exactly 100. Weights are stored with 2 decimals (e.g. 8.47).
 - **Reassign CSM** is Lead/Admin only (UI hides it for CSMs; DB trigger in 0024). Besides the button at the bottom of Lab Details, a **Change CSM** button appears in the "CSM Name" row only in Lab Details' Edit mode, for a Lead / Admin (Nov 23 2026); it opens the same dialog, titled "Edit CSM". Nothing about it shows outside Edit mode.
