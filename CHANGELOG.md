@@ -2,6 +2,11 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Nov 23 2026 — USD first everywhere, exchange rate, MRR %
+- Every amount shows USD first with INR in brackets (lab money, totals, tiles, Financial Reports, Collections, Dashboard, KPI, Adoption / Expansion analytics). Segment ranges stay in ₹ and now show their range, e.g. "A — Enterprise (₹1,00,000 and above)".
+- The USD → INR rate is live (ECB via Frankfurter), re-checked hourly, and shown in the top bar and at the right of the My Labs / Team View row on Total Labs and the Dashboard.
+- Total Labs: all tiles in one tight row, and a new MRR % column (the lab's share of Total MRR).
+
 ## Nov 23 2026 — Tasks, Financial Reports, Edit CSM
 - Tasks (and Tasks for Today on Dashboard / My Portfolio, which now opens the task panel on click): fixed-width Task and Lab columns, Status sort (Overdue, Due Today, Open…), optional due time (migration 0048) that makes a task Overdue once it passes, also on check-in follow-ups and planned / next visits (0049), a tidier Add Task popup; the Dashboard's Add Task button is green.
 - Financial Reports opens on MRR Breakdown, now the first tab. MRR by Country, State and City are three full-width tables, each with a checkbox filter with search, a pinned total and no paging; Avg MRR / client removed.

@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
-import { fmtINR, fmtMoney, toINR, segmentFor } from "../lib/format";
+import { fmtINR, fmtUSD, fmtAmount, fmtMoney, toINR, toUSD, segmentFor } from "../lib/format";
 import { computeLabRollup } from "../lib/labRollup";
 import { fetchAllLabsAdoption, computeSavedLabScores, averageScores, groupScores, fmtScore } from "../lib/adoption";
 import { fetchAllPitchStatus } from "../lib/pitch";
@@ -14,6 +14,7 @@ import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
+import FxRate from "../components/FxRate";
 import BarChart from "../components/BarChart";
 import TasksPanel from "../components/TasksPanel";
 import InfoTip from "../components/InfoTip";
@@ -171,13 +172,13 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
       <h1 className="page-title">Dashboard</h1>
       <p className="page-sub">Viewing: <b>{scopeLabel}</b></p>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} aside={<FxRate />} />
 
       <div className="summary-grid" style={{ gridTemplateColumns: "repeat(5,1fr)", marginBottom: 8 }}>
         <div className="stile"><div className="sval">{totalLabs}</div><div className="slabel">Total Labs</div></div>
         <div className="stile"><div className="sval">{rows.length}</div><div className="slabel">Parent Labs (Clients)</div></div>
         <div className="stile"><div className="sval">{childCount}</div><div className="slabel">Child Labs</div></div>
-        <div className="stile"><div className="sval" style={{ color: "var(--accent)" }}>{fmtINR(totalMRR)}</div><div className="slabel">Total MRR</div></div>
+        <div className="stile"><div className="sval" style={{ color: "var(--accent)" }}>{fmtUSD(toUSD(totalMRR, "Domestic"))}<span className="tval-sub">({fmtINR(totalMRR)})</span></div><div className="slabel">Total MRR</div></div>
         <div className="stile"><div className="sval" style={{ color: "var(--ok)" }}>{activeCount}</div><div className="slabel">Active</div></div>
         <div className="stile"><div className="sval" style={{ color: atRiskCount > 0 ? "var(--bad)" : "var(--text)" }}>{atRiskCount}</div><div className="slabel">At Risk</div></div>
         <div className="stile"><div className="sval">{fmtScore(avg.overall)}</div><div className="slabel">Avg Overall Score</div></div>
@@ -192,9 +193,9 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
       </div>
       <div className="summary-grid" style={{ gridTemplateColumns: "repeat(5,1fr)", paddingTop: 6, marginBottom: 8 }}>
         <div className="stile"><div className="sval" style={{ color: churn.churnCount ? "var(--bad)" : undefined }}>{churn.churnCount}</div><div className="slabel">Churn Count</div></div>
-        <div className="stile"><div className="sval" style={{ color: churn.mrrChurned ? "var(--bad)" : undefined }}>{fmtINR(churn.mrrChurned)}</div><div className="slabel">MRR Churned</div></div>
-        <div className="stile"><div className="sval" style={{ color: churn.mrrChurned ? "var(--bad)" : undefined }}>{fmtINR(churn.mrrChurned * 12)}</div><div className="slabel">ARR Churned</div></div>
-        <div className="stile"><div className="sval" style={{ color: churn.contraction ? "var(--warn)" : undefined }}>{fmtINR(churn.contraction)}</div><div className="slabel">MRR Contraction</div></div>
+        <div className="stile"><div className="sval" style={{ color: churn.mrrChurned ? "var(--bad)" : undefined }}>{fmtAmount(churn.mrrChurned)}</div><div className="slabel">MRR Churned</div></div>
+        <div className="stile"><div className="sval" style={{ color: churn.mrrChurned ? "var(--bad)" : undefined }}>{fmtAmount(churn.mrrChurned * 12)}</div><div className="slabel">ARR Churned</div></div>
+        <div className="stile"><div className="sval" style={{ color: churn.contraction ? "var(--warn)" : undefined }}>{fmtAmount(churn.contraction)}</div><div className="slabel">MRR Contraction</div></div>
         <div className="stile"><div className="sval">{churnPct == null ? "—" : `${churnPct.toFixed(1)}%`}</div><div className="slabel">MRR Churn %</div></div>
       </div>
 
@@ -234,7 +235,7 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
             { label: "Overdue", value: agingCounts.Overdue, color: AGING_COLORS.Overdue },
             { label: "Critical", value: agingCounts.Critical, color: AGING_COLORS.Critical },
           ]} />
-          <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 10 }}>{fmtINR(outstandingTotal)} outstanding · {fmtINR(collectedTotal)} collected to date</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 10 }}>{fmtAmount(outstandingTotal)} outstanding · {fmtAmount(collectedTotal)} collected to date</div>
         </div>
       </div>
 
@@ -272,14 +273,14 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
               <tr key={c.name}>
                 <td className="lab-name clickable" onClick={() => setCsmFilter(c.name)}>{c.name}</td>
                 <td>{c.labCount}</td>
-                <td className="mrr-cell">{fmtINR(c.mrr)}</td>
+                <td className="mrr-cell">{fmtAmount(c.mrr)}</td>
                 <td>{fmtScore(c.avgAdopt.overall)}</td>
                 <td>{fmtScore(c.avgAdopt.adoption)}</td>
                 <td>{fmtScore(c.avgAdopt.expansion)}</td>
                 <td>{c.openTasks}</td>
                 <td>{c.churnCount}</td>
-                <td className="mrr-cell">{fmtINR(c.mrrChurned)}</td>
-                <td className="mrr-cell">{fmtINR(c.contraction)}</td>
+                <td className="mrr-cell">{fmtAmount(c.mrrChurned)}</td>
+                <td className="mrr-cell">{fmtAmount(c.contraction)}</td>
                 <td>{c.churnPct == null ? "—" : `${c.churnPct.toFixed(1)}%`}</td>
               </tr>
             ))}</tbody>

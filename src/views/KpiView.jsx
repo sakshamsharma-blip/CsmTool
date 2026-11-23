@@ -14,7 +14,7 @@ import { TipCard } from "../components/ChartTooltip";
 import InfoTip from "../components/InfoTip";
 import Modal from "../components/Modal";
 import { Tile, Card, TrendChart, ScoreBars, Ring, Heat, Change } from "../components/Analytics";
-import { fmtPct, fmtPP, fmtCompactINR, downloadCsv } from "../lib/analyticsFormat";
+import { fmtPct, fmtPP, fmtCompactMoney, downloadCsv } from "../lib/analyticsFormat";
 
 // KPI Management (decision Nov 2 2026; rules in lib/kpi.js). A Lead / Admin sees the team dashboard and can open any CSM's
 // report; a plain CSM goes straight to their own. No photos of people anywhere on these screens.
@@ -180,7 +180,7 @@ function TeamDashboard({ names, labs, period, compare, trendPeriods, forCsm, for
     <>
       <div className="an-tiles" style={{ gridTemplateColumns: "repeat(6, minmax(0,1fr))" }}>
         <Tile value={labs.length} label="Total Labs" />
-        <Tile value={fmtCompactINR(totalMrr * 12)} label="Total ARR" />
+        <Tile value={fmtCompactMoney(totalMrr * 12)} label="Total ARR" />
         <Tile value={rows.length} label="CSMs" />
         <Tile tone="good" value={fmtPct(team.total)} label="Overall KPI score" sub={period.label} />
         <Tile value={fmtPP(change)} label={`vs ${compare.label}`} sub={teamPrev.total == null ? "No earlier data" : fmtPct(teamPrev.total)} />
@@ -202,7 +202,7 @@ function TeamDashboard({ names, labs, period, compare, trendPeriods, forCsm, for
             {missed.length > 0 && <li>Need focus: {missed.map((d) => `${d.label} ${fmtPct(team.kpis[d.key].value)} (target ${fmtPct(settings.targets[d.key])})`).join(", ")}.</li>}
             <li>{lowAdoption.length} client{lowAdoption.length === 1 ? "" : "s"} below 50% adoption.</li>
             <li>{noCheckin.length} lab{noCheckin.length === 1 ? "" : "s"} with no check-in in the last 30 days.</li>
-            <li>{fmtCompactINR(overdue)} of collection overdue.</li>
+            <li>{fmtCompactMoney(overdue)} of collection overdue.</li>
             <li>{staleHigh.length} high-priority task{staleHigh.length === 1 ? "" : "s"} open for more than 7 days.</li>
           </ul>
         </Card>
@@ -216,13 +216,13 @@ function TeamDashboard({ names, labs, period, compare, trendPeriods, forCsm, for
         <tbody>
           {rows.map((r) => (
             <tr key={r.name}>
-              <td className="lab-name clickable" onClick={() => onOpenCsm(r.name)}>{r.name}</td><td className="c">{r.labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(r.mrr * 12)}</td>
+              <td className="lab-name clickable" onClick={() => onOpenCsm(r.name)}>{r.name}</td><td className="c">{r.labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactMoney(r.mrr * 12)}</td>
               {KPI_DEFS.map((d) => <td key={d.key} className="c"><Heat value={r.m.kpis[d.key]?.value} /></td>)}
               <td className="c"><Heat value={r.m.total} /></td>
             </tr>
           ))}
           <tr style={{ fontWeight: 700 }}>
-            <td>Team</td><td className="c">{labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(totalMrr * 12)}</td>
+            <td>Team</td><td className="c">{labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactMoney(totalMrr * 12)}</td>
             {KPI_DEFS.map((d) => <td key={d.key} className="c"><Heat value={team.kpis[d.key]?.value} /></td>)}
             <td className="c"><Heat value={team.total} /></td>
           </tr>
@@ -262,8 +262,8 @@ function CsmReport({ name, isHead, onBack, period, compare, trendPeriods, forCsm
         {isHead && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={onBack}>← All CSMs</button>}
         <div className="kpi-head-num"><b>{name}</b><span>CSM performance report</span></div>
         <div className="kpi-head-num"><b>{labCount}</b><span>Labs ({groups.length} clients)</span></div>
-        <div className="kpi-head-num"><b>{fmtCompactINR(mrr * 12)}</b><span>ARR</span></div>
-        <div className="kpi-head-num"><b>{fmtCompactINR(mrr)}</b><span>MRR</span></div>
+        <div className="kpi-head-num"><b>{fmtCompactMoney(mrr * 12)}</b><span>ARR</span></div>
+        <div className="kpi-head-num"><b>{fmtCompactMoney(mrr)}</b><span>MRR</span></div>
         <div className="kpi-head-num" style={{ marginLeft: "auto" }}><b>{fmtPct(cur.total)}</b><span>Overall KPI score</span></div>
         <div className="kpi-head-num"><b><Change value={change} /></b><span>vs {compare.label}</span></div>
       </div>
@@ -282,7 +282,7 @@ function CsmReport({ name, isHead, onBack, period, compare, trendPeriods, forCsm
               {!clientRows.length && <tr><td colSpan={KPI_DEFS.length + 3} className="an-empty">No labs assigned.</td></tr>}
               {clientRows.map(({ g, m }) => (
                 <tr key={g.id}>
-                  <td className="lab-name clickable" onClick={() => onOpenLab(g.id)}>{g.name}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(g.mrrINR)}</td>
+                  <td className="lab-name clickable" onClick={() => onOpenLab(g.id)}>{g.name}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactMoney(g.mrrINR)}</td>
                   {KPI_DEFS.map((d) => <td key={d.key} className="c"><Heat value={m.kpis[d.key]?.value} /></td>)}
                   <td className="c"><Heat value={m.total} /></td>
                 </tr>

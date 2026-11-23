@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
-import { fmtINR, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
+import { fmtINR, fmtAmount, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
 import { fetchChurnLog, quarterOf } from "../lib/churn";
 import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
@@ -12,6 +12,8 @@ import MultiSelectFilter from "../components/MultiSelectFilter";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const SEGMENTS = SEG_BANDS.map((b) => b.code);
+// Each segment's MRR range, from the bands themselves: "₹1,00,000 and above", "₹75,000 – ₹99,999", … "₹0 – ₹24,999".
+const SEG_RANGE = Object.fromEntries(SEG_BANDS.map((b, i) => [b.code, i === 0 ? `${fmtINR(b.min)} and above` : `${fmtINR(b.min)} – ${fmtINR(SEG_BANDS[i - 1].min - 1)}`]));
 
 // Two tabs leadership actually reviews from the source tracking sheet, neither of which had a
 // home in the app before: Churn Report (churn/contraction log with outstanding dues at the
@@ -188,8 +190,8 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
             <div className="summary-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 14 }}>
               <div className="stile"><div className="sval" style={{ color: "var(--bad)" }}>{churnedCount}</div><div className="slabel">Churned</div></div>
               <div className="stile"><div className="sval" style={{ color: "var(--warn)" }}>{contractionCount}</div><div className="slabel">Contractions</div></div>
-              <div className="stile"><div className="sval">{fmtINR(totalMrrLost)}</div><div className="slabel">Total MRR Impact</div></div>
-              <div className="stile"><div className="sval" style={{ color: totalDueAtChurn > 0 ? "var(--bad)" : "var(--text)" }}>{fmtINR(totalDueAtChurn)}</div><div className="slabel">Outstanding at Churn</div></div>
+              <div className="stile"><div className="sval">{fmtAmount(totalMrrLost)}</div><div className="slabel">Total MRR Impact</div></div>
+              <div className="stile"><div className="sval" style={{ color: totalDueAtChurn > 0 ? "var(--bad)" : "var(--text)" }}>{fmtAmount(totalDueAtChurn)}</div><div className="slabel">Outstanding at Churn</div></div>
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
@@ -239,7 +241,7 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
             <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Region / Country / State / City narrow every table below except "CSM share of the book".</span>
           </div>
           <div className="table-card" style={{ marginBottom: 18 }}>
-            <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>CSM share of the book <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>— % of all {csmShare.totalClients} clients and of total MRR {fmtINR(csmShare.totalMrr)}</span></div>
+            <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>CSM share of the book <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>— % of all {csmShare.totalClients} clients and of total MRR {fmtAmount(csmShare.totalMrr)}</span></div>
             <div className="table-scroll">
               <table className="child-mini">
                 <thead><tr><th>CSM</th><th>Clients (parent labs)</th><th>% of total clients</th><th>MRR handled</th><th>% of total revenue</th><th>ARR handled</th></tr></thead>
@@ -249,9 +251,9 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
                       <td>{r.name}</td>
                       <td>{r.clients}</td>
                       <td><b>{(r.clientPct * 100).toFixed(1)}%</b></td>
-                      <td className="mrr-cell">{fmtINR(r.mrr)}</td>
+                      <td className="mrr-cell">{fmtAmount(r.mrr)}</td>
                       <td><b>{(r.mrrPct * 100).toFixed(1)}%</b></td>
-                      <td className="mrr-cell">{fmtINR(r.mrr * 12)}</td>
+                      <td className="mrr-cell">{fmtAmount(r.mrr * 12)}</td>
                     </tr>
                   ))}
                   {(() => {
@@ -261,9 +263,9 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
                         <td>Grand Total</td>
                         <td>{t.clients}</td>
                         <td>{(t.clientPct * 100).toFixed(1)}%</td>
-                        <td className="mrr-cell">{fmtINR(t.mrr)}</td>
+                        <td className="mrr-cell">{fmtAmount(t.mrr)}</td>
                         <td>{(t.mrrPct * 100).toFixed(1)}%</td>
-                        <td className="mrr-cell">{fmtINR(t.mrr * 12)}</td>
+                        <td className="mrr-cell">{fmtAmount(t.mrr * 12)}</td>
                       </tr>
                     );
                   })()}
@@ -281,17 +283,17 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
                     const rowTotal = segByCsm.cols.reduce((s, c) => s + (segByCsm.grid[seg][c] || 0), 0);
                     return (
                       <tr key={seg}>
-                        <td>{seg} — {SEG_NAME[seg]}</td>
-                        {segByCsm.cols.map((c) => <td key={c} className="mrr-cell">{segByCsm.grid[seg][c] ? fmtINR(segByCsm.grid[seg][c]) : "—"}</td>)}
-                        <td className="mrr-cell" style={{ fontWeight: 700 }}>{fmtINR(rowTotal)}</td>
+                        <td>{seg} — {SEG_NAME[seg]} <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>({SEG_RANGE[seg]})</span></td>
+                        {segByCsm.cols.map((c) => <td key={c} className="mrr-cell">{segByCsm.grid[seg][c] ? fmtAmount(segByCsm.grid[seg][c]) : "—"}</td>)}
+                        <td className="mrr-cell" style={{ fontWeight: 700 }}>{fmtAmount(rowTotal)}</td>
                         <td>{segByCsm.grandTotal ? `${(rowTotal / segByCsm.grandTotal * 100).toFixed(1)}%` : "—"}</td>
                       </tr>
                     );
                   })}
                   <tr style={{ fontWeight: 700 }}>
                     <td>Grand Total</td>
-                    {segByCsm.cols.map((c) => <td key={c} className="mrr-cell">{fmtINR(segByCsm.colTotals[c])}</td>)}
-                    <td className="mrr-cell">{fmtINR(segByCsm.grandTotal)}</td>
+                    {segByCsm.cols.map((c) => <td key={c} className="mrr-cell">{fmtAmount(segByCsm.colTotals[c])}</td>)}
+                    <td className="mrr-cell">{fmtAmount(segByCsm.grandTotal)}</td>
                     <td>—</td>
                   </tr>
                 </tbody>
@@ -309,7 +311,7 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
                     const rowTotal = segByCsm.cols.reduce((s, c) => s + (segByCsm.countGrid[seg][c] || 0), 0);
                     return (
                       <tr key={seg}>
-                        <td>{seg} — {SEG_NAME[seg]}</td>
+                        <td>{seg} — {SEG_NAME[seg]} <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>({SEG_RANGE[seg]})</span></td>
                         {segByCsm.cols.map((c) => <td key={c}>{segByCsm.countGrid[seg][c] || "—"}</td>)}
                         <td style={{ fontWeight: 700 }}>{rowTotal}</td>
                         <td>{segByCsm.countGrandTotal ? `${(rowTotal / segByCsm.countGrandTotal * 100).toFixed(1)}%` : "—"}</td>
@@ -335,7 +337,7 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
                 <tbody>{Object.entries(regionBreakdown.byRegion).map(([region, mrr]) => (
                   <tr key={region}>
                     <td>{region}</td>
-                    <td className="mrr-cell">{fmtINR(mrr)}</td>
+                    <td className="mrr-cell">{fmtAmount(mrr)}</td>
                     <td>{regionBreakdown.total ? `${(mrr / regionBreakdown.total * 100).toFixed(1)}%` : "—"}</td>
                   </tr>
                 ))}</tbody>
@@ -364,7 +366,7 @@ function LocationTable({ dim, rows }) {
       <div className="rep-loc-head">
         <b>MRR by {dim}</b>
         <MultiSelectFilter label={dim} selected={picked.filter((v) => rows.some((g) => g.key === v))} onChange={setPicked}
-          options={rows.map((g) => ({ value: g.key, label: g.key, hint: fmtINR(g.mrr) }))} />
+          options={rows.map((g) => ({ value: g.key, label: g.key, hint: fmtAmount(g.mrr) }))} />
         <span className="rep-loc-note">{shown.length} of {rows.length} · highest MRR first</span>
       </div>
       {!rows.length ? <div style={{ padding: "10px 18px 16px", color: "var(--text-faint)", fontSize: 12.5 }}>No labs in this view.</div> : (
@@ -376,15 +378,15 @@ function LocationTable({ dim, rows }) {
                 <td>{g.key}</td>
                 <td className="num">{g.clients}</td>
                 <td className="num">{g.labs}</td>
-                <td className="num mrr-cell">{fmtINR(g.mrr)}</td>
+                <td className="num mrr-cell">{fmtAmount(g.mrr)}</td>
                 <td><span className="pct-bar"><span style={{ width: `${Math.max(g.pct * 100, g.mrr > 0 ? 2 : 0)}%` }} /></span><b>{(g.pct * 100).toFixed(1)}%</b></td>
-                <td className="num mrr-cell">{fmtINR(g.mrr * 12)}</td>
+                <td className="num mrr-cell">{fmtAmount(g.mrr * 12)}</td>
               </tr>
             ))}</tbody>
             <tfoot><tr>
               <td>{picked.length ? "Total (filtered)" : "Total"}</td>
-              <td className="num">{total.clients}</td><td className="num">{total.labs}</td><td className="num">{fmtINR(total.mrr)}</td>
-              <td><b>{(total.pct * 100).toFixed(1)}%</b></td><td className="num">{fmtINR(total.mrr * 12)}</td>
+              <td className="num">{total.clients}</td><td className="num">{total.labs}</td><td className="num">{fmtAmount(total.mrr)}</td>
+              <td><b>{(total.pct * 100).toFixed(1)}%</b></td><td className="num">{fmtAmount(total.mrr * 12)}</td>
             </tr></tfoot>
           </table>
         </div>

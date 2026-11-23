@@ -118,7 +118,9 @@ export default function App() {
   useEffect(() => {
     const unsub = onFxRateChange(() => forceFxRerender((t) => t + 1));
     refreshUsdInrRate();
-    return unsub;
+    // A tab left open all day still picks up the day's new rate (it changes once per working day).
+    const id = setInterval(refreshUsdInrRate, 60 * 60 * 1000);
+    return () => { unsub(); clearInterval(id); };
   }, []);
 
   // Every top-level screen switch (Sidebar/TopBar nav, opening a lab, Log Check-in, "Back")

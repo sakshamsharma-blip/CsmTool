@@ -5,10 +5,10 @@ import ExpansionInsights from "../components/ExpansionInsights";
 import TasksView from "./TasksView";
 import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
-import { fmtINR, fmtUSD, fmtMoney, toINR } from "../lib/format";
+import { fmtMoney, toINR } from "../lib/format";
 import { todayISO } from "../lib/dates";
 import { downloadCsv } from "../lib/analyticsFormat";
-import { fmtCompactINR } from "../lib/analyticsFormat";
+import { fmtCompactMoney } from "../lib/analyticsFormat";
 import { computeLabRollup, flattenRollup, clientGroups } from "../lib/labRollup";
 import { fetchAllExpansionOpportunities, addExpansionOpportunity, updateExpansionOpportunity, EXPANSION_STATUSES, revenueOn } from "../lib/expansion";
 import { buildExpansionItems } from "../lib/expansionItems";
@@ -93,8 +93,8 @@ export default function ExpansionView({ labs: allLabs, modules, plans, viewer, i
   const shown = fKind ? filteredNoKind.filter((r) => r.kind === fKind) : filteredNoKind;
   const fmtDay = (d) => (d ? new Date(d + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" }) : "—");
 
-  // The list is wide, so it shows each lab's own currency; hovering an amount gives both.
-  const native = (amount, lab) => (lab.region === "ROW" ? fmtUSD(amount) : fmtINR(amount));
+  // Dollars first, rupees in brackets, like everywhere else.
+  const native = (amount, lab) => fmtMoney(amount, lab.region);
 
   function download() {
     const rows = [["Lab", "Title", "Type", "Module", "Monthly", "Annual", "Currency", "Monthly (INR)", "Annual (INR)", "Status", "Trial", "Stage", "Won / purchased", "Expected live", "Lost on", "Owner", "Notes"]];
@@ -220,7 +220,7 @@ export default function ExpansionView({ labs: allLabs, modules, plans, viewer, i
                     <td title={r.stage ? `Stage: ${r.stage}` : undefined}><span className="status-chip" style={{ background: "transparent", border: `1px solid ${STATUS_COLORS[r.status] || "var(--border)"}`, color: STATUS_COLORS[r.status] || "var(--text-dim)", cursor: "default" }}>{r.status}</span></td>
                     <td style={{ fontSize: 11.5, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{r.status === "Lost" && r.liveUntil ? `Lost ${fmtDay(r.liveUntil)}` : fmtDay(r.expectedLive)}</td>
                     <td style={{ whiteSpace: "normal" }}>{lab.csm || "—"}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{accountArr[r.labId] ? fmtCompactINR(accountArr[r.labId]) : "—"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{accountArr[r.labId] ? fmtCompactMoney(accountArr[r.labId]) : "—"}</td>
                     <td><button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => setDrawer({ row: r })}>Edit</button></td>
                   </tr>
                 );

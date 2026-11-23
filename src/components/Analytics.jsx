@@ -11,9 +11,11 @@ export function Heat({ value }) {
 }
 
 export function Tile({ value, label, sub, tone, bind }) {
+  // An amount like "$76.0K (₹70.48 L)" shows the dollars big and the rupees on their own small line, so it fits the tile.
+  const money = typeof value === "string" && value.match(/^(.*?) (\(₹.*\))$/);
   return (
     <div className={`stile an-tile${tone ? ` an-tile-${tone}` : ""}`} {...(bind || {})}>
-      <div className="sval">{value}</div>
+      <div className="sval">{money ? <>{money[1]}<span className="tval-sub">{money[2]}</span></> : value}</div>
       <div className="slabel">{label}</div>
       {sub && <div className="an-tile-sub">{sub}</div>}
     </div>
@@ -192,7 +194,7 @@ export function ValueBars({ items, fmt, bind, color = "var(--stg-plan-5)" }) {
   return (
     <div>
       {items.map((it) => (
-        <div key={it.key} className="pf-hbar" style={{ gridTemplateColumns: "104px 1fr 72px" }} {...(bind && it.tip ? bind(it.tip) : {})}>
+        <div key={it.key} className="pf-hbar" style={{ gridTemplateColumns: "96px 1fr auto" }} {...(bind && it.tip ? bind(it.tip) : {})}>
           <span className="pf-hbar-label" title={it.label}>{it.label}</span>
           <div className="pf-hbar-track"><div style={{ width: `${max ? (it.value / max) * 100 : 0}%`, background: color }} /></div>
           <b className="pf-hbar-val">{fmt(it.value)}</b>

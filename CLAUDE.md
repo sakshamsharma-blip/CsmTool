@@ -49,7 +49,7 @@ with the same context and follows the same rules. Read it fully before making ch
 ## Core domain rules — how the business logic actually works
 
 - **Money**: `fmtUSD`/`fmtINR` round via `Math.round`; `toINR`/`toUSD`/`nativeCurrency`/
-  `fmtMoney(amount, lab.region)` convert between Domestic (INR) and ROW (USD). Labs can be in
+  `fmtMoney(amount, lab.region)` convert between Domestic (INR) and ROW (USD). **Standard (Nov 2026): every amount shows USD first with INR in brackets** — one lab: `fmtMoney(amount, region)` ("$594 (₹55,000)"); a total already summed in INR: `fmtAmount(inr)`; tiles / tight columns: `fmtCompactMoney(inr)` ("$76.0K (₹70.48 L)", `lib/analyticsFormat.js`); chart axes only: `fmtCompactUSDFromINR`. Total MRR / ARR tiles show $ big with ₹ under it (`.tval-sub`; on Total Labs they span two columns). Never show a bare `fmtINR` amount; the only ₹-only text left is segment thresholds (segments are defined in INR) and amount inputs in a lab's own currency. The USD→INR rate is live from Frankfurter (ECB, `lib/fx.js`): fetched on load, cached 6h, re-checked hourly while open, fallback 93, and shown in the top bar and, via `components/FxRate.jsx` (ScopeToggle `aside`), at the right of the My Labs / Team View row on Total Labs and the Dashboard (`getUsdInrInfo`). Total Labs has an **MRR %** column after MRR (lab MRR in INR ÷ Total MRR). Labs can be in
   different native currencies — **always convert to INR before summing across labs**.
 - `activity_log.source` only accepts `'system'` and `'checkin'` (a DB check constraint) —
   `'manual'` is rejected.

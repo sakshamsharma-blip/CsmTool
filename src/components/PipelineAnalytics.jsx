@@ -16,7 +16,7 @@ import SearchSelect from "./SearchSelect";
 import Paginated from "./Pager";
 import { TipCard } from "./ChartTooltip";
 import { Tile, Card, TrendChart, ScoreBars, Donut, Heat, Change } from "./Analytics";
-import { RANGES, rangeOf, fmtPct, fmtPP, fmtCompactINR, downloadCsv } from "../lib/analyticsFormat";
+import { RANGES, rangeOf, fmtPct, fmtPP, fmtCompactMoney, downloadCsv } from "../lib/analyticsFormat";
 
 // The analytics shared by the Adoption and Expansion screens (decision Nov 2 2026): tiles, trend, by CSM, by range, then
 // lab-wise / CSM / module-wise tables. `pipeline` picks the one score the page shows and the KPI target it's held against:
@@ -120,7 +120,7 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
   const tiles = (
     <div className="an-tiles">
       <Tile value={groups.length} label="Clients" sub={`${totalLabs} labs`} />
-      <Tile value={fmtCompactINR(totalMrr)} label={isExpansion ? "Expansion MRR" : "Total MRR"} sub={`${isExpansion ? "Expansion " : ""}ARR ${fmtCompactINR(totalArr)}`} />
+      <Tile value={fmtCompactMoney(totalMrr)} label={isExpansion ? "Expansion MRR" : "Total MRR"} sub={`${isExpansion ? "Expansion " : ""}ARR ${fmtCompactMoney(totalArr)}`} />
       <Tile tone="good" value={fmtPct(curAvg)} label={metric.label} sub={periodB.label} />
       <Tile value={fmtPct(prevAvg)} label="Compared with" sub={periodA.label} />
       <Tile value={fmtPP(compared.change)} label={`Change, ${gran === "Monthly" ? "MoM" : gran === "Quarterly" ? "QoQ" : gran === "Yearly" ? "YoY" : "HoH"}`} sub={comparedNote} />
@@ -160,7 +160,7 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
           <Card title={`By CSM · ${periodB.label}`} info="Each CSM's clients, averaged. A CSM is scored on the labs they handle. Click a bar for their KPI report.">
             <ScoreBars target={target} bind={tip.bind} items={csmRows.map((c) => {
               const v = teamScore(c.groups, periodB);
-              return { key: c.name, label: c.name, value: v, onClick: onOpenCsm ? () => onOpenCsm(c.name) : undefined, tip: <TipCard title={c.name} rows={[["Score", fmtPct(v)], ["Compared with " + periodA.label, fmtPct(teamScore(c.groups, periodA))], ["Clients", c.clients], ["Labs", c.labs.length], ["MRR", fmtCompactINR(c.mrr)]]} /> };
+              return { key: c.name, label: c.name, value: v, onClick: onOpenCsm ? () => onOpenCsm(c.name) : undefined, tip: <TipCard title={c.name} rows={[["Score", fmtPct(v)], ["Compared with " + periodA.label, fmtPct(teamScore(c.groups, periodA))], ["Clients", c.clients], ["Labs", c.labs.length], ["MRR", fmtCompactMoney(c.mrr)]]} /> };
             })} />
           </Card>
         ) : (
@@ -271,8 +271,8 @@ function LabWiseTable({ rows, periods, periodA, periodB, onOpenLab, money }) {
           <tr key={r.g.id}>
             <td className="lab-name clickable" onClick={() => onOpenLab(r.g.id, r.g.labs.length > 1 ? "overalladoption" : "adoption")}>{r.g.name}{r.g.labs.length > 1 && <span className="an-count"> · {r.g.labs.length} labs</span>}</td>
             <td>{r.g.csm || "—"}</td>
-            <td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(money.of(r.g).mrr)}</td>
-            {money.showArr && <td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(money.of(r.g).arr)}</td>}
+            <td style={{ whiteSpace: "nowrap" }}>{fmtCompactMoney(money.of(r.g).mrr)}</td>
+            {money.showArr && <td style={{ whiteSpace: "nowrap" }}>{fmtCompactMoney(money.of(r.g).arr)}</td>}
             {r.cells.map((v, i) => <td key={periods[i].key} className="c"><Heat value={v} /></td>)}
             <td className="c"><Change value={diff(r.cur, r.prev)} /></td>
           </tr>
@@ -343,7 +343,7 @@ function CsmPerformance({ money, rows, groups, periods, periodA, periodB, metric
 
   const cols = (
     <Card title={`By CSM · ${periodB.label}`} info="Dashed line = the team target. Click a bar for the CSM's KPI report.">
-      <ScoreBars target={target} bind={tip.bind} items={withStats.map((c) => ({ key: c.name, label: c.name, value: c.cur, onClick: onOpenCsm ? () => onOpenCsm(c.name) : undefined, tip: <TipCard title={c.name} rows={[["Score", fmtPct(c.cur)], ["Target", fmtPct(c.t)], ["Clients", c.clients], [money.label, fmtCompactINR(c.mrr)]]} /> }))} />
+      <ScoreBars target={target} bind={tip.bind} items={withStats.map((c) => ({ key: c.name, label: c.name, value: c.cur, onClick: onOpenCsm ? () => onOpenCsm(c.name) : undefined, tip: <TipCard title={c.name} rows={[["Score", fmtPct(c.cur)], ["Target", fmtPct(c.t)], ["Clients", c.clients], [money.label, fmtCompactMoney(c.mrr)]]} /> }))} />
     </Card>
   );
   const allLabsCount = rows.reduce((s, c) => s + c.labs.length, 0);
@@ -351,7 +351,7 @@ function CsmPerformance({ money, rows, groups, periods, periodA, periodB, metric
     <Card title="Labs by CSM">
       <Donut centre={allLabsCount} centreLabel="labs" bind={tip.bind} slices={withStats.map((c, i) => ({
         key: c.name, label: c.name, count: c.labs.length, color: `var(--an-cat-${(i % 8) + 1})`,
-        tip: <TipCard title={c.name} rows={[["Labs", c.labs.length], ["Clients", c.clients], [money.label, fmtCompactINR(c.mrr)]]} />,
+        tip: <TipCard title={c.name} rows={[["Labs", c.labs.length], ["Clients", c.clients], [money.label, fmtCompactMoney(c.mrr)]]} />,
       }))} />
     </Card>
   );
@@ -373,10 +373,10 @@ function CsmPerformance({ money, rows, groups, periods, periodA, periodB, metric
           <tbody>
             {withStats.map((c) => (
               <tr key={c.name}>
-                <td style={{ fontWeight: 600 }}>{c.name}</td><td className="c">{c.labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(c.mrr)}</td>{money.showArr && <td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(c.arr)}</td>}
+                <td style={{ fontWeight: 600 }}>{c.name}</td><td className="c">{c.labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactMoney(c.mrr)}</td>{money.showArr && <td style={{ whiteSpace: "nowrap" }}>{fmtCompactMoney(c.arr)}</td>}
                 <td className="c"><Heat value={c.prev} /></td><td className="c"><Heat value={c.cur} /></td><td className="c"><Change value={c.change} /></td>
                 <td className="c">{fmtPct(c.t)}</td><td className="c">{c.cur != null && c.t > 0 ? fmtPct((c.cur / c.t) * 100) : "—"}</td>
-                <td className="c">{fmtPct(c.retention)}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(c.pipelineMrr)}</td>
+                <td className="c">{fmtPct(c.retention)}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactMoney(c.pipelineMrr)}</td>
                 <td className="c" {...tip.bind(<TipCard title={`${c.name} · labs at risk`} rows={[["Labs", c.risky.length]]} list={c.risky.slice(0, LIST_MAX).map((l) => l.name)} more={c.risky.length - LIST_MAX} />)} style={{ color: c.risky.length ? "var(--bad)" : undefined, fontWeight: 700 }}>{c.risky.length}</td>
                 <td className="c"><Heat value={c.kpiScore} /></td>
                 <td>{onOpenCsm && <span className="mark-purchased" onClick={() => onOpenCsm(c.name)}>View</span>}</td>
@@ -400,7 +400,7 @@ function CsmPerformance({ money, rows, groups, periods, periodA, periodB, metric
           <div className="table-card"><Paginated items={listed.flatMap((c) => c.groups.map((g) => ({ c, g })))}>{(page) => (
             <div className="table-scroll"><table className="child-mini an-table">
               <thead><tr><th>Client</th><th>CSM</th><th className="c">Labs</th><th>{money.label}</th>{money.showArr && <th>Expansion ARR</th>}<th className="c">{periodB.label}</th></tr></thead>
-              <tbody>{page.map(({ c, g }) => <tr key={`${c.name}|${g.id}`}><td className="lab-name clickable" onClick={() => onOpenLab(g.id)}>{g.name}</td><td>{c.name}</td><td className="c">{g.labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(money.of(g).mrr)}</td>{money.showArr && <td style={{ whiteSpace: "nowrap" }}>{fmtCompactINR(money.of(g).arr)}</td>}<td className="c"><Heat value={scoreOf(g, periodB)} /></td></tr>)}</tbody>
+              <tbody>{page.map(({ c, g }) => <tr key={`${c.name}|${g.id}`}><td className="lab-name clickable" onClick={() => onOpenLab(g.id)}>{g.name}</td><td>{c.name}</td><td className="c">{g.labs.length}</td><td style={{ whiteSpace: "nowrap" }}>{fmtCompactMoney(money.of(g).mrr)}</td>{money.showArr && <td style={{ whiteSpace: "nowrap" }}>{fmtCompactMoney(money.of(g).arr)}</td>}<td className="c"><Heat value={scoreOf(g, periodB)} /></td></tr>)}</tbody>
             </table></div>
           )}</Paginated></div>
         </>

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
-import { fmtINR, fmtMoney, toINR } from "../lib/format";
+import { fmtAmount, fmtMoney, toINR } from "../lib/format";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllCollectionsItems, addCollectionsItem, logCollectionsReminder, labCollectionsSummary, daysSince, agingBucket, AGING_COLORS } from "../lib/collections";
 import { fetchAllInvoices, invoiceBalance, isInvoiceOpen, invoiceLastPayment } from "../lib/invoices";
@@ -137,7 +137,7 @@ export default function CollectionsView({ labs: allLabs, viewer, idByName, onOpe
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
 
       <div className="summary-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 18 }}>
-        <div className="stile"><div className="sval">{fmtINR(totalOutstanding)}</div><div className="slabel">Total Outstanding</div></div>
+        <div className="stile"><div className="sval">{fmtAmount(totalOutstanding)}</div><div className="slabel">Total Outstanding</div></div>
         <div className="stile"><div className="sval" style={{ color: overdueLabs > 0 ? "var(--warn)" : "var(--text)" }}>{overdueLabs}</div><div className="slabel">Overdue Labs</div></div>
         <div className="stile"><div className="sval" style={{ color: criticalLabs > 0 ? "var(--bad)" : "var(--text)" }}>{criticalLabs}</div><div className="slabel">Critical</div></div>
       </div>

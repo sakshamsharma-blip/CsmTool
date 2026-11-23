@@ -16,7 +16,7 @@ const FX_ENDPOINTS = [
   "https://api.frankfurter.dev/v1/latest?from=USD&to=INR",
   "https://api.frankfurter.app/latest?from=USD&to=INR",
 ];
-const DEFAULT_USD_INR = 96; // sane fallback if we've never successfully fetched a rate — update this occasionally so it stays in the right ballpark
+const DEFAULT_USD_INR = 93; // sane fallback if we've never successfully fetched a rate — update this occasionally so it stays in the right ballpark
 const STORAGE_KEY = "csm_fx_usd_inr_v1";
 const MAX_CACHE_AGE_MS = 6 * 60 * 60 * 1000; // 6h — plenty fresh for MRR display, avoids hammering the API
 
@@ -24,26 +24,32 @@ function readCache() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const { rate, at } = JSON.parse(raw);
+    const { rate, at, date } = JSON.parse(raw);
     if (!rate || !Number.isFinite(rate) || Date.now() - at > MAX_CACHE_AGE_MS) return null;
+    currentDate = date || null;
     return rate;
   } catch {
     return null;
   }
 }
-function writeCache(rate) {
+function writeCache(rate, date) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ rate, at: Date.now() }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ rate, at: Date.now(), date }));
   } catch {
     // best-effort only — private browsing / storage-disabled shouldn't break the app
   }
 }
 
+let currentDate = null; // the day the rate was published (YYYY-MM-DD); null while on the fallback
 let currentRate = (typeof localStorage !== "undefined" && readCache()) || DEFAULT_USD_INR;
 let listeners = [];
 
 export function getUsdInrRate() {
   return currentRate;
+}
+// What the top bar shows: the rate, the day it's for, and whether it's live or the fallback.
+export function getUsdInrInfo() {
+  return { rate: currentRate, date: currentDate, live: currentDate != null };
 }
 
 // Subscribe to rate updates (used once at the app root to force a re-render when the live
@@ -64,7 +70,8 @@ export async function refreshUsdInrRate() {
       const rate = data && data.rates && data.rates.INR;
       if (rate && Number.isFinite(rate)) {
         currentRate = rate;
-        writeCache(rate);
+        currentDate = data.date || null;
+        writeCache(rate, currentDate);
         listeners.forEach((fn) => fn(rate));
         return currentRate;
       }

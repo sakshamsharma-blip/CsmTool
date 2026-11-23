@@ -3,7 +3,7 @@ import { isLiveOn, revenueOn } from "../lib/expansion";
 import { periodContaining, previousPeriod } from "../lib/periods";
 import { todayISO } from "../lib/dates";
 import { toINR } from "../lib/format";
-import { fmtCompactINR, fmtPct } from "../lib/analyticsFormat";
+import { fmtCompactMoney, fmtCompactUSDFromINR, fmtPct } from "../lib/analyticsFormat";
 import { TipCard } from "./ChartTooltip";
 import { Tile, Card, Donut, ValueTrend, ValueBars } from "./Analytics";
 
@@ -41,11 +41,11 @@ export default function ExpansionInsights({ rows, labs, groups, modules, showByC
   for (let i = 0, p = periodContaining(today, "Monthly"); i < 6; i += 1, p = previousPeriod(p)) months.unshift(p);
   const trend = months.map((p) => {
     const rev = revenueOn(rows, p.end < today ? p.end : today, convert);
-    return { label: p.label.split(" ")[0], value: rev.mrr, tip: <TipCard title={p.label} rows={[["Expansion MRR", fmtCompactINR(rev.mrr)], ["Expansion ARR", fmtCompactINR(rev.arr)], ["Live items", rev.count]]} /> };
+    return { label: p.label.split(" ")[0], value: rev.mrr, tip: <TipCard title={p.label} rows={[["Expansion MRR", fmtCompactMoney(rev.mrr)], ["Expansion ARR", fmtCompactMoney(rev.arr)], ["Live items", rev.count]]} /> };
   });
 
   const csms = [...new Set(labs.map((l) => l.csm).filter(Boolean))];
-  const barItem = (key, label, list, value) => ({ key, label, value, tip: <TipCard title={label} rows={[["Expansion ARR", fmtCompactINR(value)], ["Live items", list.length]]} list={list.slice(0, LIST_MAX).map((r) => `${r.title || "Untitled"} — ${labById[r.labId]?.name}`)} more={list.length - LIST_MAX} /> });
+  const barItem = (key, label, list, value) => ({ key, label, value, tip: <TipCard title={label} rows={[["Expansion ARR", fmtCompactMoney(value)], ["Live items", list.length]]} list={list.slice(0, LIST_MAX).map((r) => `${r.title || "Untitled"} — ${labById[r.labId]?.name}`)} more={list.length - LIST_MAX} /> });
   const liveNow = rows.filter((r) => isLiveOn(r, today));
   const byCsm = csms.map((name) => {
     const list = liveNow.filter((r) => labById[r.labId]?.csm === name);
@@ -66,33 +66,33 @@ export default function ExpansionInsights({ rows, labs, groups, modules, showByC
     <>
       <div className="an-tiles">
         {byStatus.map((s) => (
-          <Tile key={s.status} value={s.count} label={s.status} sub={s.mrr ? `${fmtCompactINR(s.mrr)}/mo` : "No value yet"}
-            bind={tip.bind(<TipCard color={STATUS_COLOR[s.status]} title={s.status} rows={[["Monthly", fmtCompactINR(s.mrr)], ["Annual", fmtCompactINR(s.arr)]]} list={s.list.slice(0, LIST_MAX).map((r) => `${r.title || "Untitled"} — ${labById[r.labId]?.name}`)} more={s.list.length - LIST_MAX} />)} />
+          <Tile key={s.status} value={s.count} label={s.status} sub={s.mrr ? `${fmtCompactMoney(s.mrr)}/mo` : "No value yet"}
+            bind={tip.bind(<TipCard color={STATUS_COLOR[s.status]} title={s.status} rows={[["Monthly", fmtCompactMoney(s.mrr)], ["Annual", fmtCompactMoney(s.arr)]]} list={s.list.slice(0, LIST_MAX).map((r) => `${r.title || "Untitled"} — ${labById[r.labId]?.name}`)} more={s.list.length - LIST_MAX} />)} />
         ))}
-        <Tile tone="good" value={fmtCompactINR(now.mrr)} label="Expansion MRR" sub="From expansion only" />
-        <Tile tone="good" value={fmtCompactINR(now.arr)} label="Expansion ARR" sub="From expansion only" />
+        <Tile tone="good" value={fmtCompactMoney(now.mrr)} label="Expansion MRR" sub="From expansion only" />
+        <Tile tone="good" value={fmtCompactMoney(now.arr)} label="Expansion ARR" sub="From expansion only" />
         <Tile value={fmtPct(conversion)} label="Live share" sub={`${live.length} of ${rows.length} items`} />
       </div>
       <div className="an-grid-3" style={{ marginBottom: 14 }}>
         <Card title="Expansion MRR trend" info="Expansion MRR at each month-end: priced purchases and Live deals, leaving out anything lost by then. This month reads today.">
-          <ValueTrend points={trend} fmt={fmtCompactINR} bind={tip.bind} />
+          <ValueTrend points={trend} fmt={fmtCompactUSDFromINR} bind={tip.bind} />
         </Card>
         <Card title="By status" info="Every expansion. Feature: Pitching = Pipeline, Trial = Onboarding, Purchased = Live (a purchased trial stays Onboarding). Manual: its own status.">
           <Donut centre={rows.length} centreLabel="items" bind={tip.bind} slices={byStatus.map((s) => ({
             key: s.status, label: s.status, count: s.count, color: STATUS_COLOR[s.status],
-            tip: <TipCard color={STATUS_COLOR[s.status]} title={s.status} rows={[["Items", s.count], ["Monthly", fmtCompactINR(s.mrr)]]} />,
+            tip: <TipCard color={STATUS_COLOR[s.status]} title={s.status} rows={[["Items", s.count], ["Monthly", fmtCompactMoney(s.mrr)]]} />,
           }))} />
         </Card>
         <Card title="Account-wise average" info="Accounts = clients, counting a parent and its child labs once. Averages cover only the accounts with Live expansion revenue.">
           <div className="an-sum"><b>Accounts with expansion</b>{withExpansion.length} of {groups.length}{groups.length ? ` (${fmtPct((withExpansion.length / groups.length) * 100)})` : ""}</div>
-          <div className="an-sum"><b>Average ARR per account</b>{avgArr == null ? "—" : fmtCompactINR(avgArr)}</div>
+          <div className="an-sum"><b>Average ARR per account</b>{avgArr == null ? "—" : fmtCompactMoney(avgArr)}</div>
           <div className="an-sum"><b>Average live items per account</b>{avgCount == null ? "—" : avgCount.toFixed(2)}</div>
         </Card>
       </div>
       <div className="an-grid-3" style={{ marginBottom: 14 }}>
-        {showByCsm && <Card title="Expansion ARR by CSM"><ValueBars items={byCsm} fmt={fmtCompactINR} bind={tip.bind} /></Card>}
-        <Card title="Top clients by Expansion ARR"><ValueBars items={topClients} fmt={fmtCompactINR} bind={tip.bind} /></Card>
-        <Card title="Expansion ARR by module"><ValueBars items={byModule} fmt={fmtCompactINR} bind={tip.bind} /></Card>
+        {showByCsm && <Card title="Expansion ARR by CSM"><ValueBars items={byCsm} fmt={fmtCompactMoney} bind={tip.bind} /></Card>}
+        <Card title="Top clients by Expansion ARR"><ValueBars items={topClients} fmt={fmtCompactMoney} bind={tip.bind} /></Card>
+        <Card title="Expansion ARR by module"><ValueBars items={byModule} fmt={fmtCompactMoney} bind={tip.bind} /></Card>
       </div>
       {tip.tooltip}
     </>

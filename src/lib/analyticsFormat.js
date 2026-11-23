@@ -1,3 +1,4 @@
+import { toUSD } from "./format";
 // Shared by the Adoption, Expansion and KPI screens.
 export const fmtPct = (v) => (v == null ? "—" : `${Math.round(v)}%`);
 export const fmtPP = (v) => (v == null ? "—" : `${Math.round(v) > 0 ? "+" : ""}${Math.round(v)} pp`);
@@ -7,6 +8,22 @@ export function fmtCompactINR(n) {
   if (v >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
   if (v >= 1e5) return `₹${(n / 1e5).toFixed(2)} L`;
   return `₹${Math.round(n || 0).toLocaleString("en-IN")}`;
+}
+
+// Short dollars: 950 -> "$950", 34,500 -> "$34.5K", 2,350,000 -> "$2.35M".
+export function fmtCompactUSD(usd) {
+  const v = Math.abs(usd || 0);
+  if (v >= 1e6) return `$${(usd / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `$${(usd / 1e3).toFixed(1)}K`;
+  return `$${Math.round(usd || 0).toLocaleString("en-US")}`;
+}
+// The standard for tiles and tight columns (Nov 2026): dollars first, rupees in brackets — "$76.0K (₹70.48 L)". Takes INR.
+export function fmtCompactMoney(inr) {
+  return `${fmtCompactUSD(toUSD(inr || 0, "Domestic"))} (${fmtCompactINR(inr)})`;
+}
+// Just the dollar part, for chart axes where both wouldn't fit. Takes INR.
+export function fmtCompactUSDFromINR(inr) {
+  return fmtCompactUSD(toUSD(inr || 0, "Domestic"));
 }
 
 // Score bands used by the heat cells and "Labs by range".

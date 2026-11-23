@@ -5,8 +5,8 @@ import { LAB_TYPES } from "../lib/labs";
 // plain CSM never sees the My Labs / Team View part — they only ever see their own labs.
 // The Lab Type filter (Pathology / Radiology / Pathology + Radiology) is shown to everyone when the screen passes
 // labType / setLabType.
-export default function ScopeToggle({ isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, labType, setLabType }) {
-  if (!isHead && !setLabType) return null;
+export default function ScopeToggle({ isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, labType, setLabType, aside }) {
+  if (!isHead && !setLabType && !aside) return null;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "2px 0 18px", flexWrap: "wrap" }}>
       {isHead && (
@@ -27,6 +27,7 @@ export default function ScopeToggle({ isHead, scope, setScope, csmFilter, setCsm
           {LAB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
       )}
+      {aside && <div style={{ marginLeft: "auto" }}>{aside}</div>}
     </div>
   );
 }

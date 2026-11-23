@@ -35,15 +35,18 @@ export function toUSD(amount, region) {
   return region === "ROW" ? amount : amount / getUsdInrRate();
 }
 
-// The main "everywhere" display helper — shows a lab's own amount in its own native currency,
-// with the other currency converted alongside in brackets. A Domestic lab's ₹55,000 becomes
-// "₹55,000 ($663)"; a ROW lab's $1,200 becomes "$1,200 (₹99,600)". For a figure that's already
+// The main "everywhere" display helper. For a figure that's already
 // an aggregate across many labs (so there's no single "native currency" to anchor on), just use
 // fmtINR directly instead of this — that's the existing behavior and it's still correct once the
 // summing itself has normalized every lab's amount to INR first via toINR().
+// USD first, INR in brackets, for every lab whatever its billing currency (decision Nov 2026), so accounts compare at a
+// glance: a Domestic lab's ₹55,000 shows as "$594 (₹55,000)", a ROW lab's $1,200 as "$1,200 (₹1,11,216)".
+// A total already summed in INR, shown the same standard way: "$76,042 (₹70,47,736)".
+export function fmtAmount(inr) {
+  return `${fmtUSD(toUSD(inr, "Domestic"))} (${fmtINR(inr)})`;
+}
 export function fmtMoney(amount, region) {
-  if (region === "ROW") return `${fmtUSD(amount)} (${fmtINR(toINR(amount, region))})`;
-  return `${fmtINR(amount)} (${fmtUSD(toUSD(amount, region))})`;
+  return `${fmtUSD(toUSD(amount, region))} (${fmtINR(toINR(amount, region))})`;
 }
 
 // 200 → "3h 20m", 45 → "45m", 0/null → "0m". Used for time spent on a lab (sum of check-in durations).

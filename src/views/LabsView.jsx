@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useSessionState } from "../lib/useSessionState";
-import { fmtINR, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
+import { fmtINR, fmtUSD, fmtMoney, toINR, toUSD, segmentFor, SEG_BANDS } from "../lib/format";
 import { isHealthyStatus } from "../lib/pulse";
 import { computeLabRollup } from "../lib/labRollup";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
@@ -10,6 +10,7 @@ import { LAB_TYPES } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import { todayISO } from "../lib/dates";
 import ScopeToggle from "../components/ScopeToggle";
+import FxRate from "../components/FxRate";
 import SearchSelect from "../components/SearchSelect";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
@@ -157,8 +158,8 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
     ["Inactive Labs", totalLabs - activeCount, totalLabs - activeCount > 0 ? "bad" : ""],
     ["Needs Attention (Lab Health)", healthCount("Needs Attention"), healthCount("Needs Attention") > 0 ? "warn" : ""],
     ["At Risk (Lab Health)", healthCount("At Risk"), healthCount("At Risk") > 0 ? "bad" : ""],
-    ["Total MRR", fmtINR(totalMRR), "accent"],
-    ["Total ARR", fmtINR(totalMRR * 12), "accent"],
+    ["Total MRR", <>{fmtUSD(toUSD(totalMRR, "Domestic"))}<span className="tval-sub">({fmtINR(totalMRR)})</span></>, "accent"],
+    ["Total ARR", <>{fmtUSD(toUSD(totalMRR * 12, "Domestic"))}<span className="tval-sub">({fmtINR(totalMRR * 12)})</span></>, "accent"],
   ];
 
   function statusPillClass(s) { return "status-" + s.replace(" ", ""); }
@@ -178,6 +179,7 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
         <td className="fz fz3"><span className={`pill ${isChild ? "pill-child" : "pill-parent"}`}>{isChild ? "Child" : "Parent"}</span></td>
         <td className="fz fz4">{l.csm}</td>
         <td className="mrr-cell">{fmtMoney(l.mrr, l.region)}</td>
+        <td className="mrr-cell" title="Share of Total MRR">{totalMRR > 0 ? `${((toINR(l.mrr, l.region) / totalMRR) * 100).toFixed(2)}%` : "—"}</td>
         <td><span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span></td>
         <td>{l.region}</td>
         <td>{l.labType || <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
@@ -203,9 +205,9 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
         </div>
       </div>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} aside={<FxRate />} />
 
-      <div className="tiles" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(128px, 1fr))" }}>
+      <div className="tiles tiles-row">
         {tiles.map(([label, val, cls]) => (
           <div key={label} className={`tile ${cls}`}>
             <div className="tval">{val}</div>
@@ -295,14 +297,14 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
         <thead>
           <tr>
             <th className="fz fz0"></th><th className="fz fz1">Lab ID</th><th className="fz fz2">Lab Name</th><th className="fz fz3">Type</th><th className="fz fz4">CSM Name</th>
-            <th>MRR</th><th>Segment</th><th>Region</th><th>Lab Type</th><th>Status</th><th>Health</th>
+            <th>MRR</th><th title="This account's share of Total MRR">MRR %</th><th>Segment</th><th>Region</th><th>Lab Type</th><th>Status</th><th>Health</th>
             <th title="Auto, from logged visit/check-in sentiment — separate from Health">Lab Health (Sentiment)</th>
             <th>City</th><th>State</th><th>Country</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
-            <tr><td colSpan="15" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>No labs match these filters.</td></tr>
+            <tr><td colSpan="16" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>No labs match these filters.</td></tr>
           )}
           {rows.map((r) => (
             <Fragment key={r.id}>
@@ -334,3 +336,5 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
     </div>
   );
 }
+
+// The USD→INR rate every $ / ₹ amount uses, with the day it's from (the app re-renders when it updates).
