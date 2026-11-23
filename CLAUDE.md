@@ -373,7 +373,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Roles**: only the Admin can change a team member's role (UI locks the field; DB trigger in 0021).
 - Template weights: 0019 scaled the over-100 groups to 100; 0023 scales any remaining group (Branding
   Solutions, 55%) to exactly 100. Weights are stored with 2 decimals (e.g. 8.47).
-- **Reassign CSM** is Lead/Admin only (UI hides it for CSMs; DB trigger in 0024). Besides the button at the bottom of Lab Details, an **Edit** (✎) link sits next to the CSM in the lab header and the Lab Details "CSM Name" row (Nov 23 2026); it opens the same dialog, now titled "Edit CSM".
+- **Reassign CSM** is Lead/Admin only (UI hides it for CSMs; DB trigger in 0024). Besides the button at the bottom of Lab Details, a **Change CSM** button appears in the "CSM Name" row only in Lab Details' Edit mode, for a Lead / Admin (Nov 23 2026); it opens the same dialog, titled "Edit CSM". Nothing about it shows outside Edit mode.
 - **Reminders live in the app only** (decision, Oct 2026): Tasks, Dashboard "Tasks for Today" and Pitch
   Reminders. No email or Slack sending — the earlier Email/Slack reminder feature was removed from the code, and
   its `notification_prefs` table was dropped by migration 0027 (applied).

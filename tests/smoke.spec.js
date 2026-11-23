@@ -114,11 +114,15 @@ test("Adoption Template: totals must be 100% and Rescale fixes them", async ({ p
 
 test("Edit CSM on a lab is for Leads and Admins only", async ({ page }) => {
   await page.locator(".lab-name").first().click();
-  await expect(page.locator(".csm-edit").first()).toBeVisible();
-  await page.locator(".csm-edit").first().click();
+  await expect(page.locator(".csm-edit")).toHaveCount(0); // not shown until Edit is clicked
+  await page.getByRole("button", { name: "✎ Edit" }).click();
+  await page.locator(".csm-edit").click();
   await expect(page.getByRole("button", { name: "Save CSM" })).toBeVisible();
   await page.locator(".modal-actions", { hasText: "Save CSM" }).getByRole("button", { name: "Cancel" }).click();
   await page.locator(".csm-switcher").selectOption("Aditi"); // a CSM in the demo roster
+  const edit = page.getByRole("button", { name: "✎ Edit" });
+  if (await edit.count()) await edit.click();
+  await expect(page.locator(".param-row", { hasText: "Lab Name" }).locator("input")).toBeVisible(); // in Edit mode
   await expect(page.locator(".csm-edit")).toHaveCount(0);
 });
 

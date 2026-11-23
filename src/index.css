@@ -762,8 +762,6 @@
   .tp-title .tk-clip{display:inline-block; max-width:100%; vertical-align:bottom; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .tp-title:has(.cat-tag) .tk-clip{max-width:200px;}
   .tk-lab{max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .csm-edit{border:none; background:transparent; color:var(--accent); cursor:pointer; font-size:12px; font-weight:600; margin-left:6px; padding:0 2px;}
-  .csm-edit:hover{text-decoration:underline;}
   .tk-time{display:block; font-size:11px; color:var(--text-dim);}
   .tk-group td{font-size:12px; font-weight:700; padding:7px 10px; border-bottom:1px solid var(--border);}
   .tk-g-overdue td{background:var(--bad-bg); color:var(--bad);}

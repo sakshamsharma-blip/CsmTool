@@ -943,7 +943,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
         <div className="detail-meta">
           <div className="m"><div>Lab ID</div><div>{lab.labCode || lab.id}</div></div>
           <div className="m"><div>Type</div><div>{lab.type} Lab</div></div>
-          <div className="m"><div>CSM</div><div>{lab.csm}{viewer.isHead && <button type="button" className="csm-edit" title="Edit CSM" aria-label="Edit CSM" onClick={() => { setNewCsm(lab.csm); setReassignOpen(true); }}>✎</button>}</div></div>
+          <div className="m"><div>CSM</div><div>{lab.csm}</div></div>
           <div className="m"><div>Plan</div><div>{plan.name}</div></div>
           <div className="m"><div>Segment</div><div>{seg.code} — {SEG_NAME[seg.code]}</div></div>
           <div className="m"><div>Current MRR</div><div>{fmtMoney(effectiveMRR(lab), lab.region)}</div></div>
@@ -1009,7 +1009,13 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                 )}
                 {row("Hierarchy", lab.type + " Lab")}
                 {row("Parent Lab", lab.parent ? (labs.find((l) => l.id === lab.parent) || {}).name || lab.parent : "—")}
-                {row("CSM Name", <>{lab.csm}{viewer.isHead && <button type="button" className="csm-edit" title="Edit CSM" aria-label="Edit CSM" onClick={() => { setNewCsm(lab.csm); setReassignOpen(true); }}>✎ Edit</button>}</>)}
+                {/* Changing the CSM shows only in Edit mode, and only for a CSM Lead / Admin (Nov 23 2026); it opens the Edit CSM dialog. */}
+                {row("CSM Name", lab.csm, viewer.isHead ? (
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <b>{lab.csm}</b>
+                    <button type="button" className="btn btn-ghost csm-edit" style={{ fontSize: 11.5, padding: "4px 10px" }} onClick={() => { setNewCsm(lab.csm); setReassignOpen(true); }}>Change CSM</button>
+                  </span>
+                ) : null)}
                 {row("Region Category", lab.region,
                   <div>
                     <select value={editRegion} onChange={(e) => setEditRegion(e.target.value)} style={inputStyle}>
