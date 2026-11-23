@@ -171,7 +171,8 @@ export default function PortfolioView({ labs: allLabs, modules, plans, viewer, i
       <h3 style={{ fontSize: 14, margin: "18px 0 8px" }}>Tasks for Today</h3>
       <div style={{ marginBottom: 22 }}>
         <TasksPanel persistKey="portfolio" tasks={labType ? tasks.filter((t) => labsById[t.labId]) : tasks} scopeCsm={teamAll ? null : scopeCsm} onToggleDone={handleToggleDone} onAddTask={handleAddTask}
-          onOpenLab={onOpenLab} isHead={isHead} currentCSM={currentCSM} csmNames={csmNames} labOptions={labOptions} labsById={labsById} />
+          onOpenLab={onOpenLab} isHead={isHead} currentCSM={currentCSM} csmNames={csmNames} labOptions={labOptions} labsById={labsById}
+          idByName={idByName} showToast={showToast} onTasksChanged={async () => setTasks(await fetchAllTasks({ ...invert(idByName) }))} />
       </div>
 
       <h3 style={{ fontSize: 14, margin: "0 0 8px", display: "flex", alignItems: "center" }}>

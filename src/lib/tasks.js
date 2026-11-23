@@ -48,15 +48,26 @@ export const TASK_PRIORITIES = ["High", "Medium", "Low"];
 export const TASK_SOURCES = ["Manual", "Adoption", "Expansion"];
 export const PRIORITY_COLORS = { High: "var(--bad)", Medium: "var(--warn)", Low: "var(--ok)" };
 
+// Overdue / Today / Upcoming / none for one task. A task due today with a due time is overdue once that time has passed
+// (decision Nov 23 2026); without a time it stays due all day.
+export function taskDueBucket(t, now = new Date()) {
+  const b = taskBucket(t.due);
+  if (b === "today" && t.dueTime) {
+    const [h, m] = t.dueTime.split(":").map(Number);
+    const at = new Date(now); at.setHours(h, m, 0, 0);
+    if (now > at) return "overdue";
+  }
+  return b;
+}
 export function isTaskOverdue(t) {
-  return !isRecurring(t) && t.status !== "Done" && !!t.due && taskBucket(t.due) === "overdue";
+  return !isRecurring(t) && t.status !== "Done" && !!t.due && taskDueBucket(t) === "overdue";
 }
 // What the status pill says: Overdue wins over Open / In Progress; On Hold and Done show as they are.
 export function taskStatusLabel(t) {
   if (isRecurring(t)) return isTaskDoneToday(t) ? "Done" : "Open";
   if (t.status === "Done" || t.status === "On Hold") return t.status;
   if (isTaskOverdue(t)) return "Overdue";
-  if (t.due && taskBucket(t.due) === "today") return "Due Today";
+  if (t.due && taskDueBucket(t) === "today") return "Due Today";
   return t.status;
 }
 const DAY = 86400000;
@@ -85,7 +96,7 @@ export function taskBucket(due) {
 export function taskDisplayBucket(t) {
   if (isTaskDoneToday(t)) return "done";
   if (t.repeat && t.repeat !== "none") return "today";
-  return taskBucket(t.due);
+  return taskDueBucket(t);
 }
 export function repeatLabel(t) {
   const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -148,6 +159,7 @@ function fromRow(r, nameById) {
     broadcastId: r.broadcast_id,
     type: r.type,
     due: r.due,
+    dueTime: r.due_time ? String(r.due_time).slice(0, 5) : null, // "HH:MM" (migration 0048)
     // status is the source of truth; rows from before migration 0043 fall back to the old done flag.
     status: r.status || (r.done ? "Done" : "Open"),
     done: r.status ? r.status === "Done" : r.done,
@@ -180,7 +192,7 @@ export async function fetchAllTasks(nameById) {
 // a later edit to that visit's follow-up date can keep this task in sync — see
 // syncFollowupTaskForVisit below. Returns the inserted row(s) so a caller that needs the new id
 // (exactly the sourceVisitId case, always a single owner) can use it right away.
-export async function addTask({ labId, desc, owners, type, repeat, repeatDay, repeatIntervalDays, repeatAnchor, due, idByName, assignedByName, sourceVisitId, priority, details }) {
+export async function addTask({ labId, desc, owners, type, repeat, repeatDay, repeatIntervalDays, repeatAnchor, due, dueTime, idByName, assignedByName, sourceVisitId, priority, details }) {
   const broadcastId = owners.length > 1 ? crypto.randomUUID() : null;
   const assignedById = assignedByName ? idByName[assignedByName] || null : null;
   const rows = owners.map((owner) => ({
@@ -198,6 +210,8 @@ export async function addTask({ labId, desc, owners, type, repeat, repeatDay, re
     source_visit_id: sourceVisitId || null,
     priority: priority || "Medium",
     details: (details || "").trim() || null,
+    // Only sent when set, so adding a task without a time still works before migration 0048 has run.
+    ...(due && dueTime ? { due_time: dueTime } : {}),
   }));
   const { data, error } = await supabase.from("tasks").insert(rows).select("id");
   if (error) throw error;
@@ -246,11 +260,24 @@ export async function updateTaskFields(task, changes, actorId, { ownerName } = {
     patch.due = changes.due || null;
     events.push(changes.due ? `Due date set to ${new Date(changes.due + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}` : "Due date removed");
   }
+  // A due time only makes sense with a due date: removing the date removes the time too.
+  const nextTime = changes.due === null ? null : changes.dueTime;
+  if (nextTime !== undefined && (nextTime || null) !== (task.dueTime || null) && (task.dueTime || nextTime)) {
+    patch.due_time = nextTime || null;
+    events.push(nextTime ? `Due time set to ${fmtTime(nextTime)}` : "Due time removed");
+  }
   if (changes.ownerId !== undefined && changes.ownerId !== task.ownerId) { patch.owner_id = changes.ownerId; events.push(`Reassigned to ${ownerName || "another CSM"}`); }
   if (!Object.keys(patch).length) return;
   const { error } = await supabase.from("tasks").update(patch).eq("id", task.id);
   if (error) throw error;
   events.forEach((e) => logTaskEvent(task.id, actorId, e));
+}
+
+// "15:30" → "3:30 PM" in the viewer's own format.
+export function fmtTime(hhmm) {
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
 // ---- comments & activity history (task_updates) ----
@@ -329,10 +356,11 @@ export async function closeItemTasks(labId, moduleKey, paramName, actorId) {
 
 // Generic patch — used by syncFollowupTaskForVisit to update a linked task's due date/description
 // after its source visit is edited, without touching its done/repeat state.
-export async function updateTask(id, { desc, due }) {
+export async function updateTask(id, { desc, due, dueTime }) {
   const patch = {};
   if (desc !== undefined) patch.description = desc;
   if (due !== undefined) patch.due = due || null;
+  if (dueTime !== undefined) patch.due_time = due !== null && dueTime ? dueTime : null;
   const { error } = await supabase.from("tasks").update(patch).eq("id", id);
   if (error) throw error;
 }
@@ -349,7 +377,7 @@ export async function deleteTask(id) {
 // creates its own task inline via addTask with sourceVisitId set.
 // `type` / `descPrefix` let Visits & Meetings keep its next visit as a "planned-visit" task (so it shows under
 // Upcoming Planned Visits) while Log Check-in follow-ups stay plain "follow-up" tasks.
-export async function syncFollowupTaskForVisit({ visitId, labId, labName, ownerName, idByName, nextFollowupDate, nextFollowupReason, type = "follow-up", descPrefix = "Follow-up" }) {
+export async function syncFollowupTaskForVisit({ visitId, labId, labName, ownerName, idByName, nextFollowupDate, nextFollowupReason, nextFollowupTime, type = "follow-up", descPrefix = "Follow-up" }) {
   const { data: existing, error: e1 } = await supabase.from("tasks").select("id").eq("source_visit_id", visitId).limit(1);
   if (e1) throw e1;
   const existingId = existing && existing[0] ? existing[0].id : null;
@@ -360,11 +388,11 @@ export async function syncFollowupTaskForVisit({ visitId, labId, labName, ownerN
     return;
   }
   if (existingId) {
-    await updateTask(existingId, { desc, due: nextFollowupDate });
+    await updateTask(existingId, { desc, due: nextFollowupDate, ...(nextFollowupTime !== undefined ? { dueTime: nextFollowupTime || null } : {}) });
   } else {
     await addTask({
       labId, desc, owners: [ownerName], type, repeat: "none",
-      due: nextFollowupDate, idByName, assignedByName: ownerName, sourceVisitId: visitId,
+      due: nextFollowupDate, dueTime: nextFollowupTime || null, idByName, assignedByName: ownerName, sourceVisitId: visitId,
     });
   }
 }

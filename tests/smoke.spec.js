@@ -112,6 +112,16 @@ test("Adoption Template: totals must be 100% and Rescale fixes them", async ({ p
   await expect(page.getByText("Parameters total: 100% / 100%")).toBeVisible();
 });
 
+test("Edit CSM on a lab is for Leads and Admins only", async ({ page }) => {
+  await page.locator(".lab-name").first().click();
+  await expect(page.locator(".csm-edit").first()).toBeVisible();
+  await page.locator(".csm-edit").first().click();
+  await expect(page.getByRole("button", { name: "Save CSM" })).toBeVisible();
+  await page.locator(".modal-actions", { hasText: "Save CSM" }).getByRole("button", { name: "Cancel" }).click();
+  await page.locator(".csm-switcher").selectOption("Aditi"); // a CSM in the demo roster
+  await expect(page.locator(".csm-edit")).toHaveCount(0);
+});
+
 test("Adoption Template is hidden from a plain CSM", async ({ page }) => {
   await page.locator(".csm-switcher").selectOption("Aditi"); // a CSM in the demo roster
   await nav(page, "Adoption");

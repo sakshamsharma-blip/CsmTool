@@ -1,4 +1,4 @@
-import { isRecurring, isTaskOverdue, isTaskDoneToday, isTaskDueToday, resolutionDays, completedOnTime, taskBucket } from "./tasks";
+import { isRecurring, isTaskOverdue, isTaskDoneToday, isTaskDueToday, resolutionDays, completedOnTime, taskDueBucket } from "./tasks";
 
 // Numbers for the Tasks page (decision Oct 30 2026). Every "rate" figure covers the last 30 days and is compared with the
 // 30 days before. Recurring tasks have no completion time, so they're left out of everything except "Due Today".
@@ -42,7 +42,7 @@ export function taskKpis(tasks) {
     total: open.length,
     totalChange: pctChange(cur.created, prev.created),
     overdue: open.filter(isTaskOverdue).length,
-    dueToday: tasks.filter((t) => (isRecurring(t) ? isTaskDueToday(t) && !isTaskDoneToday(t) : t.status !== "Done" && t.due && taskBucket(t.due) === "today")).length,
+    dueToday: tasks.filter((t) => (isRecurring(t) ? isTaskDueToday(t) && !isTaskDoneToday(t) : t.status !== "Done" && t.due && taskDueBucket(t) === "today")).length,
     completed: cur.completed,
     completedChange: pctChange(cur.completed, prev.completed),
     avgTat: cur.avgTat,

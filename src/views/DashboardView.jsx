@@ -241,7 +241,8 @@ export default function DashboardView({ labs: allLabs, modules, plans, viewer, i
       <h3 style={{ fontSize: 14, margin: "18px 0 8px" }}>Tasks for Today</h3>
       <div style={{ marginBottom: 8 }}>
         <TasksPanel persistKey="dashboard" tasks={tasksInView} scopeCsm={teamAll ? null : scopeCsm} onToggleDone={handleToggleDone} onAddTask={handleAddTask}
-          onOpenLab={onOpenLab} isHead={isHead} currentCSM={currentCSM} csmNames={csmNames} labOptions={labOptions} labsById={labsById} />
+          onOpenLab={onOpenLab} isHead={isHead} currentCSM={currentCSM} csmNames={csmNames} labOptions={labOptions} labsById={labsById}
+          idByName={idByName} showToast={showToast} onTasksChanged={async () => setTasks(await fetchAllTasks(invert(idByName)))} />
       </div>
 
       <h3 style={{ fontSize: 14, margin: "18px 0 8px", display: "flex", alignItems: "center" }}>

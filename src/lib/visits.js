@@ -4,7 +4,7 @@ import { logActivity } from "./activity";
 export async function fetchAllVisits() {
   const { data, error } = await supabase
     .from("visits")
-    .select("id,lab_id,csm_id,visit_type,visit_date,notes,next_followup_date,next_followup_reason,duration_minutes,location,person_name,person_designation,discussion_topics,sentiment,engagement,flagged_modules,discussed_params,action_items,created_at")
+    .select("id,lab_id,csm_id,visit_type,visit_date,notes,next_followup_date,next_followup_reason,next_followup_time,duration_minutes,location,person_name,person_designation,discussion_topics,sentiment,engagement,flagged_modules,discussed_params,action_items,created_at")
     .order("visit_date", { ascending: false });
   if (error) throw error;
   return (data || []).map((r) => ({
@@ -16,6 +16,7 @@ export async function fetchAllVisits() {
     notes: r.notes || "",
     nextFollowupDate: r.next_followup_date,
     nextFollowupReason: r.next_followup_reason || "",
+    nextFollowupTime: r.next_followup_time ? String(r.next_followup_time).slice(0, 5) : "",
     durationMinutes: r.duration_minutes,
     location: r.location || "",
     personName: r.person_name || "",
@@ -33,13 +34,13 @@ export async function fetchAllVisits() {
 export async function fetchVisitById(id) {
   const { data, error } = await supabase
     .from("visits")
-    .select("id,lab_id,csm_id,visit_type,visit_date,notes,next_followup_date,next_followup_reason,duration_minutes,location,person_name,person_designation,discussion_topics,sentiment,engagement,flagged_modules,discussed_params,action_items,created_at")
+    .select("id,lab_id,csm_id,visit_type,visit_date,notes,next_followup_date,next_followup_reason,next_followup_time,duration_minutes,location,person_name,person_designation,discussion_topics,sentiment,engagement,flagged_modules,discussed_params,action_items,created_at")
     .eq("id", id)
     .single();
   if (error) throw error;
   return {
     id: data.id, labId: data.lab_id, csmId: data.csm_id, type: data.visit_type, visitDate: data.visit_date,
-    notes: data.notes || "", nextFollowupDate: data.next_followup_date, nextFollowupReason: data.next_followup_reason || "",
+    notes: data.notes || "", nextFollowupDate: data.next_followup_date, nextFollowupReason: data.next_followup_reason || "", nextFollowupTime: data.next_followup_time ? String(data.next_followup_time).slice(0, 5) : "",
     durationMinutes: data.duration_minutes, location: data.location || "", personName: data.person_name || "",
     personDesignation: data.person_designation || "", discussionTopics: data.discussion_topics || [],
     sentiment: data.sentiment || null, engagement: data.engagement || null, flaggedModules: data.flagged_modules || [], discussedParams: data.discussed_params || [], actionItems: data.action_items || [],
@@ -50,7 +51,7 @@ export async function fetchVisitById(id) {
 // One-line summary shown in Lab History next to a logged visit/check-in, so the timeline row tells the
 // story without opening it: notes, then sentiment, topics, how many action items / flagged modules, and
 // the next follow-up. (The full record is behind the row's "View" link.)
-function visitSummary({ notes, sentiment, engagement, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason }) {
+function visitSummary({ notes, sentiment, engagement, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason, nextFollowupTime }) {
   const parts = [];
   if (engagement) parts.push(engagement);
   if (notes) parts.push(notes);
@@ -58,7 +59,7 @@ function visitSummary({ notes, sentiment, engagement, discussionTopics, actionIt
   if (discussionTopics && discussionTopics.length) parts.push(`Topics: ${discussionTopics.join(", ")}`);
   if (actionItems && actionItems.length) parts.push(`${actionItems.length} action item${actionItems.length > 1 ? "s" : ""}`);
   if (flaggedModules && flaggedModules.length) parts.push(`${flaggedModules.length} module${flaggedModules.length > 1 ? "s" : ""} discussed`);
-  if (nextFollowupDate) parts.push(`Next follow-up ${nextFollowupDate}${nextFollowupReason ? " — " + nextFollowupReason : ""}`);
+  if (nextFollowupDate) parts.push(`Next follow-up ${nextFollowupDate}${nextFollowupTime ? ` ${nextFollowupTime}` : ""}${nextFollowupReason ? " — " + nextFollowupReason : ""}`);
   return parts.length ? parts.join(" · ") : null;
 }
 
@@ -68,7 +69,7 @@ function visitSummary({ notes, sentiment, engagement, discussionTopics, actionIt
 // creates a follow-up task right after can link it via sourceVisitId (lib/tasks.js), and so the
 // Activity Timeline entry this writes can be opened later from Lab History for viewing/editing.
 export async function addVisit({
-  labId, csmId, type, visitDate, notes, nextFollowupDate, nextFollowupReason,
+  labId, csmId, type, visitDate, notes, nextFollowupDate, nextFollowupReason, nextFollowupTime,
   durationMinutes, location, personName, personDesignation, discussionTopics,
   sentiment, flaggedModules, discussedParams, actionItems, engagement,
 }) {
@@ -81,6 +82,7 @@ export async function addVisit({
     notes: notes || null,
     next_followup_date: nextFollowupDate || null,
     next_followup_reason: nextFollowupReason || null,
+    ...(nextFollowupDate && nextFollowupTime ? { next_followup_time: nextFollowupTime } : {}),
     duration_minutes: durationMinutes || null,
     location: location || null,
     person_name: personName || null,
@@ -97,7 +99,7 @@ export async function addVisit({
   logActivity(labId, {
     kind: type,
     title: isCheckin ? `${type} check-in logged` : `${type} logged`,
-    meta: visitSummary({ notes, sentiment, engagement, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason }),
+    meta: visitSummary({ notes, sentiment, engagement, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason, nextFollowupTime }),
     csmId,
     source: isCheckin ? "checkin" : "system",
     // visitId is always included (not just for check-ins) — it's what lets Lab History's
@@ -112,7 +114,7 @@ export async function addVisit({
 // Meetings list editor uses. Also best-effort refreshes the matching Activity Timeline entry's
 // summary text so the list doesn't go stale next to the corrected record.
 export async function updateVisit(id, {
-  type, visitDate, notes, nextFollowupDate, nextFollowupReason, sentiment,
+  type, visitDate, notes, nextFollowupDate, nextFollowupReason, nextFollowupTime, sentiment,
   durationMinutes, location, personName, personDesignation, discussionTopics, flaggedModules, actionItems, engagement,
 }) {
   const patch = {
@@ -123,6 +125,7 @@ export async function updateVisit(id, {
     next_followup_reason: nextFollowupReason || null,
     sentiment: sentiment || null,
   };
+  if (nextFollowupTime !== undefined) patch.next_followup_time = nextFollowupDate && nextFollowupTime ? nextFollowupTime : null;
   if (durationMinutes !== undefined) patch.duration_minutes = durationMinutes || null;
   if (location !== undefined) patch.location = location || null;
   if (personName !== undefined) patch.person_name = personName || null;
@@ -139,7 +142,7 @@ export async function updateVisit(id, {
   supabase.from("activity_log")
     .update({
       title: isCheckin ? `${type} check-in logged` : `${type} logged`,
-      meta: visitSummary({ notes, sentiment, engagement, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason }),
+      meta: visitSummary({ notes, sentiment, engagement, discussionTopics, actionItems, flaggedModules, nextFollowupDate, nextFollowupReason, nextFollowupTime }),
     })
     .filter("details->>visitId", "eq", id)
     .then(({ error: e2 }) => { if (e2) console.error(e2); });

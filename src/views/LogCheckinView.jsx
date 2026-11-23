@@ -74,6 +74,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   const [actionItems, setActionItems] = useState([]);
   const [nextFollowup, setNextFollowup] = useState("");
   const [nextFollowupReason, setNextFollowupReason] = useState("");
+  const [nextFollowupTime, setNextFollowupTime] = useState("");
   const [saving, setSaving] = useState(false);
 
   const [adoption, setAdoption] = useState(null);
@@ -159,6 +160,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
         notes,
         nextFollowupDate: nextFollowup || null,
         nextFollowupReason,
+        nextFollowupTime: nextFollowup ? nextFollowupTime : "",
         durationMinutes: duration ? Number(duration) : null,
         location,
         personName,
@@ -185,6 +187,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
           type: "follow-up",
           repeat: "none",
           due: nextFollowup,
+          dueTime: nextFollowupTime || null,
           idByName,
           assignedByName: currentCSM,
           sourceVisitId: newVisitId,
@@ -426,9 +429,10 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
           {/* Next follow-up */}
           <div className="table-card" style={{ padding: "16px 18px", marginBottom: 14 }}>
             <h3 style={{ fontSize: 13, margin: "0 0 4px" }}>Next Follow-up / Reminder (optional)</h3>
-            <p style={{ fontSize: 11.5, color: "var(--text-dim)", margin: "0 0 10px" }}>Creates a follow-up task on this date in Tasks.</p>
+            <p style={{ fontSize: 11.5, color: "var(--text-dim)", margin: "0 0 10px" }}>Creates a follow-up task on this date (and time, if given) in Tasks.</p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <div className="tmpl-field" style={{ flex: "1 1 160px" }}><label>Date</label><input type="date" style={fieldStyle} value={nextFollowup} onChange={(e) => setNextFollowup(e.target.value)} /></div>
+              <div className="tmpl-field" style={{ flex: "1 1 120px" }}><label>Time (optional)</label><input type="time" style={fieldStyle} value={nextFollowupTime} disabled={!nextFollowup} onChange={(e) => setNextFollowupTime(e.target.value)} /></div>
               <div className="tmpl-field" style={{ flex: "1 1 160px" }}><label>Reason</label><input style={fieldStyle} value={nextFollowupReason} onChange={(e) => setNextFollowupReason(e.target.value)} placeholder="e.g. QBR" /></div>
             </div>
           </div>

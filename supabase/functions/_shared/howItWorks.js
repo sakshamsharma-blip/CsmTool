@@ -98,7 +98,7 @@ export const HOW_IT_WORKS = {
       "POC Check-in: Proactive check-ins done ÷ owed, from each POC's monthly minimum. Done is capped per POC per month, so extra check-ins with one POC don't cover a miss on another. A running month's full minimum counts.",
       "Retention: 1 − (MRR Churned + Contraction in the period) ÷ MRR at the period's start, in INR, following billing mode.",
       "Collection: of invoices due in the period so far, amount collected ÷ invoice total, in INR.",
-      "Task Closure: the owner's one-off tasks, Done ÷ (Done + past due). A task with a due date belongs to the period it's due in: closed early counts straight away, open counts once its due date has passed. A task with no due date counts in the period it was closed, and not while it's open. Recurring tasks are left out.",
+      "Task Closure: the owner's one-off tasks, Done ÷ (Done + past due). A task with a due date belongs to the period it's due in: closed early counts straight away, open counts once it's Overdue (after its due date, or on the day after its due time). A task with no due date counts in the period it was closed, and not while it's open. Recurring tasks are left out.",
       "Points = min(actual ÷ target, 100%) × weight, so beating a target earns no extra points.",
       "KPI score = points earned ÷ weights counted × 100. A KPI with nothing to measure in the period is left out, not scored 0.",
       "A target is the level to reach, not an increase: a target of 78 with an actual of 75 means 3 points to go.",
@@ -180,7 +180,7 @@ export const HOW_IT_WORKS = {
     title: "Tasks, overdue and TAT",
     summary: "Tasks come from people and from Adoption / Expansion stages. TAT is the time from creation to completion.",
     explanation: [
-      "Status is Open, In Progress, On Hold or Done. Overdue and Due Today are worked out from the due date and aren't stored.",
+      "Status is Open, In Progress, On Hold or Done. Overdue and Due Today are worked out from the due date and aren't stored. A task can also have a due time: due today with a time that has passed counts as Overdue; without a time it's due all day.",
       "When a parameter gets under way (In plan: In Discussion / Demo to Live 4; Not in plan: Pitching, Trial) it gets one task, owned by the lab's CSM, with no due date unless one is given. Moving between under-way stages keeps that task.",
       "A final stage such as Adopted, Purchased, Not Required or a Lost stage marks it Done. Purchased closes the Expansion task and opens an Adoption one at Onboarding / Setup.",
       "Log Check-in action items and next follow-up dates also become tasks. A future visit becomes a planned-visit task.",

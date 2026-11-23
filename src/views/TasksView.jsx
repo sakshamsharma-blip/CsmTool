@@ -6,8 +6,8 @@ import { fetchAllLabsAdoption, resolveParam, setParamStatus, statusOptions } fro
 import { fetchAllPitchStatus, applyPitchStageChange, pitchOptionsFor } from "../lib/pitch";
 import {
   fetchAllTasks, addTask as apiAddTask, setTaskStatus, toggleTaskDone, fetchTaskCommentCounts, isRecurring, isTaskDueToday,
-  isTaskDoneToday, taskBucket, taskStatusLabel, taskTypeLabel, resolutionDays, repeatLabel,
-  TASK_PRIORITIES, TASK_SOURCES, PRIORITY_COLORS,
+  isTaskDoneToday, taskDueBucket, taskStatusLabel, taskTypeLabel, resolutionDays, repeatLabel,
+  TASK_PRIORITIES, TASK_SOURCES, PRIORITY_COLORS, fmtTime,
 } from "../lib/tasks";
 import { taskKpis, statusDistribution, overdueAging, groupedStats, daysOverdue } from "../lib/taskStats";
 import { filterLabsByLabType } from "../lib/labs";
@@ -47,11 +47,14 @@ const CREATED_GROUPS = [
   GROUPS[GROUPS.length - 1],
 ];
 const createdMs = (t) => (t.createdAt ? new Date(t.createdAt).getTime() : 0);
-const SORT_OPTIONS = [["newest", "Newest first"], ["oldest", "Oldest first"], ["due-asc", "Due date, soonest first"], ["due-desc", "Due date, latest first"]];
+const SORT_OPTIONS = [["newest", "Newest first"], ["oldest", "Oldest first"], ["status", "Status: Overdue, Due Today, Open…"], ["due-asc", "Due date, soonest first"], ["due-desc", "Due date, latest first"]];
+// Status sort (Nov 23 2026): most urgent first; within a status, the earliest due first.
+const STATUS_RANK = { Overdue: 0, "Due Today": 1, Open: 2, "In Progress": 3, "On Hold": 4, Done: 5 };
+const dueKey = (t) => (t.due ? `${t.due} ${t.dueTime || "99:99"}` : "9999");
 function groupOf(t) {
   if (isTaskDoneToday(t)) return "done";
   if (isRecurring(t)) return "today";
-  return taskBucket(t.due);
+  return taskDueBucket(t);
 }
 const STATUS_PILL = { Overdue: "tk-st-overdue", "Due Today": "tk-st-today", Done: "tk-st-done", "On Hold": "tk-st-hold", "In Progress": "tk-st-progress", Open: "tk-st-open" };
 const DIST_COLORS = { Open: "var(--accent)", "In Progress": "var(--stg-plan-2)", Overdue: "var(--bad)", Done: "var(--ok)", "On Hold": "var(--stg-closed)" };
@@ -59,7 +62,9 @@ const SOURCE_COLORS = { Manual: "var(--accent)", Adoption: "var(--stg-plan-2)", 
 const PAGE = 25;
 
 const fmtDays = (v) => (v == null ? "—" : `${v.toFixed(1)} days`);
-const fmtDue = (iso) => new Date(iso + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+// Short in the table: the year only when it isn't this year (the full date is in the task panel).
+const fmtShort = (d) => d.toLocaleDateString(undefined, { day: "numeric", month: "short", ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }) });
+const fmtDue = (iso) => fmtShort(new Date(iso + "T12:00:00"));
 
 // "↑ 12%" — `goodWhenUp` decides the colour (lower TAT is good). `unit` "pts" for percentage-point changes.
 function Delta({ value, goodWhenUp = true, unit = "%" }) {
@@ -101,6 +106,9 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
   const [fTo, setFTo] = useSessionState(`${ns}.fTo`, "");
   const [q, setQ] = useSessionState(`${ns}.q`, "");
   const [sortBy, setSortBy] = useSessionState(`${ns}.sort`, "newest");
+  // Re-check every minute, so a task turns Overdue at its due time without a reload.
+  const [, setMinute] = useState(0);
+  useEffect(() => { const id = setInterval(() => setMinute((m) => m + 1), 60000); return () => clearInterval(id); }, []);
 
   const nameById = useMemo(() => { const m = {}; Object.entries(idByName).forEach(([n, id]) => { m[id] = n; }); return m; }, [idByName]);
 
@@ -168,8 +176,9 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
   });
   const sortByDue = sortBy === "due-asc" || sortBy === "due-desc";
   const dir = sortBy === "due-desc" ? -1 : 1;
-  const byDue = (a, b) => (a.due && b.due ? dir * a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : 0);
-  const byCreated = (a, b) => (sortBy === "oldest" ? createdMs(a) - createdMs(b) : createdMs(b) - createdMs(a));
+  const byDue = (a, b) => (a.due && b.due ? dir * dueKey(a).localeCompare(dueKey(b)) : a.due ? -1 : b.due ? 1 : 0);
+  const byStatus = (a, b) => (STATUS_RANK[taskStatusLabel(a)] ?? 9) - (STATUS_RANK[taskStatusLabel(b)] ?? 9) || dueKey(a).localeCompare(dueKey(b)) || createdMs(b) - createdMs(a);
+  const byCreated = sortBy === "status" ? byStatus : (a, b) => (sortBy === "oldest" ? createdMs(a) - createdMs(b) : createdMs(b) - createdMs(a));
   const grouped = sortByDue
     ? GROUPS.map((g) => ({ ...g, items: filtered.filter((t) => groupOf(t) === g.key).sort(byDue) }))
     : CREATED_GROUPS.map((g) => ({ ...g, items: filtered.filter((t) => (groupOf(t) === "done") === (g.key === "done")).sort(byCreated) }));
@@ -347,7 +356,8 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
               <th style={{ width: 28 }}></th><th>Task</th><th>Lab</th><th>Type</th><th>Source</th><th>Priority</th>
               <th className="clickable" onClick={() => setSortBy(sortBy === "newest" ? "oldest" : "newest")} title="Sort by when the task was created">Created {sortBy === "newest" ? "↓" : sortBy === "oldest" ? "↑" : ""}</th>
               <th className="clickable" onClick={() => setSortBy(sortBy === "due-asc" ? "due-desc" : "due-asc")} title="Sort by due date">Due date {sortBy === "due-asc" ? "↑" : sortBy === "due-desc" ? "↓" : ""}</th>
-              <th title="Overdue: days late · Upcoming: days left">Days</th><th>Status</th><th>Owner</th><th>Resolution TAT</th><th title="Comments">💬</th>
+              <th title="Overdue: days late · Upcoming: days left">Days</th>
+              <th className="clickable" onClick={() => setSortBy(sortBy === "status" ? "newest" : "status")} title="Sort by status: Overdue, then Due Today, then Open. Click again for newest first.">Status {sortBy === "status" ? "↓" : ""}</th><th>Owner</th><th title="Resolution TAT: days from created to done">TAT</th><th title="Comments">💬</th>
             </tr></thead>
             <tbody>
               {!filtered.length && <tr><td colSpan="13" style={{ textAlign: "center", color: "var(--text-faint)", padding: 24 }}>{anyFilter ? "No tasks match these filters." : `No tasks for ${scopeLabel} yet.`}</td></tr>}
@@ -377,17 +387,17 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
                             title={done ? "Done" : canEdit(t) ? "Select" : "Only the owner or a Lead can change this task"}
                             onChange={(e) => setSelected((s) => (e.target.checked ? [...s, t.id] : s.filter((id) => id !== t.id)))} />
                         </td>
-                        <td className="tk-title">{t.desc}{t.assignedBy && <span className="cat-tag cat-Indigo"> From {t.assignedBy}</span>}</td>
-                        <td>{lab ? <span className="lab-name clickable" onClick={(e) => { e.stopPropagation(); onOpenLab(lab.id); }}>{lab.name}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
+                        <td className="tk-title" title={t.desc}><span className="tk-clip">{t.desc}</span>{t.assignedBy && <span className="cat-tag cat-Indigo"> From {t.assignedBy}</span>}</td>
+                        <td className="tk-lab" title={lab?.name}>{lab ? <span className="lab-name clickable" onClick={(e) => { e.stopPropagation(); onOpenLab(lab.id); }}>{lab.name}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
                         <td>{taskTypeLabel(t)}</td>
                         <td>{t.source}</td>
                         <td><span className="tk-prio"><i style={{ background: PRIORITY_COLORS[t.priority] }} />{t.priority}</span></td>
-                        <td style={{ whiteSpace: "nowrap" }}>{t.createdAt ? new Date(t.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—"}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>{isRecurring(t) ? repeatLabel(t) : t.due ? fmtDue(t.due) : <span style={{ color: "var(--text-faint)" }}>Not set</span>}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>{t.createdAt ? fmtShort(new Date(t.createdAt)) : "—"}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>{isRecurring(t) ? repeatLabel(t) : t.due ? <>{fmtDue(t.due)}{t.dueTime && <span className="tk-time">{fmtTime(t.dueTime)}</span>}</> : <span style={{ color: "var(--text-faint)" }}>Not set</span>}</td>
                         <td style={{ fontWeight: 700, color: late ? "var(--bad)" : "var(--text-dim)" }}>{late != null ? `${late}d` : left != null ? `${left}d` : "—"}</td>
                         <td><span className={`tk-status ${STATUS_PILL[label] || "tk-st-open"}`}>{label}</span></td>
                         <td>{t.owner}</td>
-                        <td>{tat == null ? "—" : `${tat.toFixed(1)} days`}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>{tat == null ? "—" : `${tat.toFixed(1)}d`}</td>
                         <td style={{ color: "var(--text-dim)" }}>💬 {commentCounts[t.id] || 0}</td>
                       </tr>
                     );

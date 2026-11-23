@@ -1,7 +1,7 @@
 import { supabase } from "../supabaseClient";
 import { toINR } from "./format";
 import { todayISO, toLocalISODate } from "./dates";
-import { isRecurring } from "./tasks";
+import { isRecurring, isTaskOverdue } from "./tasks";
 import { pocMonthStatus } from "./labContacts";
 import { monthsIn } from "./periods";
 
@@ -116,12 +116,13 @@ export function computeKpis({ labs, tasks, scores, period, data }) {
   const collected = invoices.reduce((s, i) => s + toINR(Math.min(i.collectedManual, i.total), byId[i.labId].region), 0);
 
   const isDone = (t) => t.status === "Done" || t.done;
-  // With a due date: done counts straight away, even if closed early; open counts only once it's missed, after its due date.
+  // With a due date: done counts straight away, even if closed early; open counts only once it's missed, i.e. Overdue
+// (after its due date, or today after its due time).
   // No due date (decision Nov 4 2026): counts in the period it was closed. While open it can't be missed, so it's left out.
   const inPeriod = (d) => d >= period.start && d <= period.end;
   const due = tasks.filter((t) => {
     if (isRecurring(t)) return false;
-    if (t.due) return inPeriod(t.due) && (isDone(t) || t.due < today);
+    if (t.due) return inPeriod(t.due) && (isDone(t) || isTaskOverdue(t));
     return isDone(t) && !!t.completedAt && inPeriod(toLocalISODate(new Date(t.completedAt)));
   });
   const closed = due.filter(isDone).length;

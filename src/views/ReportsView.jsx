@@ -8,7 +8,7 @@ import { useScopedCsm } from "../lib/useScopedCsm";
 import { computeLabRollup } from "../lib/labRollup";
 import ScopeToggle from "../components/ScopeToggle";
 import SearchSelect from "../components/SearchSelect";
-import Paginated from "../components/Pager";
+import MultiSelectFilter from "../components/MultiSelectFilter";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const SEGMENTS = SEG_BANDS.map((b) => b.code);
@@ -21,7 +21,8 @@ const SEGMENTS = SEG_BANDS.map((b) => b.code);
 export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab }) {
   const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "reports");
   const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
-  const [tab, setTab] = useSessionState("reports.tab", "churn");
+  // MRR Breakdown opens first (Nov 23 2026). A new key, so a tab remembered from before doesn't reopen Churn.
+  const [tab, setTab] = useSessionState("reports.view", "mrr");
 
   const [churnRows, setChurnRows] = useState([]);
   const [loadingChurn, setLoadingChurn] = useState(SUPABASE_CONFIGURED);
@@ -88,7 +89,7 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
   const cityOptions = [...new Set(inCountry.filter((r) => !fState || r.state === fState).map((r) => (r.city || "").trim()).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b));
 
-  // MRR by State / by City — per client (parent lab), group MRR in INR; labs = the client plus its child labs.
+  // MRR by Country / State / City — per client (parent lab), group MRR in INR; labs = the client plus its child labs.
   function geoBreakdown(keyOf) {
     const groups = {};
     breakdownLabs.forEach((r) => {
@@ -99,6 +100,7 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
     const total = Object.values(groups).reduce((sum, g) => sum + g.mrr, 0);
     return Object.values(groups).map((g) => ({ ...g, pct: total ? g.mrr / total : 0 })).sort((a, b) => b.mrr - a.mrr);
   }
+  const countryBreakdown = geoBreakdown((r) => (r.country && r.country !== "—" ? r.country : "Not set"));
   const stateBreakdown = geoBreakdown((r) => (r.state && r.state !== "—" ? r.state : "Not set"));
   const cityBreakdown = geoBreakdown((r) => `${(r.city || "").trim() || "Not set"}${r.state && r.state !== "—" ? `, ${r.state}` : ""}`);
 
@@ -162,24 +164,15 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
     return { byRegion, total };
   }, [breakdownLabs]);
 
-  const countryBreakdown = useMemo(() => {
-    const byCountry = {};
-    breakdownLabs.forEach((l) => {
-      const key = l.country || "—";
-      byCountry[key] = (byCountry[key] || 0) + toINR(l.mrr, l.region);
-    });
-    const total = Object.values(byCountry).reduce((s, v) => s + v, 0);
-    return Object.entries(byCountry).sort((a, b) => b[1] - a[1]).map(([country, mrr]) => ({ country, mrr, pct: total ? mrr / total : 0 }));
-  }, [breakdownLabs]);
 
   return (
     <div>
       <h1 className="page-title">Financial Reports</h1>
-      <p className="page-sub">Churn/contraction history and MRR breakdowns for <b>{scopeLabel}</b> — the granular reporting leadership tracked in spreadsheets, now live.</p>
+      <p className="page-sub">MRR breakdowns and churn / contraction history for <b>{scopeLabel}</b> — the granular reporting leadership tracked in spreadsheets, now live.</p>
 
       <div className="tabbar">
-        <button className={`tabbtn${tab === "churn" ? " active" : ""}`} onClick={() => setTab("churn")}>Churn Report</button>
         <button className={`tabbtn${tab === "mrr" ? " active" : ""}`} onClick={() => setTab("mrr")}>MRR Breakdown</button>
+        <button className={`tabbtn${tab === "churn" ? " active" : ""}`} onClick={() => setTab("churn")}>Churn Report</button>
       </div>
 
       <div style={{ marginTop: 16 }}>
@@ -338,50 +331,52 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
               </table></div>
             </div>
 
-            <div className="table-card" style={{ flex: "2 1 360px" }}>
-              <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>MRR by Country</div>
-              <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Country</th><th>MRR</th><th>%</th></tr></thead>
-                <tbody>{countryBreakdown.map(({ country, mrr, pct }) => (
-                  <tr key={country}>
-                    <td>{country}</td>
-                    <td className="mrr-cell">{fmtINR(mrr)}</td>
-                    <td>{(pct * 100).toFixed(1)}%</td>
-                  </tr>
-                ))}</tbody>
-              </table></div>
-            </div>
           </div>
 
-          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 18 }}>
-            {[["MRR by State", "State", stateBreakdown], ["MRR by City", "City", cityBreakdown]].map(([title, col, rows]) => (
-              <div key={title} className="table-card" style={{ flex: "1 1 420px" }}>
-                <div style={{ padding: "14px 18px 4px", fontSize: 12.5, fontWeight: 700 }}>{title} <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>— highest MRR first</span></div>
-                {!rows.length ? <div style={{ padding: "10px 18px 16px", color: "var(--text-faint)", fontSize: 12.5 }}>No labs in this view.</div> : (
-                  <Paginated items={rows}>{(page) => (
-                    <div className="table-scroll"><table className="child-mini">
-                      <thead><tr><th>{col}</th><th>Clients</th><th>Labs</th><th>MRR</th><th>% of MRR</th><th>Avg MRR / client</th><th>ARR</th></tr></thead>
-                      <tbody>{page.map((g) => (
-                        <tr key={g.key}>
-                          <td>{g.key}</td>
-                          <td>{g.clients}</td>
-                          <td>{g.labs}</td>
-                          <td className="mrr-cell">{fmtINR(g.mrr)}</td>
-                          <td style={{ minWidth: 120 }}>
-                            <span className="pct-bar"><span style={{ width: `${Math.max(g.pct * 100, g.mrr > 0 ? 2 : 0)}%` }} /></span>
-                            <b>{(g.pct * 100).toFixed(1)}%</b>
-                          </td>
-                          <td className="mrr-cell">{fmtINR(g.clients ? g.mrr / g.clients : 0)}</td>
-                          <td className="mrr-cell">{fmtINR(g.mrr * 12)}</td>
-                        </tr>
-                      ))}</tbody>
-                    </table></div>
-                  )}</Paginated>
-                )}
-              </div>
-            ))}
-          </div>
+          <LocationTable dim="Country" rows={countryBreakdown} />
+          <LocationTable dim="State" rows={stateBreakdown} />
+          <LocationTable dim="City" rows={cityBreakdown} />
         </>
+      )}
+    </div>
+  );
+}
+
+// MRR by Country / State / City (Nov 23 2026): three separate full-width tables, no paging. Each scrolls down inside its
+// card with the header and totals pinned, and has its own checkbox filter with search, remembered across a refresh.
+function LocationTable({ dim, rows }) {
+  const [picked, setPicked] = useSessionState(`reports.loc.${dim}`, []);
+  const shown = picked.length ? rows.filter((g) => picked.includes(g.key)) : rows;
+  const total = shown.reduce((t, g) => ({ clients: t.clients + g.clients, labs: t.labs + g.labs, mrr: t.mrr + g.mrr, pct: t.pct + g.pct }), { clients: 0, labs: 0, mrr: 0, pct: 0 });
+  return (
+    <div className="table-card rep-loc" style={{ marginTop: 18 }}>
+      <div className="rep-loc-head">
+        <b>MRR by {dim}</b>
+        <MultiSelectFilter label={dim} selected={picked.filter((v) => rows.some((g) => g.key === v))} onChange={setPicked}
+          options={rows.map((g) => ({ value: g.key, label: g.key, hint: fmtINR(g.mrr) }))} />
+        <span className="rep-loc-note">{shown.length} of {rows.length} · highest MRR first</span>
+      </div>
+      {!rows.length ? <div style={{ padding: "10px 18px 16px", color: "var(--text-faint)", fontSize: 12.5 }}>No labs in this view.</div> : (
+        <div className="rep-scroll">
+          <table className="child-mini">
+            <thead><tr><th>{dim}</th><th className="num">Clients</th><th className="num">Labs</th><th className="num">MRR</th><th>% of MRR</th><th className="num">ARR</th></tr></thead>
+            <tbody>{shown.map((g) => (
+              <tr key={g.key}>
+                <td>{g.key}</td>
+                <td className="num">{g.clients}</td>
+                <td className="num">{g.labs}</td>
+                <td className="num mrr-cell">{fmtINR(g.mrr)}</td>
+                <td><span className="pct-bar"><span style={{ width: `${Math.max(g.pct * 100, g.mrr > 0 ? 2 : 0)}%` }} /></span><b>{(g.pct * 100).toFixed(1)}%</b></td>
+                <td className="num mrr-cell">{fmtINR(g.mrr * 12)}</td>
+              </tr>
+            ))}</tbody>
+            <tfoot><tr>
+              <td>{picked.length ? "Total (filtered)" : "Total"}</td>
+              <td className="num">{total.clients}</td><td className="num">{total.labs}</td><td className="num">{fmtINR(total.mrr)}</td>
+              <td><b>{(total.pct * 100).toFixed(1)}%</b></td><td className="num">{fmtINR(total.mrr * 12)}</td>
+            </tr></tfoot>
+          </table>
+        </div>
       )}
     </div>
   );

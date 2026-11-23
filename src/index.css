@@ -465,6 +465,30 @@
   .rescale-row i{color:var(--text-faint); font-style:normal; font-size:11px;}
   .rescale-row span:nth-child(2){color:var(--text-faint); text-align:right;}
   .rescale-head{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-faint); border-bottom:1px solid var(--border);}
+  /* Financial Reports → MRR by location: scrolls down inside the card, header and totals pinned. */
+  .rep-loc-head{display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 16px;}
+  .rep-loc-head > b{font-size:13px;}
+  .rep-loc-note{margin-left:auto; font-size:11.5px; color:var(--text-faint);}
+  .rep-scroll{max-height:420px; overflow-y:auto; border-top:1px solid var(--border);}
+  .rep-scroll table{width:100%;}
+  .rep-scroll thead th{position:sticky; top:0; z-index:1;}
+  .rep-scroll tfoot td{position:sticky; bottom:0; background:var(--surface-2); font-weight:700; border-top:1px solid var(--border);}
+  .rep-scroll .num{text-align:right;}
+  .msf-btn{display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border); border-radius:7px; padding:5px 10px; font-size:12px; font-family:inherit; background:var(--surface); color:var(--text); cursor:pointer; max-width:260px;}
+  .msf-btn.on{border-color:var(--accent); background:var(--accent-dim);}
+  .msf-label{color:var(--text-dim);}
+  .msf-caret{font-size:10px; color:var(--text-faint);}
+  .msf-pop{position:fixed; z-index:200; width:270px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 12px 32px rgba(16,24,40,.18); padding:8px;}
+  .msf-search{width:100%; border:1px solid var(--border); border-radius:7px; padding:6px 9px; font-size:12.5px; font-family:inherit; background:var(--surface); color:var(--text);}
+  .msf-actions{display:flex; justify-content:space-between; padding:6px 2px;}
+  .msf-actions button{border:none; background:none; color:var(--accent); font-size:11.5px; font-weight:600; cursor:pointer; padding:0;}
+  .msf-actions button:disabled{color:var(--text-faint); cursor:default;}
+  .msf-list{overflow-y:auto;}
+  .msf-row{display:flex; align-items:center; gap:8px; padding:5px 4px; border-radius:6px; font-size:12.5px; cursor:pointer;}
+  .msf-row:hover{background:var(--surface-2);}
+  .msf-text{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .msf-hint{font-size:11px; color:var(--text-faint);}
+  .msf-empty{padding:8px 4px; font-size:12px; color:var(--text-faint);}
   .pct-bar{display:inline-block; vertical-align:middle; width:60px; height:8px; margin-right:7px; border-radius:4px; background:var(--surface-3); overflow:hidden;}
   .pct-bar span{display:block; height:100%; background:var(--accent); border-radius:4px;}
   .pie-card{background:var(--surface); border:1px solid var(--border); border-radius:11px; padding:12px 14px; box-shadow:var(--shadow-card);}
@@ -605,6 +629,17 @@
     box-shadow:0 20px 60px rgba(16,24,40,.28); padding:22px 24px; max-height:92vh; overflow-y:auto;
     transform:translate(-50%,-46%) scale(.97); opacity:0; pointer-events:none; transition:transform .2s ease, opacity .2s ease;
   }
+  .modal-box:has(.atm){width:560px;}
+  .atm{display:flex; flex-direction:column; gap:16px;}
+  .atm-sec{display:flex; flex-direction:column; gap:12px;}
+  .atm-sec + .atm-sec{border-top:1px solid var(--border); padding-top:14px;}
+  .atm-head{font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-dim);}
+  .atm-grid{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px 14px;}
+  .atm-span{grid-column:1 / -1;}
+  .atm-opt{font-weight:400; color:var(--text-faint); font-size:11px; margin-left:4px;}
+  .atm-hint{font-size:11px; color:var(--text-faint);}
+  .atm .field input:disabled{opacity:.55;}
+  @media (max-width: 560px){ .atm-grid{grid-template-columns:minmax(0, 1fr);} }
   .modal-box.show{transform:translate(-50%,-50%) scale(1); opacity:1; pointer-events:auto;}
   .modal-box h3{margin:0 0 14px; font-size:15.5px;}
   .modal-actions{display:flex; justify-content:flex-end; gap:10px; margin-top:18px;}
@@ -719,7 +754,17 @@
   .tk-row:hover td{background:var(--surface-2);}
   .tk-row.active td{background:var(--accent-dim);}
   .tk-row.done .tk-title{text-decoration:line-through; color:var(--text-dim);}
-  .tk-title{font-weight:600; min-width:200px;}
+  /* Fixed widths (Nov 23 2026): long titles and lab names are cut with … and shown whole on hover or in the task panel. */
+  .tk-title{font-weight:600; width:220px; max-width:220px;}
+  .tk-title .tk-clip{display:inline-block; max-width:100%; vertical-align:bottom; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .tk-title:has(.cat-tag) .tk-clip{max-width:150px;}
+  .tp-title{max-width:300px;}
+  .tp-title .tk-clip{display:inline-block; max-width:100%; vertical-align:bottom; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .tp-title:has(.cat-tag) .tk-clip{max-width:200px;}
+  .tk-lab{max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .csm-edit{border:none; background:transparent; color:var(--accent); cursor:pointer; font-size:12px; font-weight:600; margin-left:6px; padding:0 2px;}
+  .csm-edit:hover{text-decoration:underline;}
+  .tk-time{display:block; font-size:11px; color:var(--text-dim);}
   .tk-group td{font-size:12px; font-weight:700; padding:7px 10px; border-bottom:1px solid var(--border);}
   .tk-g-overdue td{background:var(--bad-bg); color:var(--bad);}
   .tk-g-today td{background:var(--warn-bg); color:var(--warn);}

@@ -3,7 +3,7 @@ import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllVisits, addVisit, updateVisit } from "../lib/visits";
-import { fetchAllTasks, taskBucket, addTask, toggleTaskDone, deleteTask, updateTask, todayISO, syncFollowupTaskForVisit } from "../lib/tasks";
+import { fetchAllTasks, taskDueBucket, addTask, toggleTaskDone, deleteTask, updateTask, todayISO, syncFollowupTaskForVisit, fmtTime } from "../lib/tasks";
 import { filterLabsByLabType } from "../lib/labs";
 import { checkinDateBounds, isCheckinDateAllowed, CHECKIN_DATE_MESSAGE } from "../lib/dates";
 import { useScopedCsm } from "../lib/useScopedCsm";
@@ -40,6 +40,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
   const [logNotes, setLogNotes] = useState("");
   const [logFollowup, setLogFollowup] = useState("");
   const [logFollowupReason, setLogFollowupReason] = useState("");
+  const [logFollowupTime, setLogFollowupTime] = useState("");
   const [logSentiment, setLogSentiment] = useState("");
   const [logEngagement, setLogEngagement] = useState(""); // Proactive / Reactive — required
   const [logFromTask, setLogFromTask] = useState(null); // a planned-visit task being completed by this log
@@ -49,6 +50,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
   const [planOpen, setPlanOpen] = useState(false);
   const [planLabId, setPlanLabId] = useState("");
   const [planDate, setPlanDate] = useState("");
+  const [planTime, setPlanTime] = useState("");
   const [planPurpose, setPlanPurpose] = useState("");
   const [planError, setPlanError] = useState("");
 
@@ -60,6 +62,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
   const [editNotes, setEditNotes] = useState("");
   const [editFollowup, setEditFollowup] = useState("");
   const [editFollowupReason, setEditFollowupReason] = useState("");
+  const [editFollowupTime, setEditFollowupTime] = useState("");
   const [editSentiment, setEditSentiment] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [fLab, setFLab] = useSessionState("visits.fLab", "");
@@ -115,7 +118,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
   const labOptions = labSelectOptions(flattenRollup(allRows));
 
   function resetLogForm() {
-    setLogLabId(""); setLogDate(todayISO()); setLogNotes(""); setLogFollowup(""); setLogFollowupReason("");
+    setLogLabId(""); setLogDate(todayISO()); setLogNotes(""); setLogFollowup(""); setLogFollowupReason(""); setLogFollowupTime("");
     setLogSentiment(""); setLogEngagement(""); setLogFromTask(null); setLogError(false);
   }
   function openLog() { resetLogForm(); setLogOpen(true); }
@@ -139,7 +142,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
       const lab = labsById[logLabId];
       const newVisitId = await addVisit({
         labId: logLabId, csmId: idByName[lab?.csm], type: VISIT_TYPE, visitDate: logDate,
-        notes: logNotes, nextFollowupDate: logFollowup || null, nextFollowupReason: logFollowupReason,
+        notes: logNotes, nextFollowupDate: logFollowup || null, nextFollowupReason: logFollowupReason, nextFollowupTime: logFollowup ? logFollowupTime : "",
         sentiment: logSentiment || null,
         engagement: logEngagement,
       });
@@ -154,6 +157,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
           type: PLANNED_VISIT_TASK_TYPE,
           repeat: "none",
           due: logFollowup,
+          dueTime: logFollowupTime || null,
           idByName,
           assignedByName: currentCSM,
           sourceVisitId: newVisitId,
@@ -169,7 +173,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
   }
 
   function openPlan() {
-    setPlanLabId(""); setPlanDate(""); setPlanPurpose(""); setPlanError("");
+    setPlanLabId(""); setPlanDate(""); setPlanTime(""); setPlanPurpose(""); setPlanError("");
     setPlanOpen(true);
   }
   async function handlePlanVisit() {
@@ -187,6 +191,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
         type: PLANNED_VISIT_TASK_TYPE,
         repeat: "none",
         due: planDate,
+        dueTime: planTime || null,
         idByName,
         assignedByName: currentCSM,
       });
@@ -198,7 +203,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
   // Purpose is whatever follows "Planned visit — <lab>: " in the task text.
   function openEditPlanned(task) {
     const m = (task.desc || "").match(/^[^—]*—[^:]*:\s*(.*)$/);
-    setEditPlan({ task, date: task.due || "", purpose: m ? m[1] : "" });
+    setEditPlan({ task, date: task.due || "", time: task.dueTime || "", purpose: m ? m[1] : "" });
   }
   async function handleSavePlanned() {
     if (!editPlan.date) { showToast("Pick the planned date."); return; }
@@ -206,6 +211,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
       const lab = labsById[editPlan.task.labId];
       await updateTask(editPlan.task.id, {
         due: editPlan.date,
+        dueTime: editPlan.time || null,
         desc: `Planned visit — ${lab ? lab.name : editPlan.task.labId}${editPlan.purpose.trim() ? `: ${editPlan.purpose.trim()}` : ""}`,
       });
       setEditPlan(null);
@@ -227,6 +233,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
     setEditNotes(v.notes || "");
     setEditFollowup(v.nextFollowupDate || "");
     setEditFollowupReason(v.nextFollowupReason || "");
+    setEditFollowupTime(v.nextFollowupTime || "");
     setEditSentiment(v.sentiment || "");
     setEditOpen(true);
   }
@@ -238,14 +245,14 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
     try {
       await updateVisit(editId, {
         type: VISIT_TYPE, visitDate: editDate, notes: editNotes,
-        nextFollowupDate: editFollowup || null, nextFollowupReason: editFollowupReason,
+        nextFollowupDate: editFollowup || null, nextFollowupReason: editFollowupReason, nextFollowupTime: editFollowup ? editFollowupTime : "",
         sentiment: editSentiment || null,
       });
       // Keep this visit's linked follow-up task in step with the follow-up date as edited.
       const editLab = labsById[editLabId];
       await syncFollowupTaskForVisit({
         visitId: editId, labId: editLabId, labName: editLab ? editLab.name : editLabId, ownerName: editLab?.csm || currentCSM, idByName,
-        nextFollowupDate: editFollowup || null, nextFollowupReason: editFollowupReason,
+        nextFollowupDate: editFollowup || null, nextFollowupReason: editFollowupReason, nextFollowupTime: editFollowup ? editFollowupTime : "",
         type: PLANNED_VISIT_TASK_TYPE, descPrefix: "Planned visit",
       });
       setEditOpen(false);
@@ -286,7 +293,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
         <div className="table-card" style={{ marginBottom: 22 }}><div className="table-scroll"><table className="child-mini">
           <thead><tr><th>Lab</th><th>City</th><th>Visit</th><th>Planned For</th><th>CSM</th><th></th></tr></thead>
           <tbody>{upcoming.map((t) => {
-            const bucket = taskBucket(t.due);
+            const bucket = taskDueBucket(t);
             const dueColor = bucket === "overdue" ? "var(--bad)" : bucket === "today" ? "var(--warn)" : "var(--text-dim)";
             const lab = labsById[t.labId];
             return (
@@ -295,7 +302,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
                 <td>{cityOf(t.labId) || "—"}</td>
                 <td style={{ fontSize: 12 }}>{t.desc}</td>
                 <td style={{ fontWeight: 700, color: dueColor, whiteSpace: "nowrap" }}>
-                  {bucket === "overdue" ? "Overdue · " : ""}{t.due ? new Date(t.due + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "—"}
+                  {bucket === "overdue" ? "Overdue · " : ""}{t.due ? new Date(t.due + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "—"}{t.dueTime ? `, ${fmtTime(t.dueTime)}` : ""}
                 </td>
                 <td>{t.owner}</td>
                 <td style={{ whiteSpace: "nowrap" }}>
@@ -378,6 +385,10 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
             <label>Next Visit (optional)</label>
             <input type="date" style={fieldStyle} value={logFollowup} min={todayISO()} onChange={(e) => setLogFollowup(e.target.value)} />
           </div>
+          <div className="tmpl-field" style={{ flex: "0 0 120px" }}>
+            <label>Time</label>
+            <input type="time" style={fieldStyle} value={logFollowupTime} disabled={!logFollowup} onChange={(e) => setLogFollowupTime(e.target.value)} />
+          </div>
           <div className="tmpl-field" style={{ flex: 1 }}>
             <label>Purpose of next visit</label>
             <input style={fieldStyle} value={logFollowupReason} onChange={(e) => setLogFollowupReason(e.target.value)} placeholder="e.g. QBR, training" />
@@ -401,7 +412,10 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
             <div style={{ fontSize: 12.5, marginBottom: 12 }}><b>{labsById[editPlan.task.labId]?.name || editPlan.task.labId}</b>{cityOf(editPlan.task.labId) ? ` · ${cityOf(editPlan.task.labId)}` : ""}</div>
             <div className="tmpl-field" style={{ marginBottom: 12 }}>
               <label>Planned Date</label>
-              <input type="date" style={fieldStyle} value={editPlan.date} onChange={(e) => setEditPlan((p) => ({ ...p, date: e.target.value }))} />
+              <span style={{ display: "flex", gap: 8 }}>
+                <input type="date" style={fieldStyle} value={editPlan.date} onChange={(e) => setEditPlan((p) => ({ ...p, date: e.target.value }))} />
+                <input type="time" style={{ ...fieldStyle, maxWidth: 130 }} value={editPlan.time} aria-label="Planned time" onChange={(e) => setEditPlan((p) => ({ ...p, time: e.target.value }))} />
+              </span>
             </div>
             <div className="tmpl-field">
               <label>Purpose (optional)</label>
@@ -426,7 +440,10 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
         </div>
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
           <label>Planned Date</label>
-          <input type="date" style={fieldStyle} value={planDate} min={todayISO()} onChange={(e) => setPlanDate(e.target.value)} />
+          <span style={{ display: "flex", gap: 8 }}>
+            <input type="date" style={fieldStyle} value={planDate} min={todayISO()} onChange={(e) => setPlanDate(e.target.value)} />
+            <input type="time" style={{ ...fieldStyle, maxWidth: 130 }} value={planTime} aria-label="Planned time" onChange={(e) => setPlanTime(e.target.value)} />
+          </span>
         </div>
         <div className="tmpl-field">
           <label>Purpose (optional)</label>
@@ -466,6 +483,10 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
           <div className="tmpl-field" style={{ flex: 1 }}>
             <label>Next Visit (optional)</label>
             <input type="date" style={fieldStyle} value={editFollowup} onChange={(e) => setEditFollowup(e.target.value)} />
+          </div>
+          <div className="tmpl-field" style={{ flex: "0 0 120px" }}>
+            <label>Time</label>
+            <input type="time" style={fieldStyle} value={editFollowupTime} disabled={!editFollowup} onChange={(e) => setEditFollowupTime(e.target.value)} />
           </div>
           <div className="tmpl-field" style={{ flex: 1 }}>
             <label>Purpose of next visit</label>

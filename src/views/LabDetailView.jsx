@@ -17,7 +17,7 @@ import {
 import { LAB_TYPES, updateLabStatus, updateLabTestimonial, updateLabDetails, updateLabBillingMode, updateLabMRR, fetchMrrHistory } from "../lib/labs";
 import { HEALTH_STATUSES, isHealthyStatus, logLabPulse } from "../lib/pulse";
 import { fetchAllVisits, fetchVisitById, updateVisit } from "../lib/visits";
-import { syncFollowupTaskForVisit, addTask } from "../lib/tasks";
+import { syncFollowupTaskForVisit, addTask, fmtTime } from "../lib/tasks";
 import { todayISO, dueDateFor, isCheckinDateAllowed, CHECKIN_DATE_MESSAGE } from "../lib/dates";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { CHURN_TYPES, logChurn } from "../lib/churn";
@@ -255,6 +255,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   const [vActionItems, setVActionItems] = useState([]);
   const [vFollowup, setVFollowup] = useState("");
   const [vFollowupReason, setVFollowupReason] = useState("");
+  const [vFollowupTime, setVFollowupTime] = useState("");
 
   useEffect(() => {
     if (!openVisitId) { setVisitDetail(null); setVisitEditMode(false); return; }
@@ -294,6 +295,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     setVActionItems(v.actionItems || []);
     setVFollowup(v.nextFollowupDate || "");
     setVFollowupReason(v.nextFollowupReason || "");
+    setVFollowupTime(v.nextFollowupTime || "");
     setVisitEditMode(true);
   }
   function cancelEditVisit() {
@@ -325,7 +327,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
     try {
       await updateVisit(openVisitId, {
         type: vType, visitDate: vDate, notes: vNotes,
-        nextFollowupDate: vFollowup || null, nextFollowupReason: vFollowupReason,
+        nextFollowupDate: vFollowup || null, nextFollowupReason: vFollowupReason, nextFollowupTime: vFollowup ? vFollowupTime : "",
         sentiment: vSentiment || null,
         engagement: vEngagement || null,
         durationMinutes: vDuration ? Number(vDuration) : null,
@@ -338,7 +340,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       });
       await syncFollowupTaskForVisit({
         visitId: openVisitId, labId: lab.id, labName: lab.name, ownerName: lab.csm || currentCSM, idByName,
-        nextFollowupDate: vFollowup || null, nextFollowupReason: vFollowupReason,
+        nextFollowupDate: vFollowup || null, nextFollowupReason: vFollowupReason, nextFollowupTime: vFollowup ? vFollowupTime : "",
       });
       // Action items added while editing become tasks too (same as at Log Check-in). Existing ones are
       // matched by their text so re-saving an unchanged check-in never creates duplicate tasks.
@@ -941,7 +943,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
         <div className="detail-meta">
           <div className="m"><div>Lab ID</div><div>{lab.labCode || lab.id}</div></div>
           <div className="m"><div>Type</div><div>{lab.type} Lab</div></div>
-          <div className="m"><div>CSM</div><div>{lab.csm}</div></div>
+          <div className="m"><div>CSM</div><div>{lab.csm}{viewer.isHead && <button type="button" className="csm-edit" title="Edit CSM" aria-label="Edit CSM" onClick={() => { setNewCsm(lab.csm); setReassignOpen(true); }}>✎</button>}</div></div>
           <div className="m"><div>Plan</div><div>{plan.name}</div></div>
           <div className="m"><div>Segment</div><div>{seg.code} — {SEG_NAME[seg.code]}</div></div>
           <div className="m"><div>Current MRR</div><div>{fmtMoney(effectiveMRR(lab), lab.region)}</div></div>
@@ -1007,7 +1009,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                 )}
                 {row("Hierarchy", lab.type + " Lab")}
                 {row("Parent Lab", lab.parent ? (labs.find((l) => l.id === lab.parent) || {}).name || lab.parent : "—")}
-                {row("CSM Name", lab.csm)}
+                {row("CSM Name", <>{lab.csm}{viewer.isHead && <button type="button" className="csm-edit" title="Edit CSM" aria-label="Edit CSM" onClick={() => { setNewCsm(lab.csm); setReassignOpen(true); }}>✎ Edit</button>}</>)}
                 {row("Region Category", lab.region,
                   <div>
                     <select value={editRegion} onChange={(e) => setEditRegion(e.target.value)} style={inputStyle}>
@@ -1133,11 +1135,11 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
 
       <Modal
         open={reassignOpen}
-        title="Reassign CSM"
+        title="Edit CSM"
         onClose={() => setReassignOpen(false)}
         actions={[
           { label: "Cancel", className: "btn-ghost", onClick: () => setReassignOpen(false) },
-          { label: "Reassign", className: "btn-primary", onClick: handleReassignClick, disabled: newCsm === lab.csm },
+          { label: "Save CSM", className: "btn-primary", onClick: handleReassignClick, disabled: newCsm === lab.csm },
         ]}
       >
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
@@ -1879,8 +1881,11 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                             ))}
                           </div>
                         )}
-                        {row("Next Follow-up Date", visitDetail.nextFollowupDate ? new Date(visitDetail.nextFollowupDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—",
-                          <input type="date" value={vFollowup} onChange={(e) => setVFollowup(e.target.value)} style={inputStyle} />
+                        {row("Next Follow-up Date", visitDetail.nextFollowupDate ? `${new Date(visitDetail.nextFollowupDate + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}${visitDetail.nextFollowupTime ? `, ${fmtTime(visitDetail.nextFollowupTime)}` : ""}` : "—",
+                          <span style={{ display: "flex", gap: 8 }}>
+                            <input type="date" value={vFollowup} onChange={(e) => setVFollowup(e.target.value)} style={inputStyle} />
+                            <input type="time" value={vFollowupTime} disabled={!vFollowup} onChange={(e) => setVFollowupTime(e.target.value)} style={{ ...inputStyle, maxWidth: 130 }} aria-label="Follow-up time" />
+                          </span>
                         )}
                         {row("Follow-up Reason", visitDetail.nextFollowupReason || "—",
                           <input value={vFollowupReason} onChange={(e) => setVFollowupReason(e.target.value)} placeholder="e.g. QBR" style={inputStyle} />

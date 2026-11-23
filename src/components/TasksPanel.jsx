@@ -1,19 +1,27 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useSessionState } from "../lib/useSessionState";
 import AddTaskModal from "./AddTaskModal";
+import TaskDrawer from "./TaskDrawer";
 import SearchSelect from "./SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
 import {
-  TASK_SECTIONS, isTaskDoneToday, taskDisplayBucket, repeatLabel, taskTypeLabel, getTasksForPanel,
+  TASK_SECTIONS, isTaskDoneToday, taskDisplayBucket, repeatLabel, taskTypeLabel, getTasksForPanel, fmtTime,
 } from "../lib/tasks";
 
 // "Tasks for Today" — shared by Dashboard and My Portfolio. scopeCsm=null means "everyone in this
 // scope" (a Lead's Team View with no CSM filter); otherwise only that CSM's tasks show.
 // `persistKey` names where this panel sits (dashboard / portfolio / tasks) so its lab filter is remembered across a
 // refresh per screen. `sortByDue` ("asc" | "desc") swaps the Overdue/Today/… sections for one flat list ordered by due date (tasks with
-// no due date last).
-export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, onOpenLab, isHead, currentCSM, csmNames, labOptions, labsById, sortByDue, persistKey }) {
+// no due date last). Like the Tasks page (Nov 23 2026), long titles and lab names are cut with … and clicking a row opens
+// the task panel with everything about it; `onTasksChanged` reloads the list after a change there.
+export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, onOpenLab, isHead, currentCSM, csmNames, labOptions, labsById, sortByDue, persistKey, idByName, showToast, onTasksChanged }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [openId, setOpenId] = useState(null);
+  // Re-check every minute, so a task turns Overdue at its due time without a reload.
+  const [, setMinute] = useState(0);
+  useEffect(() => { const id = setInterval(() => setMinute((m) => m + 1), 60000); return () => clearInterval(id); }, []);
+  const openTask = openId ? tasks.find((t) => t.id === openId) : null;
+  const nameById = Object.fromEntries(Object.entries(idByName || {}).map(([n, id]) => [id, n]));
   const [fLab, setFLab] = useSessionState(`tasksPanel.${persistKey || "default"}.fLab`, ""); // lab-wise filter
   const display = getTasksForPanel(tasks, scopeCsm).filter((t) => !fLab || t.labId === fLab);
 
@@ -23,7 +31,7 @@ export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, o
         <SearchSelect value={fLab} onChange={setFLab} options={labSelectOptions(labOptions || [])} emptyLabel="All labs" placeholder="All labs"
           inputStyle={{ border: "1px solid var(--border)", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontFamily: "inherit", background: "var(--surface)", color: "var(--text)" }} />
       </span>
-      <button className="btn btn-ghost" style={{ fontSize: 11, padding: "5px 10px" }} onClick={() => setModalOpen(true)}>+ Add Task</button>
+      <button className="btn btn-primary" style={{ fontSize: 11, padding: "5px 10px" }} onClick={() => setModalOpen(true)}>+ Add Task</button>
     </span>
   );
 
@@ -54,17 +62,17 @@ export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, o
                         const bucket = taskDisplayBucket(t);
                         const dueLabel = t.repeat && t.repeat !== "none"
                           ? repeatLabel(t)
-                          : (t.due ? new Date(t.due + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "No due date");
+                          : (t.due ? `${new Date(t.due + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}${t.dueTime ? `, ${fmtTime(t.dueTime)}` : ""}` : "No due date");
                         const dueColor = doneToday ? "var(--text-faint)" : bucket === "overdue" ? "var(--bad)" : bucket === "today" ? "var(--warn)" : "var(--text-dim)";
                         return (
-                          <tr key={t.id} style={doneToday ? { opacity: 0.6 } : undefined}>
-                            <td><input className="task-check" type="checkbox" checked={doneToday} onChange={() => onToggleDone(t)} title="Mark done" /></td>
-                            <td style={doneToday ? { textDecoration: "line-through" } : undefined}>
-                              {t.desc}
+                          <tr key={t.id} className={`tk-row${openId === t.id ? " active" : ""}`} style={doneToday ? { opacity: 0.6 } : undefined} onClick={() => setOpenId(t.id)} title="Open the task">
+                            <td onClick={(e) => e.stopPropagation()}><input className="task-check" type="checkbox" checked={doneToday} onChange={() => onToggleDone(t)} title="Mark done" /></td>
+                            <td className="tp-title" title={t.desc} style={doneToday ? { textDecoration: "line-through" } : undefined}>
+                              <span className="tk-clip">{t.desc}</span>
                               {t.auto && <span className="cat-tag cat-Warn"> System</span>}
                               {t.assignedBy && <span className="cat-tag cat-Indigo"> From {t.assignedBy}</span>}
                             </td>
-                            <td>{t.labId ? <span className="lab-name clickable" onClick={() => onOpenLab(t.labId)}>{labsById?.[t.labId]?.name || t.labId}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
+                            <td className="tk-lab" title={labsById?.[t.labId]?.name}>{t.labId ? <span className="lab-name clickable" onClick={(e) => { e.stopPropagation(); onOpenLab(t.labId); }}>{labsById?.[t.labId]?.name || t.labId}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
                             <td>{taskTypeLabel(t)}</td>
                             <td>{t.owner}</td>
                             <td style={{ color: dueColor, fontWeight: 700, whiteSpace: "nowrap" }}>{bucket === "overdue" && !doneToday ? "Overdue · " : ""}{dueLabel}</td>
@@ -78,6 +86,11 @@ export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, o
             </table>
           </div>
         </div>
+      )}
+      {openTask && idByName && (
+        <TaskDrawer key={openTask.id} task={openTask} lab={labsById?.[openTask.labId] || null}
+          currentCSM={currentCSM} isHead={isHead} csmNames={csmNames} idByName={idByName} nameById={nameById}
+          onClose={() => setOpenId(null)} onChanged={() => onTasksChanged?.()} onOpenLab={onOpenLab} showToast={showToast} />
       )}
       <AddTaskModal
         open={modalOpen}

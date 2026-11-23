@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   TASK_STATUSES, TASK_PRIORITIES, PRIORITY_COLORS, isRecurring, isTaskDoneToday, taskStatusLabel, taskTypeLabel, repeatLabel,
-  resolutionDays, setTaskStatus, toggleTaskDone, updateTaskFields, deleteTask, fetchTaskUpdates, addTaskComment, deleteTaskUpdate,
+  resolutionDays, setTaskStatus, toggleTaskDone, updateTaskFields, fmtTime as fmtDueTime, deleteTask, fetchTaskUpdates, addTaskComment, deleteTaskUpdate,
 } from "../lib/tasks";
 
 const field = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 9px", fontSize: 12.5, fontFamily: "inherit", background: "var(--surface)", color: "var(--text)" };
@@ -113,9 +113,10 @@ export default function TaskDrawer({ task, lab, currentCSM, isHead, csmNames, id
               {canEdit && !recurring ? (
                 <div style={{ display: "flex", gap: 4 }}>
                   <input ref={dueRef} type="date" style={field} value={task.due || ""} disabled={busy} onChange={(e) => change({ due: e.target.value || null })} />
+                  {task.due && <input type="time" style={{ ...field, width: 110 }} value={task.dueTime || ""} disabled={busy} aria-label="Due time" onChange={(e) => change({ dueTime: e.target.value || null })} />}
                   {task.due && <button type="button" className="tk-icon-btn" title="Remove due date" onClick={() => change({ due: null })}>✕</button>}
                 </div>
-              ) : <b style={{ fontSize: 13 }}>{recurring ? repeatLabel(task) : task.due ? fmtDate(task.due) : "No due date"}</b>}
+              ) : <b style={{ fontSize: 13 }}>{recurring ? repeatLabel(task) : task.due ? `${fmtDate(task.due)}${task.dueTime ? `, ${fmtDueTime(task.dueTime)}` : ""}` : "No due date"}</b>}
             </div>
           </div>
 
@@ -136,7 +137,7 @@ export default function TaskDrawer({ task, lab, currentCSM, isHead, csmNames, id
 
           <div className="tk-stats">
             <div><label>Created On</label><b>{fmtDate(task.createdAt)}</b><span>{new Date(task.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span></div>
-            <div><label>Due Date</label><b>{recurring ? repeatLabel(task) : task.due ? fmtDate(task.due) : "Not set"}</b></div>
+            <div><label>Due Date</label><b>{recurring ? repeatLabel(task) : task.due ? fmtDate(task.due) : "Not set"}</b>{!recurring && task.dueTime && <span style={{ display: "block", fontSize: 11, color: "var(--text-dim)" }}>{fmtDueTime(task.dueTime)}</span>}</div>
             <div><label>Days Elapsed</label><b style={{ color: statusLabel === "Overdue" ? "var(--bad)" : undefined }}>{elapsed} day{elapsed === 1 ? "" : "s"}</b></div>
             <div><label>Resolution TAT</label><b>{tat == null ? "—" : `${tat.toFixed(1)} days`}</b><span>{tat == null ? (task.status === "Done" ? "Not recorded" : "Pending") : ""}</span></div>
           </div>

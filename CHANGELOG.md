@@ -2,6 +2,11 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Nov 23 2026 — Tasks, Financial Reports, Edit CSM
+- Tasks (and Tasks for Today on Dashboard / My Portfolio, which now opens the task panel on click): fixed-width Task and Lab columns, Status sort (Overdue, Due Today, Open…), optional due time (migration 0048) that makes a task Overdue once it passes, also on check-in follow-ups and planned / next visits (0049), a tidier Add Task popup; the Dashboard's Add Task button is green.
+- Financial Reports opens on MRR Breakdown, now the first tab. MRR by Country, State and City are three full-width tables, each with a checkbox filter with search, a pinned total and no paging; Avg MRR / client removed.
+- Leads and Admins can edit a lab's CSM from the lab header and the Lab Details CSM row.
+
 ## Nov 5 2026 — Expansion MRR, analytics and tasks
 - Every Expansion tab shows Expansion MRR and ARR (only revenue from expansion) instead of total MRR.
 - Deals & Purchases has tiles, charts, one list of Feature and Manual expansions with an edit side panel, and an Expansion Tasks view. Manual deals have a title and module (migration 0046); features have an expected live date and description (0047).
