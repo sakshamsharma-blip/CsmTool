@@ -211,7 +211,7 @@ with the same context and follows the same rules. Read it fully before making ch
   null = no target). Done this month = the lab's Proactive check-ins in the current month whose Person Contacted matches the POC's name
   (`pocMonthStatus` / `pocCompliance` in `lib/labContacts.js`); shown as done / left on the Points of Contact tab and as a per-CSM
   compliance table on the Dashboard (done is capped at each POC's target).
-- **Check-in dates** (Oct 30 2026): Log Check-in, a logged offline visit, and edits to either can only be dated **today or yesterday**
+- **Check-in dates** — ⚠ **TEMPORARILY RELAXED (Nov 2026)**: `ALLOW_BACKDATED_CHECKINS = true` in `lib/dates.js` allows any past date (future still blocked) while earlier data is entered; the owner will ask to set it back to `false`. The normal rule (Oct 30 2026): Log Check-in, a logged offline visit, and edits to either can only be dated **today or yesterday**
   (`checkinDateBounds` / `isCheckinDateAllowed` in `lib/dates.js`; UI-enforced, no database check). An edit keeps its existing date
   unless the date is changed. Applies to Proactive and Reactive alike; Leads / Admins are not exempt.
 - **Dashboard churn tiles** (overall and per CSM): Churn Count, MRR Churned, ARR Churned, MRR Contraction, MRR

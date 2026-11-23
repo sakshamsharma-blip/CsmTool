@@ -37,12 +37,17 @@ export function dueDateFor(startISO, creditDays) {
 
 // Check-ins and logged visits can be dated today or the previous day only (rule of Oct 30 2026) — keeps the log current.
 // Applies to every check-in type, Proactive or Reactive, and to a logged offline visit; UI-enforced.
+// TEMPORARILY OFF (Nov 2026) while earlier data is entered: any past date is allowed, only the future is blocked.
+// Set back to false to restore today-or-yesterday everywhere.
+export const ALLOW_BACKDATED_CHECKINS = true;
 export function checkinDateBounds() {
   const today = todayISO();
-  return { min: addDaysISO(today, -1), max: today };
+  return { min: ALLOW_BACKDATED_CHECKINS ? undefined : addDaysISO(today, -1), max: today };
 }
 export function isCheckinDateAllowed(iso) {
   const { min, max } = checkinDateBounds();
-  return !!iso && iso >= min && iso <= max;
+  return !!iso && (!min || iso >= min) && iso <= max;
 }
-export const CHECKIN_DATE_MESSAGE = "Check-ins can only be dated today or yesterday — older entries can't be added or backdated.";
+export const CHECKIN_DATE_MESSAGE = ALLOW_BACKDATED_CHECKINS
+  ? "Check-ins can't be dated in the future."
+  : "Check-ins can only be dated today or yesterday — older entries can't be added or backdated.";
