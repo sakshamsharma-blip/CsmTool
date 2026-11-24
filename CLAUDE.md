@@ -165,12 +165,23 @@ with the same context and follows the same rules. Read it fully before making ch
   NPS breakdown + ratings, the two trends, By CSM, By designation, By lab, and LAST the "Monthly feedback & quarterly NPS" list of clients still
   due (highest MRR first, + Record) — recorded data first, the to-do list after. **Every tile, bar and row clicks through** to Responses (`drill`;
   NPS-group / star filters show as chips). Dates are a preset select (This month, Last 30 days, This quarter, Last quarter, This year, All time,
-  Custom). Demo mode has fake responses (`buildDemoFeedback` in `lib/demoSeed.js`; saves last until reload).
-  Opens on Team View for a Lead / Admin (`useScopedCsm(viewer, "feedback", "team")`) and on the Report tab (Nov 24 2026, session key `feedback.view`).
-  Responses and Testimonials are newest first (date, then when recorded), one line per row (long text cut with …); clicking a row opens a side panel
-  with the full details and Edit / Delete (`FeedbackDetail`). Tabs in order: Report, Responses, Testimonials (same format, with `collected_on` date — 0040). Report (Average NPS out of
-  10, promoters 9–10 / passives 7–8 / detractors 0–6, avg rating; By CSM with total labs + labs with feedback +
-  coverage; By designation; By lab; CSV export). Filters: lab, CSM scope, designation, source, date range.
+  Custom). Demo mode has fake responses and 28 testimonials (`buildDemoFeedback` in `lib/demoSeed.js`; saves last until reload).
+  **Layout (Nov 24 2026)**: ONE sidebar item (no sub-items, by decision); five tabs on the page — 1. Overview (headline, tiles, NPS breakdown +
+  ratings, the two trends, By designation), 2. Lab-wise Report (every client: responses, avg / latest NPS, rating, this month's feedback and this
+  quarter's NPS ✓ / Due; "Judge by" Feedback + NPS / Feedback only / NPS only and "Show" Done and due / Done only / Due only; a **Done** section first, then
+  **Still due** with + Record; replaces the old By lab + still-due list), 3. CSM Performance
+  (avg NPS, feedback coverage and NPS coverage per CSM, then By CSM), 4. Response Details (the responses list + search), 5. Testimonials. The period
+  picker is in the header (top right) and applies to every tab. Session keys `feedback.view` (old "report" → Overview), `feedback.labWhat` / `feedback.labState`, `feedback.search`, `feedback.t.*`.
+  Opens on Team View for a Lead / Admin (`useScopedCsm(viewer, "feedback", "team")`) and on Overview.
+  Lists are newest first, one line per row; clicking a row opens a side panel with the full details and Edit / Delete (`FeedbackDetail`, `TestimonialDetail`).
+  **Testimonials** (`components/TestimonialsTab.jsx`, rules + topic list in `supabase/functions/_shared/testimonials.js` re-exported by
+  `lib/testimonials.js`, migration 0051): format Video / Written; Written needs a source (Email, WhatsApp, Google Form, or Other + `source_detail` saying what it was —
+  decision Nov 24 2026); topics (one or more, saved as keys "group:key"; Product & Module Experience = Overall + a FIXED module list `PRODUCT_TOPICS` (not the template); plus
+  Technical & Integration, Customer Support & Service, Implementation & Adoption, Business Impact & Value, Relationship & Brand); optional rating
+  1–5 in half steps; status Pending → In Review → Approved → Published; consent Not Requested / Requested / Received; **Approved / Published need
+  consent = Received** (UI-enforced). The CSM always comes from the lab. Status changes log to Lab History (`updateTestimonial`). Rows from before
+  0051 read as Video with status / consent "Not set". Topic groups start collapsed in the form. Tiles (total, video, written, designations, topics, avg rating, approved / published), charts
+  (format, designation split video / written, topic, written by source) all click through; table with ↗ link, 👁 details, ⋮ Edit / Move to / Delete.
 - **POC designation** is a dropdown (`POC_DESIGNATIONS` in `lib/labContacts.js`, `components/DesignationSelect.jsx`,
   with "Other…" to type one); older free-text values are kept until edited. Used on Points of Contact, Log Check-in
   and the Feedback "+ Add POC".
@@ -376,7 +387,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership. **Support & Tickets** is a sidebar link that opens
   Flow (https://creliohealthflow.vercel.app/, the CS ↔ Product escalation tracker) in a new tab.
-- Latest migration: `0050_manager_role.sql`; **0001–0050 are all applied** (Nov 23 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+- Latest migration: `0051_testimonial_details.sql`; **0001–0051 are all applied** (Nov 24 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).

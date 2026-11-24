@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import {
@@ -11,13 +11,16 @@ import { toINR, fmtAmount } from "../lib/format";
 import { periodContaining, previousPeriod } from "../lib/periods";
 import { useChartTooltip } from "../lib/useChartTooltip";
 import { Card, ScaleTrend } from "../components/Analytics";
+import TestimonialsTab, { TestimonialDetail, TestimonialForm } from "../components/TestimonialsTab";
+import { needsConsent, topicInfo, sourceText } from "../lib/testimonials";
+const topicLabelOf = (k, modules) => topicInfo(k, modules).label;
 import { fetchAllLabContacts, addLabContact } from "../lib/labContacts";
 import { todayISO, addDaysISO } from "../lib/dates";
 import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
 import SearchSelect from "../components/SearchSelect";
-import DesignationSelect from "../components/DesignationSelect";
+import PocPicker from "../components/PocPicker";
 import Paginated from "../components/Pager";
 import Modal from "../components/Modal";
 import BarChart from "../components/BarChart";
@@ -70,19 +73,23 @@ const fmtShort = (d) => (d ? new Date(d + "T12:00:00").toLocaleDateString(undefi
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const BUCKET_LABEL = { Promoter: "Promoters (9–10)", Passive: "Passives (7–8)", Detractor: "Detractors (0–6)" };
 
+const TABS = [["overview", "Overview"], ["labs", "Lab-wise Report"], ["csm", "CSM Performance"], ["responses", "Response Details"], ["testimonials", "Testimonials"]];
+
 // Sidebar → Feedback & NPS. Labs give feedback OFFLINE (Google Form, email, WhatsApp); the CSM records each response
 // here so it can be reported on. PARENT labs only (a child lab's feedback counts under its parent). "Given by" is
-// picked from the lab's Points of Contact (or added as a new POC right from the form). Tabs, in order:
-//   Report       — a plain-words headline, tiles, NPS-by-quarter and rating-by-month trends, who still owes this month's
-//                  feedback / this quarter's NPS (rules in _shared/feedbackCoverage.js), breakdowns by NPS group,
-//                  rating, CSM, designation and lab. Every number clicks through to the responses behind it.
-//   Responses    — every saved response, newest first; click a row for the full details.
-//   Testimonials — same format: date collected, lab, given by, designation, video link, note.
-// Filters: lab, CSM (My Labs / Team View), designation, source and a date range (presets or custom).
-export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLab, showToast }) {
+// picked from the lab's Points of Contact (or added as a new POC right from the form). One sidebar item; five tabs (Nov 24 2026):
+//   Overview         — summary in words, tiles, NPS breakdown + ratings, NPS-by-quarter and rating-by-month trends, by designation.
+//   Lab-wise Report  — every client: responses, NPS, rating, and this month's feedback / this quarter's NPS (✓ / Due), + Record.
+//   CSM Performance  — average NPS and coverage per CSM (charts), then the By CSM table.
+//   Response Details — every response, newest first; click a row for the full details.
+//   Testimonials     — components/TestimonialsTab.jsx (format, topics, source, rating, status, consent — migration 0051).
+// Cadence rules: _shared/feedbackCoverage.js. Every number clicks through to the responses behind it.
+// Header filters (all tabs): period, My Labs / Team View + CSM, lab type. Lab / designation / source below the tabs.
+export default function FeedbackView({ labs: allLabs, modules = [], viewer, idByName, onOpenLab, showToast }) {
   const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "feedback", "team");
   const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
-  const [tab, setTab] = useSessionState("feedback.view", "report");
+  const [rawTab, setTab] = useSessionState("feedback.view", "overview");
+  const tab = TABS.some(([k]) => k === rawTab) ? rawTab : "overview"; // "report" (before Nov 24 2026) → Overview
   const [viewing, setViewing] = useState(null); // { kind: "feedback" | "testimonial", row } shown in the side panel
   // Demo mode (no database): fake responses so the report, coverage and trends can be tried; changes last until reload.
   const [demo] = useState(() => (SUPABASE_CONFIGURED ? null : buildDemoFeedback(todayISO())));
@@ -100,8 +107,10 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
   // Set by clicking a chart bar, tile or headline on the Report; narrow the Responses list only.
   const [fBucket, setFBucket] = useSessionState("feedback.fBucket", "");
   const [fRating, setFRating] = useSessionState("feedback.fRating", "");
-  const [dueShow, setDueShow] = useSessionState("feedback.dueShow", "due");
-  const coverageRef = useRef(null);
+  // Lab-wise Report (Nov 24 2026): which cadence to judge by, and whether to show done, due or both (done first).
+  const [labWhat, setLabWhat] = useSessionState("feedback.labWhat", "both"); // both | feedback | nps
+  const [labState, setLabState] = useSessionState("feedback.labState", "all"); // all | done | due
+  const [fSearch, setFSearch] = useSessionState("feedback.search", "");
   const tip = useChartTooltip();
   const [editing, setEditing] = useState(null);  // feedback response form (new or existing)
   const [tEditing, setTEditing] = useState(null); // testimonial form (new or existing)
@@ -147,8 +156,10 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
   const responses = feedback.filter((f) => matchesBase(f) && inDates(f.date)).sort(newestFirst);
   const prevResponses = range.prev ? feedback.filter((f) => matchesBase(f) && f.date >= range.prev.from && f.date <= range.prev.to) : null;
   // The Responses list also honours a drill-down from the Report (an NPS group or a star rating).
-  const listRows = responses.filter((r) => (!fBucket || npsBucket(r.npsScore) === fBucket) && (!fRating || String(r.rating) === fRating));
-  const tRows = testimonials.filter((t) => inScope(t.labId) && inDates(t.date) && (!fDesignation || t.designation === fDesignation)).sort(newestFirst);
+  const qs = fSearch.trim().toLowerCase();
+  const listRows = responses.filter((r) => (!fBucket || npsBucket(r.npsScore) === fBucket) && (!fRating || String(r.rating) === fRating)
+    && (!qs || `${labName(r.labId)} ${r.respondentName} ${r.respondentDesignation} ${r.comment}`.toLowerCase().includes(qs)));
+  const tRows = testimonials.filter((t) => inScope(t.labId) && inDates(t.date)).sort(newestFirst); // the Testimonials tab adds its own filters
   const designations = [...new Set([...feedback.map((f) => f.respondentDesignation), ...testimonials.map((t) => t.designation)].filter(Boolean))].sort();
 
   // POCs of the chosen lab (and of its child labs), for the "Given by" pickers.
@@ -178,9 +189,16 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
   }
   async function saveTestimonial(t) {
     if (!t.labId) { showToast("Pick a lab."); return; }
-    if (!t.personName.trim() || !t.designation.trim()) { showToast("Pick who gave the testimonial (from the lab's points of contact)."); return; }
-    if (!isHttpUrl(t.videoUrl)) { showToast("Enter the video link (starting with http:// or https://)."); return; }
+    if (!t.personName.trim() || !t.designation.trim()) { showToast("Pick the contact person (from the lab's points of contact)."); return; }
+    if (!t.topics?.length) { showToast("Pick at least one topic."); return; }
+    if (t.format === "Written" && !t.source) { showToast("Pick where the written testimonial came from (source / platform)."); return; }
+    if (t.format === "Written" && t.source === "Other" && !t.sourceDetail?.trim()) { showToast("Say what the \"Other\" source was."); return; }
+    if (!isHttpUrl(t.videoUrl)) { showToast(`Enter the ${t.format === "Written" ? "review" : "video"} link (starting with http:// or https://).`); return; }
     if (!t.date) { showToast("Enter the date it was collected."); return; }
+    if (!t.consent) { showToast("Pick the customer consent."); return; }
+    if (!t.status) { showToast("Pick the status."); return; }
+    if (needsConsent(t.status) && t.consent !== "Received") { showToast(`${t.status} needs the customer's consent to be Received.`); return; }
+    const before = t.id ? testimonials.find((x) => x.id === t.id) : null;
     if (!SUPABASE_CONFIGURED) {
       const row = { ...t, id: t.id || `demo-t-${Date.now()}`, createdAt: t.createdAt || new Date().toISOString() };
       setTestimonials((xs) => [row, ...xs.filter((x) => x.id !== row.id)]); setTEditing(null); showToast("Saved for this demo session only.");
@@ -188,9 +206,17 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
     }
     setSaving(true);
     try {
-      if (t.id) await updateTestimonial(t.id, t); else await addTestimonial(t, csmId);
-      setTEditing(null); await load(); showToast(t.id ? "Testimonial updated." : "Testimonial saved.");
+      if (t.id) await updateTestimonial(t.id, t, before, csmId); else await addTestimonial(t, csmId);
+      setTEditing(null); await load(); showToast(t.id ? "Testimonial updated." : "Testimonial saved — also logged to the lab's Lab History.");
     } catch (err) { showToast(`⚠ ${err.message}`); } finally { setSaving(false); }
+  }
+  // From the list's ⋮ menu. Approved / Published need consent = Received.
+  async function setTestimonialStatus(t, status) {
+    if (needsConsent(status) && t.consent !== "Received") { showToast(`${status} needs the customer's consent to be Received — edit the testimonial to update consent first.`); return; }
+    const next = { ...t, labId: parentOf(t.labId), status };
+    if (!SUPABASE_CONFIGURED) { setTestimonials((xs) => xs.map((x) => (x.id === t.id ? next : x))); showToast(`Moved to ${status} (demo only).`); return; }
+    try { await updateTestimonial(t.id, next, t, csmId); await load(); showToast(`Moved to ${status} — logged to Lab History.`); }
+    catch (err) { showToast(`⚠ ${err.message}`); }
   }
   async function remove(kind, row) {
     if (!window.confirm("Delete this entry?")) return false;
@@ -200,8 +226,8 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
   }
   function exportCsv() {
     if (tab === "testimonials") {
-      downloadCsv("testimonials", ["Date collected", "Lab", "CSM", "Given by", "Designation", "Video link", "Note"],
-        tRows.map((t) => [t.date, labName(t.labId), labCsm(t.labId), t.personName, t.designation, t.videoUrl, t.note]));
+      downloadCsv("testimonials", ["Date collected", "Lab", "CSM", "Given by", "Designation", "Format", "Source", "Topics", "Rating", "Status", "Consent", "Link", "Note"],
+        tRows.map((t) => [t.date, labName(t.labId), labCsm(t.labId), t.personName, t.designation, t.format, sourceText(t.source, t.sourceDetail), t.topics.map((k) => topicName(k)).join("; "), t.rating ?? "", t.status, t.consent, t.videoUrl, t.note]));
       return;
     }
     const rows = tab === "responses" ? listRows : responses;
@@ -228,9 +254,13 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
   const asRow = (f) => ({ lab: parentOf(f.labId), date: f.date, rating: f.rating, nps: f.npsScore });
   const cov = feedbackCoverage(scopedLabs.filter((l) => !fLab || l.id === fLab), feedback.filter((f) => inScope(f.labId)).map(asRow), today);
   const feedbackDue = cov.total - cov.feedbackThisMonth, npsDue = cov.total - cov.npsThisQuarter;
-  const dueRows = cov.labs
-    .filter((x) => dueShow === "all" || (dueShow === "feedback" ? !x.feedbackThisMonth : dueShow === "nps" ? !x.npsThisQuarter : !x.feedbackThisMonth || !x.npsThisQuarter))
-    .sort((a, b) => ((!b.feedbackThisMonth) + (!b.npsThisQuarter)) - ((!a.feedbackThisMonth) + (!a.npsThisQuarter)) || (clientMrr[b.lab.id] || 0) - (clientMrr[a.lab.id] || 0));
+  const labStats = Object.fromEntries(groupBy((r) => parentOf(r.labId)).map((g) => [g.key, g]));
+  // Done = what's chosen is in: both this month's feedback and this quarter's NPS, or just the one picked.
+  const isDone = (x) => (labWhat === "feedback" ? x.feedbackThisMonth : labWhat === "nps" ? x.npsThisQuarter : x.feedbackThisMonth && x.npsThisQuarter);
+  const byMrr = (a, b) => (clientMrr[b.lab.id] || 0) - (clientMrr[a.lab.id] || 0);
+  const doneRows = cov.labs.filter(isDone).sort(byMrr);
+  const dueRows = cov.labs.filter((x) => !isDone(x)).sort((a, b) => ((!b.feedbackThisMonth) + (!b.npsThisQuarter)) - ((!a.feedbackThisMonth) + (!a.npsThisQuarter)) || byMrr(a, b));
+  const whatLabel = labWhat === "feedback" ? `feedback · ${cov.monthLabel}` : labWhat === "nps" ? `NPS · ${cov.quarterLabel}` : `feedback · ${cov.monthLabel} and NPS · ${cov.quarterLabel}`;
   // Trends over time: every filter except the dates.
   const trendRows = feedback.filter(matchesBase).map(asRow);
   const npsTrend = feedbackTrend(trendRows, "quarter", 6, today);
@@ -242,10 +272,10 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
     const mine = cov.labs.filter((x) => x.lab.csm === name);
     return { key: name, list, total: mine.length, fbDone: mine.filter((x) => x.feedbackThisMonth).length, npsDone: mine.filter((x) => x.npsThisQuarter).length, ...npsSummary(list) };
   });
-  const byLab = groupBy((r) => parentOf(r.labId)).sort((a, b) => (b.last || "").localeCompare(a.last || ""));
   const byDesignation = groupBy((r) => r.respondentDesignation || "Not recorded").sort((a, b) => b.list.length - a.list.length);
-  const filtersOn = fLab || fDesignation || fSource || fPeriod !== "all" || fBucket || fRating;
-  const clearFilters = () => { setFLab(""); setFDesignation(""); setFSource(""); setFrom(""); setTo(""); setFPeriod("all"); setFBucket(""); setFRating(""); };
+  const filtersOn = fLab || fDesignation || fSource || fBucket || fRating || fSearch;
+  const clearFilters = () => { setFLab(""); setFDesignation(""); setFSource(""); setFBucket(""); setFRating(""); setFSearch(""); };
+  const topicName = (k) => topicLabelOf(k, modules);
 
   // Click-through from the Report to the responses behind a number.
   function drill({ bucket = "", rating = "", designation, lab, csm } = {}) {
@@ -257,14 +287,15 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function showDue(kind) {
-    setDueShow(kind);
-    coverageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setLabWhat(kind); setLabState("due");
+    setTab("labs");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
   const blankResponse = (labId) => ({ labId, date: todayISO(), npsScore: "", rating: 0, source: "", respondentName: "", respondentDesignation: "", comment: "", linkUrl: "" });
   const cadenceCell = (done, date, value, scale, days) => (done
     ? <span className="fb-done">✓ {value}/{scale} <span className="fb-faint">· {fmtShort(date)}</span></span>
     : date
-      ? <span className="fb-due">Due <span className="fb-faint">· last {fmtShort(date)} ({days} days ago)</span></span>
+      ? <span className="fb-due" title={`Last one ${days} days ago`}>Due <span className="fb-faint">· last {fmtShort(date)} ({days}d)</span></span>
       : <span className="fb-never">Never recorded</span>);
   let npsChange = null;
   if (prevSum?.count && sum.count) {
@@ -274,52 +305,94 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
 
   const npsCell = (avg) => <b style={{ color: npsColor(avg) }}>{avg == null ? "—" : avg.toFixed(1)}</b>;
 
+  // One Lab-wise section (Done or Still due): a card with its own paged table.
+  const labSection = ({ title, tone, rows, empty }) => (
+    <div className="table-card" style={{ marginBottom: 16 }}>
+      <div className="fb-card-head"><span className={`fb-sec-title fb-sec-${tone}`}>{tone === "done" ? "✓" : "◷"} {title} <b>({rows.length})</b></span></div>
+      {!rows.length ? <div style={{ padding: 16, color: "var(--text-faint)", fontSize: 12.5 }}>{empty}</div> : (
+        <Paginated items={rows}>{(page) => (
+          <div className="table-scroll"><table className="child-mini">
+            <thead><tr><th>Client</th><th>CSM</th><th>MRR</th><th>Resp.</th><th>Avg NPS</th><th>Latest</th><th>Rating</th><th>Feedback · {cov.monthLabel}</th><th>NPS · {cov.quarterLabel}</th><th></th></tr></thead>
+            <tbody>{page.map((x) => {
+              const st = labStats[x.lab.id];
+              const latest = st?.list.find((r) => r.npsScore != null);
+              return (
+                <tr key={x.lab.id} className="fb-row" onClick={() => drill({ lab: x.lab.id })} title="See this client's responses">
+                  <td className="lab-name clickable fb-cut" style={{ maxWidth: 130 }} onClick={(e) => { e.stopPropagation(); onOpenLab(x.lab.id); }}>{x.lab.name}</td>
+                  <td className="fb-cut" style={{ maxWidth: 100 }}>{x.lab.csm || "—"}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{fmtAmount(clientMrr[x.lab.id] || 0)}</td>
+                  <td>{st ? st.list.length : 0}</td>
+                  <td>{npsCell(st?.avgNps ?? null)}</td>
+                  <td style={{ whiteSpace: "nowrap" }} title={latest ? npsBucket(latest.npsScore) : undefined}>{latest ? <><b style={{ color: BUCKET_COLOR[npsBucket(latest.npsScore)] }}>{latest.npsScore}</b>/10</> : "—"}</td>
+                  <td>{st?.avgRating == null ? "—" : st.avgRating.toFixed(1)}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{cadenceCell(x.feedbackThisMonth, x.lastRatingDate, x.lastRating, 5, x.daysSinceRating)}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{cadenceCell(x.npsThisQuarter, x.lastNpsDate, x.lastNps, 10, x.daysSinceNps)}</td>
+                  <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>{(!x.feedbackThisMonth || !x.npsThisQuarter) && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(blankResponse(x.lab.id))}>+ Record</button>}</td>
+                </tr>
+              );
+            })}</tbody>
+          </table></div>
+        )}</Paginated>
+      )}
+    </div>
+  );
+  const labFilterEl = <span style={{ minWidth: 220 }}><SearchSelect value={fLab} onChange={setFLab} options={labOptions} emptyLabel="All parent labs" placeholder="All parent labs" /></span>;
+  const tabCount = { responses: listRows.length, testimonials: tRows.length };
+
   return (
     <div>
-      <h1 className="page-title">Feedback &amp; NPS</h1>
-      <p className="page-sub">Record the feedback and NPS your labs give you — through a Google Form, by email or on WhatsApp — so it can be reported on. Viewing <b>{teamAll ? "the whole team" : scopeCsm}</b>'s labs.</p>
+      <div className="fb-page-head">
+        <div>
+          <h1 className="page-title">Feedback &amp; NPS</h1>
+          <p className="page-sub">Track customer feedback, NPS, testimonials and follow-ups — recorded from Google Forms, email or WhatsApp. Viewing <b>{teamAll ? "the whole team" : scopeCsm}</b>'s labs.</p>
+        </div>
+        <div className="fb-period">
+          <select value={fPeriod} onChange={(e) => setFPeriod(e.target.value)} aria-label="Date range">
+            {PERIOD_OPTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+          {fPeriod === "custom" && <>
+            <input style={input} type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="From" />
+            <span className="fb-faint">to</span>
+            <input style={input} type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="To" />
+          </>}
+        </div>
+      </div>
       {error && <div className="error-banner">{error}</div>}
 
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
 
-      {/* Tabs on the left, Export / Record on the right; filters below (Nov 24 2026). */}
+      {/* Tabs on the left, Export / Record on the right; filters below. */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
         <div className="tabs" style={{ marginBottom: 0, width: "fit-content" }}>
-          {[["report", "Report"], ["responses", `Responses (${listRows.length})`], ["testimonials", `Testimonials (${tRows.length})`]].map(([k, l]) => (
-            <button key={k} type="button" className={`tab-btn${tab === k ? " active" : ""}`} onClick={() => setTab(k)}>{l}</button>
+          {TABS.map(([k, l], i) => (
+            <button key={k} type="button" className={`tab-btn${tab === k ? " active" : ""}`} onClick={() => setTab(k)}>{i + 1}. {l}{tabCount[k] != null ? ` (${tabCount[k]})` : ""}</button>
           ))}
         </div>
         <span style={{ display: "flex", gap: 8 }}>
           <button className="btn btn-ghost" onClick={exportCsv} disabled={tab === "testimonials" ? !tRows.length : !(tab === "responses" ? listRows : responses).length}>Export CSV</button>
           {tab === "testimonials"
-            ? <button className="btn btn-primary" onClick={() => setTEditing({ labId: fLab, date: todayISO(), personName: "", designation: "", videoUrl: "", note: "" })}>+ Add testimonial</button>
+            ? <button className="btn btn-primary" onClick={() => setTEditing({ labId: fLab, date: todayISO(), personName: "", designation: "", videoUrl: "", note: "", format: "Video", topics: [], source: "", sourceDetail: "", rating: null, status: "Pending", consent: "" })}>+ Add Testimonial</button>
             : <button className="btn btn-primary" onClick={() => setEditing(blankResponse(fLab))}>+ Record feedback</button>}
         </span>
       </div>
 
-      <div className="filters">
-        <span style={{ minWidth: 220 }}><SearchSelect value={fLab} onChange={setFLab} options={labOptions} emptyLabel="All parent labs" placeholder="All parent labs" /></span>
-        <select value={fDesignation} onChange={(e) => setFDesignation(e.target.value)} aria-label="Filter by designation">
-          <option value="">All designations</option>
-          {designations.map((d) => <option key={d} value={d}>{d}</option>)}
-        </select>
-        {tab !== "testimonials" && (
-          <select value={fSource} onChange={(e) => setFSource(e.target.value)}>
+      {tab !== "testimonials" && (
+        <div className="filters">
+          {labFilterEl}
+          <select value={fDesignation} onChange={(e) => setFDesignation(e.target.value)} aria-label="Filter by designation">
+            <option value="">All designations</option>
+            {designations.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <select value={fSource} onChange={(e) => setFSource(e.target.value)} aria-label="Filter by source">
             <option value="">All sources</option>
             {FEEDBACK_SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-        )}
-        <select value={fPeriod} onChange={(e) => setFPeriod(e.target.value)} aria-label="Date range">
-          {PERIOD_OPTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-        </select>
-        {fPeriod === "custom" && <>
-          <label style={{ fontSize: 12, color: "var(--text-dim)", display: "flex", alignItems: "center", gap: 6 }}>From <input style={input} type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-          <label style={{ fontSize: 12, color: "var(--text-dim)", display: "flex", alignItems: "center", gap: 6 }}>To <input style={input} type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
-        </>}
-        {tab === "responses" && fBucket && <span className="fb-chip">NPS: {BUCKET_LABEL[fBucket]} <button type="button" aria-label="Remove" onClick={() => setFBucket("")}>×</button></span>}
-        {tab === "responses" && fRating && <span className="fb-chip">Rating: {plural(Number(fRating), "star")} <button type="button" aria-label="Remove" onClick={() => setFRating("")}>×</button></span>}
-        {filtersOn && <span className="clear" onClick={clearFilters}>Clear filters</span>}
-      </div>
+          {tab === "responses" && <input className="ts-search" type="search" value={fSearch} onChange={(e) => setFSearch(e.target.value)} placeholder="Search lab, person, comment…" aria-label="Search responses" />}
+          {tab === "responses" && fBucket && <span className="fb-chip">NPS: {BUCKET_LABEL[fBucket]} <button type="button" aria-label="Remove" onClick={() => setFBucket("")}>×</button></span>}
+          {tab === "responses" && fRating && <span className="fb-chip">Rating: {plural(Number(fRating), "star")} <button type="button" aria-label="Remove" onClick={() => setFRating("")}>×</button></span>}
+          {filtersOn && <span className="clear" onClick={clearFilters}>Clear filters</span>}
+        </div>
+      )}
 
       {tab === "responses" && (
         <div className="table-card">
@@ -351,29 +424,22 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
       )}
 
       {tab === "testimonials" && (
-        <div className="table-card">
-          {!tRows.length ? <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 12.5 }}>{testimonials.length ? "No testimonials match these filters." : "No testimonials yet — use “+ Add testimonial”."}</div> : (
-            <Paginated items={tRows}>{(page) => (
-              <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Date collected</th><th>Lab</th><th>CSM</th><th>Given by</th><th>Designation</th><th>Video</th><th>Note</th></tr></thead>
-                <tbody>{page.map((t) => (
-                  <tr key={t.id} className="fb-row" onClick={() => setViewing({ kind: "testimonial", row: t })} title="Open the full testimonial">
-                    <td style={{ whiteSpace: "nowrap" }}>{fmtDate(t.date)}</td>
-                    <td className="lab-name clickable fb-cut" onClick={(e) => { e.stopPropagation(); onOpenLab(parentOf(t.labId)); }}>{labName(t.labId)}</td>
-                    <td>{labCsm(t.labId)}</td>
-                    <td className="fb-cut">{t.personName || "—"}</td>
-                    <td className="fb-cut">{t.designation}</td>
-                    <td style={{ whiteSpace: "nowrap" }}><a href={t.videoUrl} target="_blank" rel="noreferrer noopener" onClick={(e) => e.stopPropagation()}>🎬 Watch ↗</a></td>
-                    <td className="fb-cut fb-comment">{t.note || <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
-                  </tr>
-                ))}</tbody>
-              </table></div>
-            )}</Paginated>
-          )}
-        </div>
+        <TestimonialsTab rows={tRows} totalAll={testimonials.length} modules={modules} labName={labName} labCsm={labCsm} parentOf={parentOf}
+          onOpenLab={onOpenLab} labFilter={labFilterEl}
+          onView={(t) => setViewing({ kind: "testimonial", row: t })}
+          onEdit={(t) => setTEditing({ ...t, labId: parentOf(t.labId), date: t.date || todayISO() })}
+          onDelete={(t) => remove("testimonial", t)}
+          onSetStatus={setTestimonialStatus} />
       )}
 
-      {viewing && (
+      {viewing?.kind === "testimonial" && (
+        <TestimonialDetail row={viewing.row} modules={modules} labName={labName(viewing.row.labId)} csm={labCsm(viewing.row.labId)}
+          onOpenLab={() => { setViewing(null); onOpenLab(parentOf(viewing.row.labId)); }}
+          onClose={() => setViewing(null)}
+          onEdit={() => { const r = viewing.row; setViewing(null); setTEditing({ ...r, labId: parentOf(r.labId), date: r.date || todayISO() }); }}
+          onDelete={async () => { const v = viewing; if (await remove(v.kind, v.row)) setViewing(null); }} />
+      )}
+      {viewing?.kind === "feedback" && (
         <FeedbackDetail
           kind={viewing.kind} row={viewing.row} labName={labName(viewing.row.labId)} csm={labCsm(viewing.row.labId)}
           onOpenLab={() => { setViewing(null); onOpenLab(parentOf(viewing.row.labId)); }}
@@ -387,7 +453,7 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
         />
       )}
 
-      {tab === "report" && (<>
+      {tab === "overview" && (<>
         {/* 1. The answer first, in words, with links to the responses / clients behind it. */}
         <div className="table-card fb-headline">
           <div className="fb-hl-title">{range.label}{fLab ? ` · ${labsById[fLab]?.name || ""}` : ""}{!teamAll ? ` · ${scopeCsm}` : ""}</div>
@@ -469,26 +535,8 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
         </div>
         {tip.tooltip}
 
-        <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>By CSM</h3>
-        <div className="table-card" style={{ marginBottom: 18 }}>
-          {!csmRows.length ? <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 12.5 }}>No labs in this view.</div> : (
-            <div className="table-scroll"><table className="child-mini">
-              <thead><tr><th>CSM</th><th>Clients</th><th>Feedback · {cov.monthLabel}</th><th>NPS · {cov.quarterLabel}</th><th>Responses</th><th>Avg NPS</th><th>Promoters</th><th>Passives</th><th>Detractors</th><th>Avg rating</th></tr></thead>
-              <tbody>{csmRows.map((c) => (
-                <tr key={c.key} className="fb-row" onClick={() => drill({ csm: c.key })} title={`See ${c.key}'s responses`}>
-                  <td>{c.key}</td><td>{c.total}</td>
-                  <td>{c.fbDone} / {c.total} <span className="fb-faint">({c.total ? Math.round((c.fbDone / c.total) * 100) : 0}%)</span></td>
-                  <td>{c.npsDone} / {c.total} <span className="fb-faint">({c.total ? Math.round((c.npsDone / c.total) * 100) : 0}%)</span></td>
-                  <td>{c.list.length}</td><td>{npsCell(c.avgNps)}</td><td>{c.promoters}</td><td>{c.passives}</td><td style={{ color: c.detractors ? "var(--bad)" : undefined }}>{c.detractors}</td>
-                  <td>{c.avgRating == null ? "—" : c.avgRating.toFixed(1)}</td>
-                </tr>
-              ))}</tbody>
-            </table></div>
-          )}
-        </div>
-
         <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>By designation</h3>
-        <div className="table-card" style={{ marginBottom: 18 }}>
+        <div className="table-card">
           {!byDesignation.length ? <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 12.5 }}>No responses in this view.</div> : (
             <div className="table-scroll"><table className="child-mini">
               <thead><tr><th>Designation</th><th>Responses</th><th>Labs</th><th>Avg NPS</th><th>Promoters</th><th>Passives</th><th>Detractors</th><th>Avg rating</th><th>Testimonials</th></tr></thead>
@@ -506,71 +554,68 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
             </table></div>
           )}
         </div>
+      </>)}
 
-        <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>By lab</h3>
-        <div className="table-card" style={{ marginBottom: 18 }}>
-          {!byLab.length ? <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 12.5 }}>No responses in this view.</div> : (
-            <Paginated items={byLab}>{(page) => (
-              <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Lab</th><th>CSM</th><th>Responses</th><th>Latest NPS</th><th>Avg NPS</th><th>Avg rating</th><th>Last feedback</th></tr></thead>
-                <tbody>{page.map((l) => {
-                  const latest = l.list.find((r) => r.npsScore != null);
-                  return (
-                    <tr key={l.key} className="fb-row" onClick={() => drill({ lab: l.key })} title="See this lab's responses">
-                      <td className="lab-name clickable" onClick={(e) => { e.stopPropagation(); onOpenLab(l.key); }}>{labsById[l.key]?.name || l.key}</td>
-                      <td>{labsById[l.key]?.csm || "—"}</td><td>{l.list.length}</td>
-                      <td>{latest ? <><b>{latest.npsScore}</b>/10 <span style={{ fontSize: 10.5, fontWeight: 700, color: BUCKET_COLOR[npsBucket(latest.npsScore)] }}>{npsBucket(latest.npsScore)}</span></> : "—"}</td>
-                      <td>{npsCell(l.avgNps)}</td>
-                      <td>{l.avgRating == null ? "—" : l.avgRating.toFixed(1)}</td>
-                      <td style={{ whiteSpace: "nowrap" }}>{fmtDate(l.last)}</td>
-                    </tr>
-                  );
-                })}</tbody>
-              </table></div>
-            )}</Paginated>
-          )}
+      {tab === "labs" && (<>
+        <div className="filters">
+          <span className="fb-faint" style={{ fontSize: 12.5 }}>Judge by</span>
+          <select value={labWhat} onChange={(e) => setLabWhat(e.target.value)} aria-label="Judge by">
+            <option value="both">Feedback ({cov.monthLabel}) and NPS ({cov.quarterLabel})</option>
+            <option value="feedback">Feedback only · {cov.monthLabel}</option>
+            <option value="nps">NPS only · {cov.quarterLabel}</option>
+          </select>
+          <select value={labState} onChange={(e) => setLabState(e.target.value)} aria-label="Show">
+            <option value="all">Done and due ({cov.total})</option>
+            <option value="done">Done only ({doneRows.length})</option>
+            <option value="due">Due only ({dueRows.length})</option>
+          </select>
+          <InfoTip>Each client is asked for feedback (a 1–5 rating) once a month and for NPS (0–10) once a quarter. A response with a rating counts for its month; one with an NPS score counts for its quarter. Done = what you judge by is in; the rest is due. Parent labs only (a child lab's response counts for its parent); Inactive and Churned clients are left out. Responses, NPS and rating follow every filter; ✓ / Due follow the lab, CSM and lab-type filters, not the dates. Highest MRR first. Click a row to see that client's responses.</InfoTip>
         </div>
+        {labState !== "due" && labSection({ title: `Done — ${whatLabel}`, tone: "done", rows: doneRows, empty: "No client is done yet." })}
+        {labState !== "done" && labSection({ title: `Still due — ${whatLabel}`, tone: "due", rows: dueRows, empty: cov.total ? "Nothing due — every client is up to date." : "No clients in this view." })}
+      </>)}
 
-        {/* Last (decision Nov 24 2026): the working list of clients still due — after the report of what's been recorded. */}
-        <div ref={coverageRef} className="table-card" style={{ marginBottom: 18, scrollMarginTop: 80 }}>
-          <div className="fb-card-head">
-            <span style={{ display: "flex", alignItems: "center", fontWeight: 700, fontSize: 13 }}>
-              Monthly feedback &amp; quarterly NPS
-              <InfoTip>Each client is asked for feedback (a 1–5 rating) once a month and for NPS (0–10) once a quarter. A response with a rating counts for its month; one with an NPS score counts for its quarter. Parent labs only (a child lab's response counts for its parent); Inactive and Churned clients are left out. Uses the lab, CSM and lab-type filters, not the dates. Highest MRR first.</InfoTip>
-            </span>
-            <select value={dueShow} onChange={(e) => setDueShow(e.target.value)} aria-label="Which clients">
-              <option value="due">Anything due ({cov.labs.filter((x) => !x.feedbackThisMonth || !x.npsThisQuarter).length})</option>
-              <option value="feedback">Feedback due · {cov.monthLabel} ({feedbackDue})</option>
-              <option value="nps">NPS due · {cov.quarterLabel} ({npsDue})</option>
-              <option value="all">All clients ({cov.total})</option>
-            </select>
-          </div>
-          {!dueRows.length ? <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 12.5 }}>{cov.total ? "Nothing due — every client is up to date." : "No clients in this view."}</div> : (
-            <Paginated items={dueRows}>{(page) => (
-              <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Client</th><th>CSM</th><th>MRR</th><th>Feedback · {cov.monthLabel}</th><th>NPS · {cov.quarterLabel}</th><th></th></tr></thead>
-                <tbody>{page.map((x) => (
-                  <tr key={x.lab.id}>
-                    <td className="lab-name clickable fb-cut" onClick={() => onOpenLab(x.lab.id)}>{x.lab.name}</td>
-                    <td className="fb-cut">{x.lab.csm || "—"}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{fmtAmount(clientMrr[x.lab.id] || 0)}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{cadenceCell(x.feedbackThisMonth, x.lastRatingDate, x.lastRating, 5, x.daysSinceRating)}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{cadenceCell(x.npsThisQuarter, x.lastNpsDate, x.lastNps, 10, x.daysSinceNps)}</td>
-                    <td style={{ textAlign: "right" }}>{(!x.feedbackThisMonth || !x.npsThisQuarter) && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(blankResponse(x.lab.id))}>+ Record</button>}</td>
-                  </tr>
-                ))}</tbody>
-              </table></div>
-            )}</Paginated>
+      {tab === "csm" && (<>
+        <div className="fb-three">
+          <Card title="Average NPS by CSM" info="Average NPS (out of 10) of each CSM's clients' responses in the chosen period. Click a bar to see them.">
+            <BarChart labelWidth={110} valueFmt={(v) => (v ? v.toFixed(1) : "—")} maxValue={10}
+              data={csmRows.map((c) => ({ label: c.key, value: c.avgNps || 0, color: npsColor(c.avgNps) || "var(--surface-3)", onClick: () => drill({ csm: c.key }) }))} />
+          </Card>
+          <Card title={`Feedback coverage · ${cov.monthLabel}`} info="Share of each CSM's clients that have given this month's feedback (a 1–5 rating).">
+            <BarChart labelWidth={110} valueFmt={(v) => `${Math.round(v)}%`} maxValue={100}
+              data={csmRows.map((c) => ({ label: c.key, value: c.total ? (c.fbDone / c.total) * 100 : 0, color: "var(--stg-plan-5)", onClick: () => { if (isHead) { setScope("team"); setCsmFilter(c.key); } showDue("feedback"); } }))} />
+          </Card>
+          <Card title={`NPS coverage · ${cov.quarterLabel}`} info="Share of each CSM's clients that have given this quarter's NPS.">
+            <BarChart labelWidth={110} valueFmt={(v) => `${Math.round(v)}%`} maxValue={100}
+              data={csmRows.map((c) => ({ label: c.key, value: c.total ? (c.npsDone / c.total) * 100 : 0, color: "var(--stg-plan-3)", onClick: () => { if (isHead) { setScope("team"); setCsmFilter(c.key); } showDue("nps"); } }))} />
+          </Card>
+        </div>
+        <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>By CSM</h3>
+        <div className="table-card" style={{ marginBottom: 18 }}>
+          {!csmRows.length ? <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 12.5 }}>No labs in this view.</div> : (
+            <div className="table-scroll"><table className="child-mini">
+              <thead><tr><th>CSM</th><th>Clients</th><th>Feedback · {cov.monthLabel}</th><th>NPS · {cov.quarterLabel}</th><th>Responses</th><th>Avg NPS</th><th>Promoters</th><th>Passives</th><th>Detractors</th><th>Avg rating</th></tr></thead>
+              <tbody>{csmRows.map((c) => (
+                <tr key={c.key} className="fb-row" onClick={() => drill({ csm: c.key })} title={`See ${c.key}'s responses`}>
+                  <td>{c.key}</td><td>{c.total}</td>
+                  <td>{c.fbDone} / {c.total} <span className="fb-faint">({c.total ? Math.round((c.fbDone / c.total) * 100) : 0}%)</span></td>
+                  <td>{c.npsDone} / {c.total} <span className="fb-faint">({c.total ? Math.round((c.npsDone / c.total) * 100) : 0}%)</span></td>
+                  <td>{c.list.length}</td><td>{npsCell(c.avgNps)}</td><td>{c.promoters}</td><td>{c.passives}</td><td style={{ color: c.detractors ? "var(--bad)" : undefined }}>{c.detractors}</td>
+                  <td>{c.avgRating == null ? "—" : c.avgRating.toFixed(1)}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
           )}
         </div>
       </>)}
+
 
       {editing && (
         <ResponseModal value={editing} labOptions={labOptions} pocsFor={pocsFor} onAddPoc={addPoc} saving={saving}
           onClose={() => setEditing(null)} onSave={saveResponse} showToast={showToast} />
       )}
       {tEditing && (
-        <TestimonialModal value={tEditing} labOptions={labOptions} pocsFor={pocsFor} onAddPoc={addPoc} saving={saving}
+        <TestimonialForm value={tEditing} modules={modules} labOptions={labOptions} labCsm={labCsm} pocsFor={pocsFor} onAddPoc={addPoc} saving={saving}
           onClose={() => setTEditing(null)} onSave={saveTestimonial} showToast={showToast} />
       )}
     </div>
@@ -632,50 +677,6 @@ function FeedbackDetail({ kind, row: r, labName, csm, onOpenLab, onClose, onEdit
   );
 }
 
-// "Given by": pick one of the lab's Points of Contact, or add a new POC on the spot (saved to the lab).
-function PocPicker({ labId, name, designation, pocsFor, onAddPoc, onPick, showToast }) {
-  const [adding, setAdding] = useState(null); // { name, designation, minProactive }
-  const [busy, setBusy] = useState(false);
-  const pocs = labId ? pocsFor(labId) : [];
-  const match = pocs.find((c) => c.name === name && (c.designation || "") === (designation || ""));
-  const options = pocs.map((c) => ({ value: c.id, label: c.name, hint: c.designation || "" }));
-  async function save() {
-    if (!adding.name.trim()) { showToast("Enter the person's name."); return; }
-    if (!adding.designation.trim()) { showToast("Pick the person's designation."); return; }
-    setBusy(true);
-    try { const c = await onAddPoc(labId, adding); onPick(c); setAdding(null); showToast(`${c.name} added to the lab's points of contact.`); }
-    catch (err) { showToast(`⚠ ${err.message}`); } finally { setBusy(false); }
-  }
-  if (!labId) return <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Pick the lab first.</div>;
-  return (
-    <div>
-      {!adding && (
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div style={{ flex: 1 }}>
-            <SearchSelect value={match?.id || ""} onChange={(id) => { const c = pocs.find((x) => x.id === id); if (c) onPick(c); }}
-              options={options} placeholder={pocs.length ? "Pick a point of contact…" : "No POCs yet for this lab"} />
-          </div>
-          <button type="button" className="mark-purchased" onClick={() => setAdding({ name: "", designation: "", minProactive: "" })}>+ Add POC</button>
-        </div>
-      )}
-      {!adding && name && !match && <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 4 }}>Saved as: {name}{designation ? ` — ${designation}` : ""}</div>}
-      {!adding && match && <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 4 }}>Designation: <b>{match.designation || "—"}</b></div>}
-      {adding && (
-        <div className="table-card" style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          <input style={field} placeholder="Name *" value={adding.name} onChange={(e) => setAdding((a) => ({ ...a, name: e.target.value }))} autoFocus />
-          <DesignationSelect style={field} value={adding.designation} onChange={(v) => setAdding((a) => ({ ...a, designation: v }))} />
-          <input style={field} type="number" min="0" max="31" placeholder="Minimum proactive check-ins per month (optional)" value={adding.minProactive}
-            onChange={(e) => setAdding((a) => ({ ...a, minProactive: e.target.value }))} />
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn btn-primary" style={{ fontSize: 12, padding: "6px 12px" }} disabled={busy} onClick={save}>{busy ? "Saving…" : "Save POC"}</button>
-            <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: "6px 12px" }} disabled={busy} onClick={() => setAdding(null)}>Cancel</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // Record (or edit) one feedback response collected through a form, email or WhatsApp.
 function ResponseModal({ value, labOptions, pocsFor, onAddPoc, saving, onClose, onSave, showToast }) {
   const [f, setF] = useState(value);
@@ -729,40 +730,6 @@ function ResponseModal({ value, labOptions, pocsFor, onAddPoc, saving, onClose, 
       <div className="tmpl-field">
         <label>Supporting link (optional)</label>
         <input style={field} type="url" value={f.linkUrl} onChange={(e) => set({ linkUrl: e.target.value })} placeholder="Google Form response, sheet, email… https://" />
-      </div>
-    </Modal>
-  );
-}
-
-// Add (or edit) a testimonial video — same shape as a feedback response.
-function TestimonialModal({ value, labOptions, pocsFor, onAddPoc, saving, onClose, onSave, showToast }) {
-  const [t, setT] = useState(value);
-  const set = (patch) => setT((x) => ({ ...x, ...patch }));
-  return (
-    <Modal open title={t.id ? "Edit testimonial" : "Add testimonial"} onClose={saving ? () => {} : onClose} actions={[
-      { label: "Cancel", className: "btn-ghost", onClick: onClose, disabled: saving },
-      { label: saving ? "Saving…" : "Save", className: "btn-primary", onClick: () => onSave(t), disabled: saving },
-    ]}>
-      <div className="tmpl-field" style={{ marginBottom: 10 }}>
-        <label>Lab (parent) *</label>
-        <SearchSelect value={t.labId} onChange={(v) => set({ labId: v, personName: "", designation: "" })} options={labOptions} placeholder="Pick a lab…" disabled={!!t.id} />
-      </div>
-      <div className="tmpl-field" style={{ marginBottom: 10 }}>
-        <label>Date collected *</label>
-        <input type="date" style={field} value={t.date} max={todayISO()} onChange={(e) => set({ date: e.target.value })} />
-      </div>
-      <div className="tmpl-field" style={{ marginBottom: 10 }}>
-        <label>Given by *</label>
-        <PocPicker labId={t.labId} name={t.personName} designation={t.designation} pocsFor={pocsFor} onAddPoc={onAddPoc}
-          onPick={(c) => set({ personName: c.name, designation: c.designation || "" })} showToast={showToast} />
-      </div>
-      <div className="tmpl-field" style={{ marginBottom: 10 }}>
-        <label>Video link *</label>
-        <input style={field} type="url" value={t.videoUrl} onChange={(e) => set({ videoUrl: e.target.value })} placeholder="https://…" />
-      </div>
-      <div className="tmpl-field">
-        <label>Note (optional)</label>
-        <textarea rows="2" style={{ ...field, resize: "vertical" }} value={t.note} onChange={(e) => set({ note: e.target.value })} />
       </div>
     </Modal>
   );

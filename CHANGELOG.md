@@ -2,6 +2,12 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Nov 24 2026 — Feedback & NPS: five tabs and a full Testimonials report
+- One sidebar item, five tabs: Overview, Lab-wise Report, CSM Performance, Response Details, Testimonials. The period picker sits in the header and applies to every tab. Everything from before is kept.
+- Lab-wise Report: a Done section first, then Still due; filter by what to judge (feedback, NPS or both) and show done, due or both.
+- Testimonials: Video or Written (written sources: Email, WhatsApp, Google Form or Other with a note), topics in six collapsed groups (Product & Module lists every product module), optional rating, status (Pending → In Review → Approved → Published) and consent; Approved / Published need consent Received. Tiles, four charts and a list with view / edit / move status / delete. Migration 0051 adds the new fields.
+- Claude connector: feedback_summary includes testimonials; how_it_works has a Testimonials topic (redeploy the connector).
+
 ## Nov 24 2026 — Feedback & NPS easier to read
 - Opens on Team View (for Leads, Managers and Admins) and the Report tab, which is now the first tab.
 - Responses and Testimonials are newest first and one line per row; click a row for the full comment or note, with Edit and Delete there.

@@ -220,6 +220,21 @@ export const HOW_IT_WORKS = {
     example: "Responses of 10, 8 and 6 give Average NPS 8, with 1 promoter, 1 passive and 1 detractor. A client that sent a 4-star rating on Nov 3 has given November's feedback; if its last NPS was in August it is still due for Q4.",
     whereInApp: "Feedback & NPS in the sidebar.",
   },
+  testimonials: {
+    title: "Testimonials",
+    summary: "Video or written testimonials from clients, with topics, rating, publication status and consent.",
+    explanation: [
+      "Each testimonial is Video (a recorded video link) or Written (a review or text, with its source: Email, WhatsApp, Google Form, or Other with a note of what it was).",
+      "It names the lab, the contact person and their designation (from the lab's points of contact); the CSM is always the lab's CSM.",
+      "Topics (one or more) come in six groups: Product & Module Experience (Overall plus a fixed list of product modules — Registration & Billing, Report Management, Smart Report, Inventory, QC, Home Collection, Appointments, Branches, Admin & Configuration, Marketing, Logistic App, Patient Communication) Technical & Integration, Customer Support & Service, Implementation & Adoption, Business Impact & Value, Relationship & Brand.",
+      "Rating is optional, 1–5 in half steps.",
+      "Status: Pending → In Review → Approved → Published. Approved and Published need the customer's consent to be Received (Not Requested / Requested / Received). Every status change is written to Lab History.",
+      "Testimonials recorded before Nov 24 2026 count as Video, with status and consent Not set until someone edits them.",
+      "Feedback & NPS → Testimonials shows tiles (total, video, written, designations and topics covered, average rating, approved / published), charts by format, designation, topic and written source, and the list.",
+    ],
+    example: "A written testimonial sent by email from a Lab Director about Inventory Management and Support, rated 4.5, with consent Received, can be moved to Published.",
+    whereInApp: "Feedback & NPS → Testimonials.",
+  },
   visibility_and_roles: {
     title: "Who sees and edits what",
     summary: "A CSM sees their own labs. A CSM Lead / Admin can see the team.",

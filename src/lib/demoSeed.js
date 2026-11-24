@@ -71,12 +71,34 @@ export function buildDemoFeedback(today) {
       });
     }
   });
-  [["829", 2], ["833", 5], ["834", 9]].forEach(([labId, back], i) => {
+  // 28 testimonials across every format, topic group, source, status and consent (migration 0051 fields).
+  const TOPIC_SETS = [
+    ["product:overall", "support:overall", "impl:onboarding"], ["support:overall", "impact:tat"], ["impact:billing", "product:report_management"],
+    ["product:inventory", "impact:growth"], ["product:inventory", "product:qc"], ["product:overall", "support:response_time"],
+    ["impl:onboarding", "impl:training"], ["product:overall", "brand:recommend"], ["product:report_management", "tech:performance"],
+    ["product:overall", "support:csm", "impl:golive"], ["tech:analyser", "tech:his_emr"], ["impact:patient", "product:home_collection"],
+  ];
+  const SOURCES = ["Email", "WhatsApp", "Google Form", "Email", "Other", "WhatsApp", "Google Form"];
+  const STATUS_CONSENT = [["Published", "Received"], ["Approved", "Received"], ["In Review", "Requested"], ["Pending", "Not Requested"], ["Published", "Received"], ["Approved", "Received"], ["Pending", "Requested"]];
+  const labIds = Object.keys(DEMO_POCS);
+  for (let i = 0; i < 28; i++) {
+    const labId = labIds[i % labIds.length];
+    const back = i % 11;
     let y = ty, m = tm - back;
     while (m < 1) { m += 12; y -= 1; }
-    const [who, designation] = DEMO_POCS[labId][0];
-    const date = demoDate(y, m, 12);
-    testimonials.push({ id: `demo-t-${i}`, labId, personName: who, designation, videoUrl: "https://example.com/testimonial", note: "Recorded at the lab after the go-live review.", date, createdBy: null, createdAt: `${date}T12:00:00` });
-  });
+    const day = back === 0 ? Math.min(td, 2 + (i % 20)) : 2 + (i % 26);
+    const [who, designation] = DEMO_POCS[labId][i % 2];
+    const date = demoDate(y, m, day);
+    const isVideo = i % 7 === 0 || i % 7 === 3;
+    const [status, consent] = STATUS_CONSENT[i % STATUS_CONSENT.length];
+    testimonials.push({
+      id: `demo-t-${i}`, labId, personName: who, designation, format: isVideo ? "Video" : "Written",
+      source: isVideo ? "" : SOURCES[i % SOURCES.length], sourceDetail: !isVideo && SOURCES[i % SOURCES.length] === "Other" ? "LinkedIn post" : "", topics: TOPIC_SETS[i % TOPIC_SETS.length],
+      rating: [5, 4.5, 4.5, 4, 5, 4.5, 3.5][i % 7], status, consent,
+      videoUrl: isVideo ? "https://example.com/video" : "https://example.com/review",
+      note: isVideo ? "Recorded at the lab after the go-live review." : "Posted after our quarterly review call — mentions faster reports and the support team.",
+      date, createdBy: null, createdAt: `${date}T12:${String(i).padStart(2, "0")}:00`,
+    });
+  }
   return { feedback, testimonials, contacts };
 }

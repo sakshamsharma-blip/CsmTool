@@ -19,6 +19,7 @@ import { HOW_IT_WORKS, HOW_IT_WORKS_TOPICS } from '../_shared/howItWorks.js'
 import { computeSentimentHealth } from '../_shared/labHealth.js'
 import { expansionRows, revenueOn } from '../_shared/expansionRevenue.js'
 import { feedbackCoverage, feedbackTrend } from '../_shared/feedbackCoverage.js'
+import { TESTIMONIAL_FORMATS, TESTIMONIAL_SOURCES, TESTIMONIAL_STATUSES, TESTIMONIAL_CONSENTS, topicInfo } from '../_shared/testimonials.js'
 
 // deno-lint-ignore no-explicit-any
 type Db = any
@@ -138,7 +139,7 @@ function buildServer(db: Db) {
   )
 
   server.registerTool('how_it_works', {
-    description: 'How a number or rule in CSM 360 works and is calculated: scores, stage points, KPIs, MRR and invoices, collections, churn and retention, Lab Health, segments, tasks and TAT, check-ins and POC targets, feedback and NPS, who sees what. Call it with no topic for the list.',
+    description: 'How a number or rule in CSM 360 works and is calculated: scores, stage points, KPIs, MRR and invoices, collections, churn and retention, Lab Health, segments, tasks and TAT, check-ins and POC targets, feedback and NPS, testimonials, who sees what. Call it with no topic for the list.',
     inputSchema: z.object({ topic: z.enum(HOW_IT_WORKS_TOPICS as [string, ...string[]]).optional().describe('Leave out to list the topics') }),
     annotations: READ_ONLY,
   }, async ({ topic }) => {
@@ -337,7 +338,7 @@ function buildServer(db: Db) {
   })
 
   server.registerTool('feedback_summary', {
-    description: 'Feedback & NPS for the clients you can see. Clients are asked for feedback (a 1–5 rating) once a calendar month and for NPS (0–10) once a calendar quarter. Returns: the summary for the chosen dates (average NPS out of 10, promoters 9–10, passives 7–8, detractors 0–6, average rating, the responses); coverage now (how many clients gave this month\'s feedback and this quarter\'s NPS, and which are still due, highest MRR first); and trends (average NPS for the last 6 quarters, average rating for the last 12 months). Optionally one lab, one CSM and/or a start date (the start date narrows the summary only, not coverage or trends).',
+    description: 'Feedback & NPS for the clients you can see. Clients are asked for feedback (a 1–5 rating) once a calendar month and for NPS (0–10) once a calendar quarter. Returns: the summary for the chosen dates (average NPS out of 10, promoters 9–10, passives 7–8, detractors 0–6, average rating, the responses); coverage now (how many clients gave this month\'s feedback and this quarter\'s NPS, and which are still due, highest MRR first); trends (average NPS for the last 6 quarters, average rating for the last 12 months); and testimonials (count by format Video / Written, by source for written ones, by topic, by publication status and consent, average rating, and the list). Optionally one lab, one CSM and/or a start date (the start date narrows the summary only, not coverage or trends).',
     inputSchema: z.object({
       lab: z.string().optional(),
       csm: z.string().optional().describe('A CSM name, to narrow to their clients'),
@@ -384,7 +385,35 @@ function buildServer(db: Db) {
         npsDueThisQuarter: !x.npsThisQuarter, lastNps: x.lastNps, lastNpsDate: x.lastNpsDate,
       }))
     const trendRows = mine.map(asRow)
+
+    // Testimonials (migration 0051): same lab / CSM / since narrowing. select('*') so it still works before 0051 runs.
+    const [tAll, mods] = await Promise.all([
+      must<Db[]>(db.from('lab_testimonials').select('*').order('collected_on', { ascending: false }).limit(1000)),
+      must<Db[]>(db.from('modules').select('key,name')).catch(() => []),
+    ])
+    const tRows = tAll.filter((t: Db) => byId[t.lab_id] && (!only || parentOf(t.lab_id) === only) && csmMatch(parentOf(t.lab_id)) && (!since || t.collected_on >= since))
+    const countBy = (keys: string[], get: (t: Db) => string | null) => Object.fromEntries([...keys.map((k) => [k, tRows.filter((t: Db) => get(t) === k).length]), ['Not set', tRows.filter((t: Db) => !get(t)).length]])
+    const topicCounts: Record<string, number> = {}
+    tRows.forEach((t: Db) => (t.topics || []).forEach((k: string) => { const l = topicInfo(k, mods).label; topicCounts[l] = (topicCounts[l] || 0) + 1 }))
+    const tRated = tRows.map((t: Db) => (t.rating == null ? null : Number(t.rating))).filter((v: Db) => v != null)
+    const testimonials = {
+      total: tRows.length,
+      byFormat: Object.fromEntries(TESTIMONIAL_FORMATS.map((f: string) => [f, tRows.filter((t: Db) => (t.format || 'Video') === f).length])),
+      writtenBySource: countBy(TESTIMONIAL_SOURCES, (t: Db) => ((t.format || 'Video') === 'Written' ? t.source : 'n/a')),
+      byStatus: countBy(TESTIMONIAL_STATUSES, (t: Db) => t.status),
+      byConsent: countBy(TESTIMONIAL_CONSENTS, (t: Db) => t.consent),
+      topics: Object.entries(topicCounts).sort((a, b) => b[1] - a[1]).map(([topic, count]) => ({ topic, count })),
+      averageRating: mean(tRated),
+      rule: 'Approved and Published need the customer\'s consent to be Received. Status and consent are empty ("Not set") on testimonials recorded before Nov 24 2026.',
+      list: tRows.slice(0, 100).map((t: Db) => ({
+        lab: byId[parentOf(t.lab_id)]?.name, csm: byId[parentOf(t.lab_id)]?.csm, collectedOn: t.collected_on, person: t.person_name, designation: t.designation,
+        format: t.format || 'Video', source: t.source, sourceDetail: t.source_detail, topics: (t.topics || []).map((k: string) => topicInfo(k, mods).label), rating: t.rating == null ? null : Number(t.rating),
+        status: t.status, consent: t.consent, link: t.video_url, note: t.note,
+      })),
+    }
+    delete (testimonials.writtenBySource as Db)['n/a']
     return json({
+      testimonials,
       summary: {
         since: since || 'all time', responses: rows.length, averageNps: mean(nps), npsResponses: nps.length,
         promoters: nps.filter((v: number) => v >= 9).length, passives: nps.filter((v: number) => v >= 7 && v <= 8).length,

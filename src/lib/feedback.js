@@ -37,6 +37,9 @@ const mapFeedback = (r) => ({
 const mapTestimonial = (r) => ({
   id: r.id, labId: r.lab_id, personName: r.person_name || "", designation: r.designation, videoUrl: r.video_url, note: r.note || "",
   date: r.collected_on || null, createdBy: r.created_by, createdAt: r.created_at,
+  // Migration 0051. Before it runs these columns don't exist: an older row reads as a video with nothing else set.
+  format: r.format || "Video", topics: r.topics || [], source: r.source || "", sourceDetail: r.source_detail || "", rating: r.rating != null ? Number(r.rating) : null,
+  status: r.status || "", consent: r.consent || "",
 });
 
 export async function fetchFeedback() {
@@ -81,22 +84,42 @@ export async function fetchTestimonials() {
   if (error) throw error;
   return (data || []).map(mapTestimonial);
 }
-function testimonialRow({ labId, personName, designation, videoUrl, note, date }) {
+function testimonialRow({ labId, personName, designation, videoUrl, note, date, format, topics, source, sourceDetail, rating, status, consent }) {
   return {
     lab_id: labId, person_name: personName?.trim() || null, designation: designation.trim(), video_url: videoUrl.trim(),
     note: note?.trim() || null, collected_on: date,
+    format: format || "Video", topics: topics || [], source: format === "Written" ? source || null : null,
+    source_detail: format === "Written" && source === "Other" ? sourceDetail?.trim() || null : null,
+    rating: rating === "" || rating == null ? null : Number(rating), status: status || null, consent: consent || null,
   };
+}
+// A save that names a 0051 column before that migration has run fails with "column … does not exist" / "Could not find".
+function explain(error) {
+  if (/(format|topics|source|source_detail|rating|status|consent)/.test(error?.message || "") && /column|schema cache/i.test(error?.message || "")) {
+    return new Error("Testimonial details aren't set up in the database yet — run migration 0051_testimonial_details.sql.");
+  }
+  return error;
 }
 export async function addTestimonial(t, csmId) {
   const { labId, personName, designation } = t;
   const { error } = await supabase.from("lab_testimonials").insert({ ...testimonialRow(t), created_by: csmId || null });
-  if (error) throw error;
-  logActivity(labId, { kind: "Testimonial Added", title: `Testimonial video added — ${designation.trim()}`, meta: personName?.trim() || null, csmId }).catch((err) => console.error(err));
+  if (error) throw explain(error);
+  logActivity(labId, {
+    kind: "Testimonial Added", title: `${t.format === "Written" ? "Written" : "Video"} testimonial added — ${designation.trim()}`,
+    meta: [personName?.trim(), t.status ? `Status: ${t.status}` : null].filter(Boolean).join(" · ") || null, csmId,
+  }).catch((err) => console.error(err));
 }
-export async function updateTestimonial(id, t) {
+// `before` = the row as it was, so a publication-status change is written to Lab History.
+export async function updateTestimonial(id, t, before, csmId) {
   const { data, error } = await supabase.from("lab_testimonials").update(testimonialRow(t)).eq("id", id).select("id");
-  if (error) throw error;
+  if (error) throw explain(error);
   if (!data || !data.length) throw new Error("Nothing was saved — you may not have access to this lab.");
+  if (before && (before.status || "") !== (t.status || "")) {
+    logActivity(t.labId, {
+      kind: "Testimonial Status", title: `Testimonial ${t.status ? `moved to ${t.status}` : "status cleared"} — ${t.designation.trim()}`,
+      meta: [t.personName?.trim(), before.status ? `was ${before.status}` : null].filter(Boolean).join(" · ") || null, csmId,
+    }).catch((err) => console.error(err));
+  }
 }
 export async function deleteTestimonial(id) {
   const { error } = await supabase.from("lab_testimonials").delete().eq("id", id);

@@ -318,27 +318,65 @@ test("Lab Details: Lab Type is editable and the Stage field is gone", async ({ p
   await expect(page.locator(".param-row", { hasText: "Lab Type" }).locator("select option")).toHaveText(["Not set", "Pathology", "Radiology", "Pathology + Radiology"]);
 });
 
-test("Feedback & NPS: opens on Team View + Report, numbers click through, coverage lists who's due", async ({ page }) => {
+test("Feedback & NPS: five tabs, numbers click through, Lab-wise lists who's due", async ({ page }) => {
   await nav(page, "Feedback & NPS");
   await expect(page.getByRole("heading", { name: "Feedback & NPS" })).toBeVisible();
+  // One sidebar item, five tabs on the page; opens on Team View + Overview.
+  await expect(page.locator(".sidebar .nav-item", { hasText: "Feedback & NPS" })).toHaveCount(1);
+  await expect(page.locator(".tab-btn")).toHaveText([/Overview/, /Lab-wise Report/, /CSM Performance/, /Response Details/, /Testimonials/]);
   await expect(page.locator(".tabbtn.active")).toHaveText("Team View");
-  await expect(page.locator(".tab-btn.active")).toHaveText("Report");
-  // Headline in words, the two cadence tiles and both trend charts (demo data).
+  await expect(page.locator(".tab-btn.active")).toContainText("Overview");
   await expect(page.locator(".fb-headline")).toContainText("Average NPS");
-  await expect(page.locator(".fb-headline")).toContainText("Monthly feedback:");
   await expect(page.locator(".fb-headline")).toContainText("Quarterly NPS:");
   await expect(page.getByText("NPS by quarter")).toBeVisible();
-  await expect(page.getByText("Feedback rating by month")).toBeVisible();
-  // Who still owes this quarter's NPS.
+  // NPS tile → Lab-wise Report, judged by NPS, due only.
   await page.locator(".fb-tile", { hasText: "NPS ·" }).click();
-  await expect(page.locator(".fb-card-head select")).toHaveValue("nps");
+  await expect(page.locator(".tab-btn.active")).toContainText("Lab-wise Report");
+  await expect(page.getByLabel("Judge by")).toHaveValue("nps");
+  await expect(page.getByLabel("Show", { exact: true })).toHaveValue("due");
   await expect(page.getByRole("button", { name: "+ Record", exact: true }).first()).toBeVisible();
-  // Detractors tile → the Responses list, narrowed to detractors.
+  // Done and due together: the Done section comes first.
+  await page.getByLabel("Show", { exact: true }).selectOption("all");
+  await expect(page.locator(".fb-sec-title").first()).toContainText("Done");
+  await expect(page.locator(".fb-sec-title").nth(1)).toContainText("Still due");
+  // CSM Performance charts.
+  await page.locator(".tab-btn", { hasText: "CSM Performance" }).click();
+  await expect(page.getByText("Average NPS by CSM")).toBeVisible();
+  // Detractors tile → Response Details, narrowed to detractors; a row opens the full response.
+  await page.locator(".tab-btn", { hasText: "Overview" }).click();
   await page.locator(".fb-tile", { hasText: "Detractors" }).click();
-  await expect(page.locator(".tab-btn.active")).toContainText("Responses");
+  await expect(page.locator(".tab-btn.active")).toContainText("Response Details");
   await expect(page.locator(".fb-chip")).toContainText("Detractors");
-  await expect(page.locator(".fb-row").first()).toContainText("Detractor");
-  // A row opens the full response.
   await page.locator(".fb-row").first().click();
   await expect(page.getByRole("dialog", { name: "Feedback response" })).toBeVisible();
+});
+
+test("Feedback & NPS → Testimonials: tiles, charts, list and the Add Testimonial rules", async ({ page }) => {
+  await nav(page, "Feedback & NPS");
+  await page.locator(".tab-btn", { hasText: "Testimonials" }).click();
+  await expect(page.locator(".ts-tile")).toHaveCount(7);
+  await expect(page.getByText("Testimonials by format")).toBeVisible();
+  await expect(page.getByText("Written by source")).toBeVisible();
+  // Click-through: Video tile narrows the list to videos.
+  await page.locator(".ts-tile", { hasText: "Video" }).click();
+  await expect(page.locator(".ts-table tbody tr").first()).toContainText("Video");
+  // Add Testimonial: CSM comes from the lab; Written needs a source; Approved needs consent.
+  await page.getByRole("button", { name: "+ Add Testimonial" }).click();
+  const form = page.getByRole("dialog", { name: "Add Testimonial" });
+  await expect(form).toBeVisible();
+  await expect(form.getByText("Source / platform")).toHaveCount(0); // Video by default: no source
+  await form.getByRole("button", { name: /Written \(review/ }).click();
+  await expect(form.getByText("Source / platform *")).toBeVisible();
+  await expect(form.locator("select").last().locator("option", { hasText: "Approved" })).toBeDisabled(); // consent not Received yet
+  // Sources are the channels the team uses; "Other" asks what it was.
+  await expect(form.locator("select").first().locator("option")).toHaveText(["Select…", "Email", "WhatsApp", "Google Form", "Other"]);
+  await form.locator("select").first().selectOption("Other");
+  await expect(form.getByLabel("Other source")).toBeVisible();
+  // Topic groups start collapsed; Product & Module lists the modules.
+  await expect(form.locator(".ts-check")).toHaveCount(0);
+  await form.locator(".ts-group-head", { hasText: "Product & Module Experience" }).click();
+  await expect(form.locator(".ts-check", { hasText: "Inventory Management" })).toBeVisible();
+  await expect(form.locator(".ts-check", { hasText: "Patient Communication" })).toBeVisible();
+  await form.locator(".ts-group-head", { hasText: "Technical & Integration" }).click();
+  await expect(form.locator(".ts-check", { hasText: "Analyser / machine integration" })).toBeVisible();
 });

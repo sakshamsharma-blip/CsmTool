@@ -650,7 +650,7 @@ export default function App() {
             <VisitsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "feedback" && (
-            <FeedbackView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <FeedbackView labs={labs} modules={modules} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "resources" && (
             <ResourcesView modules={modules} myProfileId={idByName[myName]} isHead={viewer.isHead} showToast={showToast} />
