@@ -280,7 +280,8 @@ with the same context and follows the same rules. Read it fully before making ch
   History; a future one is *planned* as a task (`tasks.type = 'planned-visit'`, due on the visit
   date, owned by the lab's CSM). Calls/emails/WhatsApp/notes are logged only via Log Check-in.
 - **Log Check-in → Tasks**: each action item becomes a task (`type = 'action-item'`) and the next
-  follow-up date becomes a follow-up task (the only one carrying `source_visit_id`, so editing the visit keeps
+  follow-up date becomes a follow-up task. **Auto task titles carry no lab name** (decision Nov 24 2026, `autoTaskTitle` in `lib/tasks.js`; 0053 tidied older ones):
+  an action item = its own text, "Follow-up: <reason>", "Planned visit: <purpose>" — the Lab and Type columns show the rest. The follow-up task (the only one carrying `source_visit_id`, so editing the visit keeps
   it in sync). Adoption Snapshot ticks only mark what was *discussed* — they create no tasks.
 - **Searchable dropdowns**: every lab picker (parents *and* children), country and state uses
   `components/SearchSelect.jsx` (type to filter). Any new picker should use it too.
@@ -399,7 +400,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership. **Support & Tickets** is a sidebar link that opens
   Flow (https://creliohealthflow.vercel.app/, the CS ↔ Product escalation tracker) in a new tab.
-- Latest migration: `0052_inbox_reads.sql`; **0001–0052 are all applied** (Nov 24 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+- Latest migration: `0053_task_titles_without_lab.sql`; **0001–0053 are all applied** (Nov 24 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).

@@ -6,7 +6,7 @@ import PipelineScores from "../components/PipelineScores";
 import { fetchLabPitchStatus, PITCH_ACTIVE_STATUSES } from "../lib/pitch";
 import { fetchLabActivity, ACTIVITY_ICONS } from "../lib/activity";
 import { fetchAllVisits, addVisit } from "../lib/visits";
-import { addTask } from "../lib/tasks";
+import { addTask, autoTaskTitle } from "../lib/tasks";
 import { todayISO, daysFromTodayISO, checkinDateBounds, isCheckinDateAllowed, CHECKIN_DATE_MESSAGE } from "../lib/dates";
 import { fetchLabContacts, addLabContact } from "../lib/labContacts";
 import DesignationSelect from "../components/DesignationSelect";
@@ -183,7 +183,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
       if (nextFollowup) {
         await addTask({
           labId: lab.id,
-          desc: `Follow-up — ${lab.name}${nextFollowupReason ? `: ${nextFollowupReason}` : ""}`,
+          desc: autoTaskTitle("Follow-up", nextFollowupReason),
           owners: [currentCSM],
           type: "follow-up",
           repeat: "none",
@@ -203,7 +203,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
       if (cleanItems.length) {
         await Promise.all(cleanItems.map((it) => addTask({
           labId: lab.id,
-          desc: `Action item — ${lab.name}: ${it.text.trim()}`,
+          desc: it.text.trim(),
           owners: [currentCSM],
           type: "action-item",
           repeat: "none",

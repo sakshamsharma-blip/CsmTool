@@ -2,6 +2,9 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Nov 24 2026 — Cleaner task titles
+- Tasks made from a check-in or a planned visit no longer repeat the lab in the title (the Lab and Type columns already show it): an action item is just its text, a follow-up is "Follow-up: <reason>", a planned visit "Planned visit: <purpose>". Migration 0053 tidies the existing ones.
+
 ## Nov 24 2026 — Check-ins and Inbox
 - Check-ins (sidebar): every point of contact with a check-in target, when they were last contacted and when the next one is due (4 a month = weekly, 2 = every 15 days, 1 = monthly), with Overdue / Due soon tiles and a Log check-in button that fills in the lab and person.
 - Inbox (sidebar, CSM Lead / Manager / Admin): the team's check-ins and visits by lab, newest first; open one for the full details and it's marked read for you. Migration 0052.

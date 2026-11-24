@@ -377,11 +377,15 @@ export async function deleteTask(id) {
 // creates its own task inline via addTask with sourceVisitId set.
 // `type` / `descPrefix` let Visits & Meetings keep its next visit as a "planned-visit" task (so it shows under
 // Upcoming Planned Visits) while Log Check-in follow-ups stay plain "follow-up" tasks.
-export async function syncFollowupTaskForVisit({ visitId, labId, labName, ownerName, idByName, nextFollowupDate, nextFollowupReason, nextFollowupTime, type = "follow-up", descPrefix = "Follow-up" }) {
+// Titles of tasks made automatically (decision Nov 24 2026): no lab name — the Lab and Type columns already show them.
+// "Follow-up: <reason>" / "Planned visit: <purpose>", or just the prefix; an action item's title is its own text.
+export const autoTaskTitle = (prefix, text) => (text && String(text).trim() ? `${prefix}: ${String(text).trim()}` : prefix);
+
+export async function syncFollowupTaskForVisit({ visitId, labId, ownerName, idByName, nextFollowupDate, nextFollowupReason, nextFollowupTime, type = "follow-up", descPrefix = "Follow-up" }) {
   const { data: existing, error: e1 } = await supabase.from("tasks").select("id").eq("source_visit_id", visitId).limit(1);
   if (e1) throw e1;
   const existingId = existing && existing[0] ? existing[0].id : null;
-  const desc = `${descPrefix} — ${labName}${nextFollowupReason ? `: ${nextFollowupReason}` : ""}`;
+  const desc = autoTaskTitle(descPrefix, nextFollowupReason);
 
   if (!nextFollowupDate) {
     if (existingId) await deleteTask(existingId);

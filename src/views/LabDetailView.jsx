@@ -348,7 +348,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
       const newItems = vActionItems.filter((it) => it.text.trim() && !hadTexts.has(it.text.trim()));
       if (newItems.length) {
         await Promise.all(newItems.map((it) => addTask({
-          labId: lab.id, desc: `Action item — ${lab.name}: ${it.text.trim()}`, owners: [lab.csm || currentCSM], type: "action-item", repeat: "none",
+          labId: lab.id, desc: it.text.trim(), owners: [lab.csm || currentCSM], type: "action-item", repeat: "none",
           due: it.dueDate || null, idByName, assignedByName: currentCSM,
         })));
       }

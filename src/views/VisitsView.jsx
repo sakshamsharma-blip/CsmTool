@@ -3,7 +3,7 @@ import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { computeLabRollup, flattenRollup } from "../lib/labRollup";
 import { fetchAllVisits, addVisit, updateVisit } from "../lib/visits";
-import { fetchAllTasks, taskDueBucket, addTask, toggleTaskDone, deleteTask, updateTask, todayISO, syncFollowupTaskForVisit, fmtTime } from "../lib/tasks";
+import { fetchAllTasks, taskDueBucket, addTask, toggleTaskDone, deleteTask, updateTask, todayISO, syncFollowupTaskForVisit, fmtTime, autoTaskTitle } from "../lib/tasks";
 import { filterLabsByLabType } from "../lib/labs";
 import { checkinDateBounds, isCheckinDateAllowed, CHECKIN_DATE_MESSAGE } from "../lib/dates";
 import { useScopedCsm } from "../lib/useScopedCsm";
@@ -152,7 +152,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
       if (logFollowup) {
         await addTask({
           labId: logLabId,
-          desc: `Planned visit — ${lab ? lab.name : logLabId}${logFollowupReason ? `: ${logFollowupReason}` : ""}`,
+          desc: autoTaskTitle("Planned visit", logFollowupReason),
           owners: [lab?.csm || currentCSM],
           type: PLANNED_VISIT_TASK_TYPE,
           repeat: "none",
@@ -186,7 +186,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
       const owner = lab?.csm || currentCSM;
       await addTask({
         labId: planLabId,
-        desc: `Planned visit — ${lab ? lab.name : planLabId}${planPurpose.trim() ? `: ${planPurpose.trim()}` : ""}`,
+        desc: autoTaskTitle("Planned visit", planPurpose),
         owners: [owner],
         type: PLANNED_VISIT_TASK_TYPE,
         repeat: "none",
@@ -200,19 +200,18 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
       showToast("Visit planned — it's in Tasks for that day.");
     } catch (err) { showToast(`⚠ ${err.message}`); }
   }
-  // Purpose is whatever follows "Planned visit — <lab>: " in the task text.
+  // Purpose is whatever follows "Planned visit: " (or the older "Planned visit — <lab>: ") in the task text.
   function openEditPlanned(task) {
-    const m = (task.desc || "").match(/^[^—]*—[^:]*:\s*(.*)$/);
+    const m = (task.desc || "").match(/^Planned visit(?: — [^:]*)?:\s*(.*)$/);
     setEditPlan({ task, date: task.due || "", time: task.dueTime || "", purpose: m ? m[1] : "" });
   }
   async function handleSavePlanned() {
     if (!editPlan.date) { showToast("Pick the planned date."); return; }
     try {
-      const lab = labsById[editPlan.task.labId];
       await updateTask(editPlan.task.id, {
         due: editPlan.date,
         dueTime: editPlan.time || null,
-        desc: `Planned visit — ${lab ? lab.name : editPlan.task.labId}${editPlan.purpose.trim() ? `: ${editPlan.purpose.trim()}` : ""}`,
+        desc: autoTaskTitle("Planned visit", editPlan.purpose),
       });
       setEditPlan(null);
       await loadAll();
