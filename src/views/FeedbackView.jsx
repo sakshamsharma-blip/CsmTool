@@ -51,9 +51,10 @@ function downloadCsv(name, header, lines) {
 //                  their labs), by lab and by designation; CSV export.
 // Filters: lab, CSM (My Labs / Team View), designation, source and date range.
 export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLab, showToast }) {
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "feedback");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "feedback", "team");
   const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
-  const [tab, setTab] = useSessionState("feedback.tab", "responses");
+  const [tab, setTab] = useSessionState("feedback.view", "report");
+  const [viewing, setViewing] = useState(null); // { kind: "feedback" | "testimonial", row } shown in the side panel
   const [feedback, setFeedback] = useState([]);
   const [testimonials, setTestimonials] = useState([]);
   const [contacts, setContacts] = useState([]);
@@ -99,9 +100,11 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
   const labName = (labId) => labsById[parentOf(labId)]?.name || labId;
   const labCsm = (labId) => labsById[parentOf(labId)]?.csm || "—";
 
+  // Newest first: by date, then by when it was recorded.
+  const newestFirst = (a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || "").localeCompare(a.createdAt || "");
   const responses = feedback.filter((f) => inScope(f.labId) && inDates(f.date)
-    && (!fSource || f.source === fSource) && (!fDesignation || f.respondentDesignation === fDesignation));
-  const tRows = testimonials.filter((t) => inScope(t.labId) && inDates(t.date) && (!fDesignation || t.designation === fDesignation));
+    && (!fSource || f.source === fSource) && (!fDesignation || f.respondentDesignation === fDesignation)).sort(newestFirst);
+  const tRows = testimonials.filter((t) => inScope(t.labId) && inDates(t.date) && (!fDesignation || t.designation === fDesignation)).sort(newestFirst);
   const designations = [...new Set([...feedback.map((f) => f.respondentDesignation), ...testimonials.map((t) => t.designation)].filter(Boolean))].sort();
 
   // POCs of the chosen lab (and of its child labs), for the "Given by" pickers.
@@ -135,9 +138,9 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
     } catch (err) { showToast(`⚠ ${err.message}`); } finally { setSaving(false); }
   }
   async function remove(kind, row) {
-    if (!window.confirm("Delete this entry?")) return;
-    try { await (kind === "feedback" ? deleteFeedback(row.id) : deleteTestimonial(row.id)); await load(); showToast("Deleted."); }
-    catch (err) { showToast(`⚠ ${err.message}`); }
+    if (!window.confirm("Delete this entry?")) return false;
+    try { await (kind === "feedback" ? deleteFeedback(row.id) : deleteTestimonial(row.id)); await load(); showToast("Deleted."); return true; }
+    catch (err) { showToast(`⚠ ${err.message}`); return false; }
   }
   function exportCsv() {
     if (tab === "testimonials") {
@@ -183,7 +186,7 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
 
       <div className="tabs" style={{ marginBottom: 12, width: "fit-content" }}>
-        {[["responses", `Responses (${responses.length})`], ["testimonials", `Testimonials (${tRows.length})`], ["report", "Report"]].map(([k, l]) => (
+        {[["report", "Report"], ["responses", `Responses (${responses.length})`], ["testimonials", `Testimonials (${tRows.length})`]].map(([k, l]) => (
           <button key={k} type="button" className={`tab-btn${tab === k ? " active" : ""}`} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
@@ -216,25 +219,21 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
           {!responses.length ? <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 12.5 }}>{feedback.length ? "No responses match these filters." : "No feedback recorded yet — use “+ Record feedback” to save one you collected through a form, email or WhatsApp."}</div> : (
             <Paginated items={responses}>{(page) => (
               <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Date</th><th>Lab</th><th>CSM</th><th>NPS</th><th>Rating</th><th>Given by</th><th>Designation</th><th>Source</th><th>Comment</th><th>Link</th><th></th></tr></thead>
+                <thead><tr><th>Date</th><th>Lab</th><th>CSM</th><th>NPS</th><th>Rating</th><th>Given by</th><th>Designation</th><th>Source</th><th>Comment</th><th>Link</th></tr></thead>
                 <tbody>{page.map((r) => {
                   const b = npsBucket(r.npsScore);
                   return (
-                    <tr key={r.id}>
+                    <tr key={r.id} className="fb-row" onClick={() => setViewing({ kind: "feedback", row: r })} title="Open the full response">
                       <td style={{ whiteSpace: "nowrap" }}>{fmtDate(r.date)}</td>
-                      <td className="lab-name clickable" onClick={() => onOpenLab(parentOf(r.labId))}>{labName(r.labId)}</td>
+                      <td className="lab-name clickable fb-cut" onClick={(e) => { e.stopPropagation(); onOpenLab(parentOf(r.labId)); }}>{labName(r.labId)}</td>
                       <td>{labCsm(r.labId)}</td>
                       <td>{r.npsScore == null ? "—" : <><b>{r.npsScore}</b>/10 <span style={{ fontSize: 10.5, fontWeight: 700, color: BUCKET_COLOR[b] }}>{b}</span></>}</td>
                       <td>{r.rating == null ? "—" : <span className="stars" title={`${r.rating} / 5`}>{stars(r.rating)}</span>}</td>
-                      <td>{r.respondentName || "—"}</td>
-                      <td>{r.respondentDesignation || "—"}</td>
-                      <td>{r.source || "—"}</td>
-                      <td style={{ maxWidth: 260, whiteSpace: "normal" }}>{r.comment || <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
-                      <td>{r.linkUrl ? <a href={r.linkUrl} target="_blank" rel="noreferrer noopener">Open ↗</a> : "—"}</td>
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        <span className="icon-btn" title="Edit" style={{ cursor: "pointer" }} onClick={() => setEditing({ ...r, labId: parentOf(r.labId), npsScore: r.npsScore ?? "", rating: r.rating || 0 })}>✎</span>{" "}
-                        <span className="icon-btn" title="Delete" style={{ cursor: "pointer" }} onClick={() => remove("feedback", r)}>🗑</span>
-                      </td>
+                      <td className="fb-cut">{r.respondentName || "—"}</td>
+                      <td className="fb-cut">{r.respondentDesignation || "—"}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>{r.source || "—"}</td>
+                      <td className="fb-cut fb-comment">{r.comment || <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>{r.linkUrl ? <a href={r.linkUrl} target="_blank" rel="noreferrer noopener" onClick={(e) => e.stopPropagation()}>Open ↗</a> : "—"}</td>
                     </tr>
                   );
                 })}</tbody>
@@ -249,26 +248,36 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
           {!tRows.length ? <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 12.5 }}>{testimonials.length ? "No testimonials match these filters." : "No testimonials yet — use “+ Add testimonial”."}</div> : (
             <Paginated items={tRows}>{(page) => (
               <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Date collected</th><th>Lab</th><th>CSM</th><th>Given by</th><th>Designation</th><th>Video</th><th>Note</th><th></th></tr></thead>
+                <thead><tr><th>Date collected</th><th>Lab</th><th>CSM</th><th>Given by</th><th>Designation</th><th>Video</th><th>Note</th></tr></thead>
                 <tbody>{page.map((t) => (
-                  <tr key={t.id}>
+                  <tr key={t.id} className="fb-row" onClick={() => setViewing({ kind: "testimonial", row: t })} title="Open the full testimonial">
                     <td style={{ whiteSpace: "nowrap" }}>{fmtDate(t.date)}</td>
-                    <td className="lab-name clickable" onClick={() => onOpenLab(parentOf(t.labId))}>{labName(t.labId)}</td>
+                    <td className="lab-name clickable fb-cut" onClick={(e) => { e.stopPropagation(); onOpenLab(parentOf(t.labId)); }}>{labName(t.labId)}</td>
                     <td>{labCsm(t.labId)}</td>
-                    <td>{t.personName || "—"}</td>
-                    <td>{t.designation}</td>
-                    <td><a href={t.videoUrl} target="_blank" rel="noreferrer noopener">🎬 Watch ↗</a></td>
-                    <td style={{ maxWidth: 260, whiteSpace: "normal" }}>{t.note || <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>
-                      <span className="icon-btn" title="Edit" style={{ cursor: "pointer" }} onClick={() => setTEditing({ ...t, labId: parentOf(t.labId), date: t.date || todayISO() })}>✎</span>{" "}
-                      <span className="icon-btn" title="Delete" style={{ cursor: "pointer" }} onClick={() => remove("testimonial", t)}>🗑</span>
-                    </td>
+                    <td className="fb-cut">{t.personName || "—"}</td>
+                    <td className="fb-cut">{t.designation}</td>
+                    <td style={{ whiteSpace: "nowrap" }}><a href={t.videoUrl} target="_blank" rel="noreferrer noopener" onClick={(e) => e.stopPropagation()}>🎬 Watch ↗</a></td>
+                    <td className="fb-cut fb-comment">{t.note || <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
                   </tr>
                 ))}</tbody>
               </table></div>
             )}</Paginated>
           )}
         </div>
+      )}
+
+      {viewing && (
+        <FeedbackDetail
+          kind={viewing.kind} row={viewing.row} labName={labName(viewing.row.labId)} csm={labCsm(viewing.row.labId)}
+          onOpenLab={() => { setViewing(null); onOpenLab(parentOf(viewing.row.labId)); }}
+          onClose={() => setViewing(null)}
+          onEdit={() => {
+            const r = viewing.row; setViewing(null);
+            if (viewing.kind === "feedback") setEditing({ ...r, labId: parentOf(r.labId), npsScore: r.npsScore ?? "", rating: r.rating || 0 });
+            else setTEditing({ ...r, labId: parentOf(r.labId), date: r.date || todayISO() });
+          }}
+          onDelete={async () => { const v = viewing; if (await remove(v.kind, v.row)) setViewing(null); }}
+        />
       )}
 
       {tab === "report" && (<>
@@ -369,6 +378,61 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
 }
 
 // "Given by": pick one of the lab's Points of Contact, or add a new POC on the spot (saved to the lab).
+function Row({ label, children }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "130px 1fr", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--border)", fontSize: 13 }}>
+      <span style={{ color: "var(--text-dim)" }}>{label}</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{children || "—"}</span>
+    </div>
+  );
+}
+
+// Full details of one response or testimonial (Nov 2026) — the tables cut long text to one line.
+function FeedbackDetail({ kind, row: r, labName, csm, onOpenLab, onClose, onEdit, onDelete }) {
+  const isFb = kind === "feedback";
+  const b = isFb ? npsBucket(r.npsScore) : null;
+  const rec = r.createdAt ? new Date(r.createdAt).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : null;
+  const text = isFb ? r.comment : r.note;
+  return (
+    <>
+      <div className="drawer-backdrop show" onClick={onClose} />
+      <div className="drawer show" role="dialog" aria-label={isFb ? "Feedback response" : "Testimonial"}>
+        <div className="drawer-head">
+          <div>
+            <h2>{isFb ? "Feedback response" : "Testimonial"}</h2>
+            <p><span className="clickable" style={{ color: "var(--accent)", cursor: "pointer", fontWeight: 600 }} onClick={onOpenLab}>{labName}</span> · {fmtDate(r.date)}</p>
+          </div>
+          <button className="drawer-close" onClick={onClose} aria-label="Close">&times;</button>
+        </div>
+        <div className="drawer-body">
+          {isFb ? (<>
+            <Row label="NPS">{r.npsScore == null ? null : <><b>{r.npsScore}</b>/10 <span style={{ fontSize: 11, fontWeight: 700, color: BUCKET_COLOR[b] }}>{b}</span></>}</Row>
+            <Row label="Rating">{r.rating == null ? null : <span className="stars">{stars(r.rating)}</span>}</Row>
+            <Row label="Given by">{r.respondentName}</Row>
+            <Row label="Designation">{r.respondentDesignation}</Row>
+            <Row label="Source">{r.source}</Row>
+            <Row label="Supporting link">{r.linkUrl ? <a href={r.linkUrl} target="_blank" rel="noreferrer noopener">{r.linkUrl}</a> : null}</Row>
+          </>) : (<>
+            <Row label="Given by">{r.personName}</Row>
+            <Row label="Designation">{r.designation}</Row>
+            <Row label="Video">{r.videoUrl ? <a href={r.videoUrl} target="_blank" rel="noreferrer noopener">🎬 {r.videoUrl}</a> : null}</Row>
+          </>)}
+          <Row label="CSM">{csm}</Row>
+          {rec && <Row label="Recorded">{rec}</Row>}
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: 8 }}>{isFb ? "Comment" : "Note"}</div>
+            <div style={{ fontSize: 13.5, lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", color: text ? "var(--text)" : "var(--text-faint)" }}>{text || "No " + (isFb ? "comment" : "note") + "."}</div>
+          </div>
+        </div>
+        <div className="drawer-foot">
+          <button className="btn btn-ghost" onClick={onDelete} style={{ marginRight: "auto", color: "var(--bad)" }}>Delete</button>
+          <button className="btn btn-ghost" onClick={onClose}>Close</button>
+          <button className="btn btn-primary" onClick={onEdit}>Edit</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function PocPicker({ labId, name, designation, pocsFor, onAddPoc, onPick, showToast }) {
   const [adding, setAdding] = useState(null); // { name, designation, minProactive }
   const [busy, setBusy] = useState(false);

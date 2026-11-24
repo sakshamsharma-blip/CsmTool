@@ -944,3 +944,9 @@
   .summary-grid .tval-sub{display:inline; font-size:11.5px; margin-left:6px;}
   .fx-line{font-size:15px; font-weight:700; color:var(--text); white-space:nowrap; padding:6px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface);}
   .fx-chip{flex:none; font-size:11.5px; font-weight:600; color:var(--text-dim); background:var(--surface-3); border-radius:8px; padding:6px 10px; margin-right:10px; white-space:nowrap; cursor:default;}
+
+/* Feedback & NPS tables (Nov 2026): one line per row, click for the full response / testimonial. */
+.fb-row{cursor:pointer;}
+.fb-row:hover td{background:var(--surface-hover, var(--surface-2));}
+.fb-cut{max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.fb-comment{max-width:200px; color:var(--text-dim);}

@@ -2,6 +2,10 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Nov 24 2026 — Feedback & NPS easier to read
+- Opens on Team View (for Leads, Managers and Admins) and the Report tab, which is now the first tab.
+- Responses and Testimonials are newest first and one line per row; click a row for the full comment or note, with Edit and Delete there.
+
 ## Nov 23 2026 — USD first everywhere, exchange rate, MRR %
 - Every amount shows USD first with INR in brackets (lab money, totals, tiles, Financial Reports, Collections, Dashboard, KPI, Adoption / Expansion analytics). Segment ranges stay in ₹ and now show their range, e.g. "A — Enterprise (₹1,00,000 and above)".
 - The USD → INR rate is live (ECB via Frankfurter), re-checked hourly, and shown in the top bar and at the right of the My Labs / Team View row on Total Labs and the Dashboard.

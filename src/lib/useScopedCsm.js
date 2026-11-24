@@ -12,10 +12,11 @@ import { hasLeadAccess } from "./roles";
 // every hasLeadAccess/isHead check in the app — only controls what the UI shows; it is not the
 // security boundary. See the comment on hasLeadAccess in roles.js for why.
 // `page` keys the remembered My Labs / Team View choice per screen, so it survives a refresh (sessionStorage).
-export function useScopedCsm(viewer, page = "default") {
+// `defaultScope` lets a screen open on Team View for a Lead / Admin (Feedback & NPS does, Nov 2026).
+export function useScopedCsm(viewer, page = "default", defaultScope = "mine") {
   const { csmDirectory, currentCSM } = viewer;
   const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
-  const [scope, setScope] = useSessionState(`${page}.scope`, "mine");
+  const [scope, setScope] = useSessionState(`${page}.scope`, defaultScope);
   const [csmFilter, setCsmFilter] = useSessionState(`${page}.csmFilter`, "");
   // Lab Type filter (Pathology / Radiology / both), remembered per screen like the scope choice — see filterLabsByLabType.
   const [labType, setLabType] = useSessionState(`${page}.labType`, "");

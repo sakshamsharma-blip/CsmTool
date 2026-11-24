@@ -157,7 +157,9 @@ with the same context and follows the same rules. Read it fully before making ch
   labs give feedback OFFLINE (Google Form, Email, WhatsApp — the sources offered) and the CSM records each response
   manually — NPS 0–10 and/or rating 1–5 (at least one), given by (picked from the lab's POCs, or a new POC added from
   the form), source, comment, optional supporting link. PARENT labs only (child-lab rows count under the parent).
-  Tabs in order: Responses, Testimonials (same format, with `collected_on` date — 0040), Report (Average NPS out of
+  Opens on Team View for a Lead / Admin (`useScopedCsm(viewer, "feedback", "team")`) and on the Report tab (Nov 24 2026, session key `feedback.view`).
+  Responses and Testimonials are newest first (date, then when recorded), one line per row (long text cut with …); clicking a row opens a side panel
+  with the full details and Edit / Delete (`FeedbackDetail`). Tabs in order: Report, Responses, Testimonials (same format, with `collected_on` date — 0040). Report (Average NPS out of
   10, promoters 9–10 / passives 7–8 / detractors 0–6, avg rating; By CSM with total labs + labs with feedback +
   coverage; By designation; By lab; CSV export). Filters: lab, CSM scope, designation, source, date range.
 - **POC designation** is a dropdown (`POC_DESIGNATIONS` in `lib/labContacts.js`, `components/DesignationSelect.jsx`,
