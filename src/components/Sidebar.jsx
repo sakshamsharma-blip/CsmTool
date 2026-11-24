@@ -19,6 +19,8 @@ const LIVE_NAV = [
   { key: "expansion", icon: "expansion", color: "success", label: "Expansion" },
   { key: "tasks", icon: "tasks", color: "purple", label: "Tasks" },
   { key: "visits", icon: "visits", color: "pink", label: "Visits & Meetings" },
+  { key: "checkins", icon: "checkins", color: "teal", label: "Check-ins" },
+  { key: "inbox", icon: "inbox", color: "sky", label: "Inbox", leadOnly: true },
   { key: "adoption", icon: "adoption", color: "sky", label: "Adoption", alsoActive: ["adoption-template"] },
   { key: "kpi", icon: "kpi", color: "red", label: "KPI Management" },
   { key: "reports", icon: "reports", color: "success", label: "Financial Reports" },
@@ -38,7 +40,7 @@ function writeCollapsed(v) {
   try { localStorage.setItem("csm_sidebar_collapsed", v ? "1" : "0"); } catch { /* ignore */ }
 }
 
-export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAddDrawer, newTaskCount = 0 }) {
+export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAddDrawer, newTaskCount = 0, inboxCount = 0 }) {
   const { csmDirectory, currentCSM, myName, isAdmin } = viewer;
   const initials = (name) => (name || "").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
   const role = currentCSM ? roleLabel(csmDirectory.find((c) => c.name === currentCSM)?.role) : "";
@@ -92,7 +94,7 @@ export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAd
         </button>
       </div>
       <div className="nav">
-        {LIVE_NAV.map((item) => item.href ? (
+        {LIVE_NAV.filter((item) => !item.leadOnly || viewer.isHead).map((item) => item.href ? (
           <a
             key={item.key}
             className="nav-item"
@@ -117,6 +119,9 @@ export default function Sidebar({ view, setView, viewer, setCurrentCSM, onOpenAd
               <span className="lbl">{item.label}</span>
               {item.key === "tasks" && newTaskCount > 0 && (
                 <span className="nav-count" title={`${newTaskCount} new task${newTaskCount === 1 ? "" : "s"} since you last opened Tasks`}>{newTaskCount > 99 ? "99+" : newTaskCount}</span>
+              )}
+              {item.key === "inbox" && inboxCount > 0 && (
+                <span className="nav-count" title={`${inboxCount} unread check-in${inboxCount === 1 ? "" : "s"} and visits`}>{inboxCount > 99 ? "99+" : inboxCount}</span>
               )}
               {item.children && <span className="nav-caret">{expanded[item.key] ? "▾" : "▸"}</span>}
             </div>

@@ -380,3 +380,30 @@ test("Feedback & NPS → Testimonials: tiles, charts, list and the Add Testimoni
   await form.locator(".ts-group-head", { hasText: "Technical & Integration" }).click();
   await expect(form.locator(".ts-check", { hasText: "Analyser / machine integration" })).toBeVisible();
 });
+
+test("Check-ins: POC targets with next due, filters and Log check-in", async ({ page }) => {
+  await nav(page, "Check-ins");
+  await expect(page.getByRole("heading", { name: "Check-ins" })).toBeVisible();
+  await expect(page.locator(".ci-tile", { hasText: "POCs with a target" })).toBeVisible();
+  await expect(page.getByText("4 / month · weekly").first()).toBeVisible();
+  await page.locator(".ci-tile", { hasText: "Overdue" }).click();
+  await expect(page.getByLabel("Status")).toHaveValue("overdue");
+  await expect(page.locator(".ci-badge").first()).toContainText("Overdue");
+  // Log check-in opens Log Check-in for that lab.
+  await page.getByRole("button", { name: "Log check-in" }).first().click();
+  await expect(page).toHaveURL(/\/log-checkin$/);
+});
+
+test("Inbox: Lead sees team check-ins / visits, opens one and it becomes read", async ({ page }) => {
+  await nav(page, "Inbox");
+  await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
+  await page.getByRole("button", { name: /Unread only/ }).click();
+  const first = page.locator(".ib-row").first();
+  await expect(first).toContainText("unread");
+  await first.click();
+  await expect(page.getByRole("dialog", { name: /details/ })).toBeVisible();
+  await page.getByRole("button", { name: "Done" }).click();
+  // A plain CSM doesn't get the Inbox.
+  await page.locator(".csm-switcher").selectOption("Aditi");
+  await expect(page.locator(".sidebar .nav-item", { hasText: "Inbox" })).toHaveCount(0);
+});

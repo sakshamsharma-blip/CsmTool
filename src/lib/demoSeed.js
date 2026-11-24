@@ -102,3 +102,52 @@ export function buildDemoFeedback(today) {
   }
   return { feedback, testimonials, contacts };
 }
+
+// ---- Check-ins & Inbox demo data (Nov 2026) ----
+// POCs with check-in targets (4 = weekly, 2 = every 15 days, 1 = monthly) and ~3 months of check-ins / visits, built
+// relative to today so the Check-ins page shows overdue, due-soon and upcoming POCs and the Inbox has fresh entries.
+const DEMO_TARGETS = { "829": [4, 2], "830": [2, 1], "831": [4, 1], "832": [2, 2], "833": [1, 4], "834": [2, 0] };
+const DEMO_NOTES = [
+  "Weekly sync on report turnaround. Asked for a refresher on the new billing screen for two front-desk staff.",
+  "Reviewed open tickets; analyser interface stable since last patch. They want WhatsApp report delivery enabled for all branches.",
+  "Discussed the upcoming renewal and the inventory module rollout timeline. Positive overall.",
+  "Raised concerns about two outages during peak hours. Promised an RCA and a follow-up call.",
+  "Quick check-in: QC module being used daily, home collection app adoption still low at one branch.",
+];
+export function buildDemoCheckins(today) {
+  const contacts = [], visits = [];
+  let n = 0;
+  Object.entries(DEMO_POCS).forEach(([labId, pocs], li) => {
+    pocs.forEach(([name, designation], pi) => {
+      const target = DEMO_TARGETS[labId][pi];
+      contacts.push({ id: `demo-poc-${labId}-${pi}`, labId, name, designation, phone: "", email: "", minProactive: target || null, createdAt: `${addDays(today, -95)}T09:00:00` });
+      if (!target) return;
+      const gap = Math.max(1, Math.floor(30 / target));
+      // Walk back from a "last contact" that is a little late for some POCs (overdue) and on time for others.
+      const lateBy = [-2, 4, 9, -5, 1, 12, 0, -1, 3, 6, -3, 2][(li * 2 + pi) % 12];
+      let d = addDays(today, -(gap + lateBy));
+      for (let k = 0; k < 90 / gap && d >= addDays(today, -90); k++) {
+        if (d <= today) {
+          n += 1;
+          const visit = (k + li) % 5 === 0;
+          visits.push({
+            id: `demo-v-${n}`, labId, csmId: null, type: visit ? "Visit" : ["Call", "GMeet", "WhatsApp", "Call"][(k + pi) % 4], visitDate: d,
+            notes: DEMO_NOTES[(n + li) % DEMO_NOTES.length], engagement: (k + pi) % 6 === 5 ? "Reactive" : "Proactive",
+            sentiment: ["Positive", "Neutral", "Positive", "At Risk", "Positive"][(n + li) % 5], personName: name, personDesignation: designation,
+            durationMinutes: [15, 30, 45, 30][n % 4], location: visit ? "At the lab" : "", discussionTopics: [["Billing", "Reports"], ["Integration"], ["Renewal"], ["Support"]][n % 4],
+            flaggedModules: [], discussedParams: [], actionItems: n % 3 === 0 ? [{ text: "Share the RCA document", dueDate: addDays(d, 3) }] : [],
+            nextFollowupDate: k === 0 ? addDays(d, gap) : null, nextFollowupReason: k === 0 ? "Regular check-in" : "", nextFollowupTime: "",
+            createdAt: `${d}T${String(9 + (n % 8)).padStart(2, "0")}:15:00`,
+          });
+        }
+        d = addDays(d, -gap);
+      }
+    });
+  });
+  return { contacts, visits };
+}
+function addDays(iso, days) {
+  const [y, m, dd] = iso.split("-").map(Number);
+  const t = new Date(y, m - 1, dd + days);
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}

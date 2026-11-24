@@ -36,11 +36,14 @@ import VisitsView from "./views/VisitsView";
 import FeedbackView from "./views/FeedbackView";
 import ResourcesView from "./views/ResourcesView";
 import LogCheckinView from "./views/LogCheckinView";
+import CheckinsView from "./views/CheckinsView";
+import InboxView from "./views/InboxView";
+import { useInboxUnread } from "./lib/inbox";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 
 // ---- address-bar routing: "#/<screen>", "#/lab/<lab id>/<tab>", "#/lab/<lab id>/<tab>/log-checkin" ----
 const ROUTE_VIEWS = ["list", "dashboard", "portfolio", "collections", "expansion", "tasks", "visits", "adoption", "adoption-template", "kpi",
-  "reports", "feedback", "resources", "csm-setup"];
+  "reports", "feedback", "resources", "csm-setup", "checkins", "inbox"];
 function parseHash() {
   const parts = (window.location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean).map((p) => {
     try { return decodeURIComponent(p); } catch { return p; }
@@ -160,7 +163,16 @@ export default function App() {
     navigate("lab-detail", { detailLabId: id, detailInitialTab: tab });
   }
   function openLogCheckin() {
+    try { sessionStorage.removeItem("logcheckin.prefill"); } catch { /* storage unavailable */ }
     navigate("log-checkin", { detailLabId: detailLabId, detailInitialTab: detailInitialTab });
+  }
+  // From Check-ins (Nov 24 2026): open Log Check-in with the lab and person filled in, and come back to Check-ins after.
+  function openLogCheckinFor(labId, prefill = {}) {
+    try { sessionStorage.setItem("logcheckin.prefill", JSON.stringify({ labId, returnTo: "checkins", ...prefill })); } catch { /* storage unavailable */ }
+    navigate("log-checkin", { detailLabId: labId, detailInitialTab: "details" });
+  }
+  function readLogCheckinPrefill() {
+    try { return JSON.parse(sessionStorage.getItem("logcheckin.prefill") || "null"); } catch { return null; }
   }
   // Single source of truth for "who's viewing, and with what access" — currentCSM (whose POV is
   // showing, which an Admin can swap via Sidebar's Preview As), myName (who's actually signed
@@ -545,6 +557,7 @@ export default function App() {
 
   // Unread "new tasks" count for the sidebar (the signed-in person's own tasks; cleared by opening Tasks).
   const newTaskCount = useNewTaskCount(idByName[myName], view === "tasks");
+  const inboxCount = useInboxUnread(idByName[myName], viewer.isHead);
 
   if (SUPABASE_CONFIGURED && !authChecked) {
     return <div style={{ padding: 40, fontFamily: "sans-serif", color: "var(--text-dim)" }}>Loading…</div>;
@@ -583,7 +596,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={navigateFromSidebar} viewer={viewer} newTaskCount={newTaskCount} setCurrentCSM={setCurrentCSM} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
+      <Sidebar view={view} setView={navigateFromSidebar} viewer={viewer} newTaskCount={newTaskCount} inboxCount={inboxCount} setCurrentCSM={setCurrentCSM} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
       <div className="main">
         <TopBar viewer={viewer} setView={navigate} showToast={showToast} searchQuery={globalSearchQuery} onSearchChange={handleGlobalSearch} />
         <div className="content">
@@ -649,6 +662,12 @@ export default function App() {
           {view === "visits" && (
             <VisitsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
+          {view === "checkins" && (
+            <CheckinsView labs={labs} viewer={viewer} onOpenLab={openLabDetail} onLogCheckin={openLogCheckinFor} />
+          )}
+          {view === "inbox" && (
+            <InboxView labs={labs} modules={modules} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+          )}
           {view === "feedback" && (
             <FeedbackView labs={labs} modules={modules} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
@@ -687,7 +706,12 @@ export default function App() {
               plans={plans}
               viewer={viewer}
               idByName={idByName}
-              onDone={(tab) => openLabDetail(detailLab.id, tab)}
+              prefill={(() => { const p = readLogCheckinPrefill(); return p && p.labId === detailLab.id ? p : null; })()}
+              onDone={(tab) => {
+                const p = readLogCheckinPrefill();
+                try { sessionStorage.removeItem("logcheckin.prefill"); } catch { /* storage unavailable */ }
+                if (p && p.labId === detailLab.id && p.returnTo) navigate(p.returnTo); else openLabDetail(detailLab.id, tab);
+              }}
               showToast={showToast}
             />
           )}

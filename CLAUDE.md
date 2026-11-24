@@ -182,6 +182,18 @@ with the same context and follows the same rules. Read it fully before making ch
   consent = Received** (UI-enforced). The CSM always comes from the lab. Status changes log to Lab History (`updateTestimonial`). Rows from before
   0051 read as Video with status / consent "Not set". Topic groups start collapsed in the form. Tiles (total, video, written, designations, topics, avg rating, approved / published), charts
   (format, designation split video / written, topic, written by source) all click through; table with ↗ link, 👁 details, ⋮ Edit / Move to / Delete.
+- **Check-ins** (sidebar, under Visits & Meetings; `views/CheckinsView.jsx`, rules in `lib/checkinCadence.js`; decision Nov 24 2026): every POC
+  with a "Minimum Proactive Check-ins per Month" target. The target also sets the cadence: every 30 ÷ target days, rounded down (**4 = weekly**,
+  2 = every 15 days, 1 = monthly). Next due = the POC's last Proactive check-in (Person Contacted matching the name) + that gap; never contacted =
+  from the POC's `created_at`. Status Overdue / Due today / In 1–3d / In Nd. Tiles: POCs with a target, Overdue, Due in 3 days, Done this month
+  (what the KPI counts — the KPI itself is unchanged, monthly). Filters: search, status, show POCs without a target, sort (most urgent first).
+  **Log check-in** opens the normal Log Check-in with the lab + person filled in and Proactive pre-picked, and returns to Check-ins after saving
+  (`openLogCheckinFor` in App.jsx, sessionStorage `logcheckin.prefill`, `prefill` prop on `LogCheckinView`). Logging from the lab page counts the same.
+- **Inbox** (sidebar, **CSM Lead / Manager / Admin only**; `views/InboxView.jsx`, `lib/inbox.js`, migration 0052 `visit_reads`; decision Nov 24 2026):
+  the team's check-ins and logged visits (the `visits` table — not other Lab History), newest first, grouped by lab (3 per lab, "Show all").
+  Opening an entry shows everything logged (side panel) and marks it read **for that person** (`visit_reads`, RLS: own rows only). Mark read per
+  lab, Mark all read, Mark unread. Filters: search, kind (Check-in / Visit), Everything / Unread only, lab, Team View + CSM, Lab Type. Entries
+  created before `INBOX_START` (2026-11-24) count as read. Sidebar shows the unread count (`useInboxUnread`, refreshed every 5 min).
 - **POC designation** is a dropdown (`POC_DESIGNATIONS` in `lib/labContacts.js`, `components/DesignationSelect.jsx`,
   with "Other…" to type one); older free-text values are kept until edited. Used on Points of Contact, Log Check-in
   and the Feedback "+ Add POC".
@@ -387,7 +399,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership. **Support & Tickets** is a sidebar link that opens
   Flow (https://creliohealthflow.vercel.app/, the CS ↔ Product escalation tracker) in a new tab.
-- Latest migration: `0051_testimonial_details.sql`; **0001–0051 are all applied** (Nov 24 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+- Latest migration: `0052_inbox_reads.sql`; **0001–0052 are all applied** (Nov 24 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).

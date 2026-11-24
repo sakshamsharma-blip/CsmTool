@@ -43,21 +43,22 @@ function plusDays(n) {
   return daysFromTodayISO(n);
 }
 
-export default function LogCheckinView({ lab, modules, plans, viewer, idByName, onDone, showToast }) {
+// `prefill` (from Check-ins, Nov 24 2026): { personName, personDesignation } — the POC whose check-in is due; it starts as Proactive.
+export default function LogCheckinView({ lab, modules, plans, viewer, idByName, onDone, showToast, prefill = null }) {
   const { currentCSM } = viewer;
   const plan = plans.find((p) => p.id === lab.plan) || plans[0];
   const seg = segmentFor(toINR(lab.mrr || 0, lab.region));
 
   const [type, setType] = useState("Visit");
   // Required on every check-in (decision, Oct 2026): did the CSM reach out (Proactive) or respond to the lab (Reactive)?
-  const [engagement, setEngagement] = useState("");
+  const [engagement, setEngagement] = useState(prefill?.personName ? "Proactive" : "");
   const [engagementError, setEngagementError] = useState(false);
   const [date, setDate] = useState(() => todayISO());
   const [time, setTime] = useState(() => new Date().toTimeString().slice(0, 5));
   const [duration, setDuration] = useState("30");
   const [location, setLocation] = useState("");
-  const [personName, setPersonName] = useState("");
-  const [personDesignation, setPersonDesignation] = useState("");
+  const [personName, setPersonName] = useState(prefill?.personName || "");
+  const [personDesignation, setPersonDesignation] = useState(prefill?.personDesignation || "");
   // This lab's points of contact (lab page → Points of Contact tab), offered as a type-or-pick list.
   const [contacts, setContacts] = useState([]);
   const [saveAsPoc, setSaveAsPoc] = useState(true);
