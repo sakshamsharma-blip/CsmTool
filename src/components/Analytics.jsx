@@ -224,3 +224,46 @@ export function Change({ value, suffix = "pp" }) {
   const color = r > 0 ? "var(--ok)" : r < 0 ? "var(--bad)" : "var(--text-dim)";
   return <b style={{ color, whiteSpace: "nowrap" }}>{r > 0 ? "▲ +" : r < 0 ? "▼ " : "– "}{r} {suffix}</b>;
 }
+
+// One line on a fixed scale (e.g. NPS 0–10, rating 1–5) over periods. `points` = [{ label, value, sub, tip }]; a null
+// value is a gap. `sub` is printed under the period label (e.g. "4 labs"), so the count behind each point is visible.
+export function ScaleTrend({ points, min, max, ticks, fmt, color = "var(--stg-plan-3)", bind, empty = "Nothing recorded yet." }) {
+  const W = 560, H = 210, L = 30, R = 12, T = 20, B = 34, PAD = 18;
+  const x = (i) => (points.length < 2 ? (L + W - R) / 2 : L + PAD + (i * (W - L - R - PAD * 2)) / (points.length - 1));
+  const y = (v) => T + ((max - v) * (H - T - B)) / (max - min);
+  const hasData = points.some((p) => p.value != null);
+  const runs = [];
+  let run = [];
+  points.forEach((p, i) => { if (p.value == null) { if (run.length) runs.push(run); run = []; } else run.push([x(i), y(p.value)]); });
+  if (run.length) runs.push(run);
+  const every = points.length > 8 ? 2 : 1; // thin out labels when there are many months
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={points.map((p) => `${p.label} ${p.value == null ? "none" : fmt(p.value)}`).join(", ")}>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeWidth="1" />
+            <text x={L - 6} y={y(t)} textAnchor="end" dominantBaseline="central" fontSize="10" fill="var(--text-faint)">{t}</text>
+          </g>
+        ))}
+        {points.map((p, i) => (points.length - 1 - i) % every === 0 && (
+          <g key={p.label}>
+            <text x={x(i)} y={H - 18} textAnchor="middle" fontSize="10" fill="var(--text-dim)">{p.label}</text>
+            {p.sub && <text x={x(i)} y={H - 5} textAnchor="middle" fontSize="9" fill="var(--text-faint)">{p.sub}</text>}
+          </g>
+        ))}
+        {runs.filter((r) => r.length > 1).map((r, i) => <polyline key={i} points={r.map((c) => c.join(",")).join(" ")} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />)}
+        {points.map((p, i) => p.value != null && (
+          <g key={p.label} {...(bind && p.tip ? bind(p.tip) : {})} style={{ outline: "none" }}>
+            <circle cx={x(i)} cy={y(p.value)} r="12" fill="transparent" />
+            <circle cx={x(i)} cy={y(p.value)} r="4" fill={color} stroke="var(--surface)" strokeWidth="2" />
+            {(points.length <= 8 || i === points.length - 1 || points[i + 1]?.value == null) && (
+              <text x={x(i)} y={y(p.value) - 10} textAnchor="middle" fontSize="10.5" fontWeight="700" fill="var(--text)">{fmt(p.value)}</text>
+            )}
+          </g>
+        ))}
+      </svg>
+      {!hasData && <div className="an-empty">{empty}</div>}
+    </div>
+  );
+}

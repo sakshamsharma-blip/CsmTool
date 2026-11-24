@@ -102,3 +102,4 @@ export async function deleteTestimonial(id) {
   const { error } = await supabase.from("lab_testimonials").delete().eq("id", id);
   if (error) throw error;
 }
+export * from "../../supabase/functions/_shared/feedbackCoverage.js";

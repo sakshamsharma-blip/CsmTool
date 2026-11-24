@@ -317,3 +317,28 @@ test("Lab Details: Lab Type is editable and the Stage field is gone", async ({ p
   await page.getByRole("button", { name: "✎ Edit" }).click();
   await expect(page.locator(".param-row", { hasText: "Lab Type" }).locator("select option")).toHaveText(["Not set", "Pathology", "Radiology", "Pathology + Radiology"]);
 });
+
+test("Feedback & NPS: opens on Team View + Report, numbers click through, coverage lists who's due", async ({ page }) => {
+  await nav(page, "Feedback & NPS");
+  await expect(page.getByRole("heading", { name: "Feedback & NPS" })).toBeVisible();
+  await expect(page.locator(".tabbtn.active")).toHaveText("Team View");
+  await expect(page.locator(".tab-btn.active")).toHaveText("Report");
+  // Headline in words, the two cadence tiles and both trend charts (demo data).
+  await expect(page.locator(".fb-headline")).toContainText("Average NPS");
+  await expect(page.locator(".fb-headline")).toContainText("Monthly feedback:");
+  await expect(page.locator(".fb-headline")).toContainText("Quarterly NPS:");
+  await expect(page.getByText("NPS by quarter")).toBeVisible();
+  await expect(page.getByText("Feedback rating by month")).toBeVisible();
+  // Who still owes this quarter's NPS.
+  await page.locator(".fb-tile", { hasText: "NPS ·" }).click();
+  await expect(page.locator(".fb-card-head select")).toHaveValue("nps");
+  await expect(page.getByRole("button", { name: "+ Record", exact: true }).first()).toBeVisible();
+  // Detractors tile → the Responses list, narrowed to detractors.
+  await page.locator(".fb-tile", { hasText: "Detractors" }).click();
+  await expect(page.locator(".tab-btn.active")).toContainText("Responses");
+  await expect(page.locator(".fb-chip")).toContainText("Detractors");
+  await expect(page.locator(".fb-row").first()).toContainText("Detractor");
+  // A row opens the full response.
+  await page.locator(".fb-row").first().click();
+  await expect(page.getByRole("dialog", { name: "Feedback response" })).toBeVisible();
+});

@@ -8,6 +8,7 @@ import { fetchAllInvoices, invoiceBalance, isInvoiceOpen, invoiceLastPayment } f
 import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
+import FxRate from "../components/FxRate";
 import Modal from "../components/Modal";
 import InfoTip from "../components/InfoTip";
 import Paginated from "../components/Pager";
@@ -134,7 +135,7 @@ export default function CollectionsView({ labs: allLabs, viewer, idByName, onOpe
       </h1>
       <p className="page-sub">Outstanding dues for labs assigned to <b>{scopeLabel}</b>.</p>
 
-      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
+      <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} aside={<FxRate />} />
 
       <div className="summary-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 18 }}>
         <div className="stile"><div className="sval">{fmtAmount(totalOutstanding)}</div><div className="slabel">Total Outstanding</div></div>

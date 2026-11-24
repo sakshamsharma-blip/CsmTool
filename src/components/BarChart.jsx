@@ -19,8 +19,9 @@ export default function BarChart({ data, barHeight = 24, gap = 12, labelWidth = 
         return (
           <div
             key={d.label}
-            style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: i === data.length - 1 ? 0 : gap }}
-            title={`${d.label}: ${valueFmt(d.value)}`}
+            style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: i === data.length - 1 ? 0 : gap, cursor: d.onClick ? "pointer" : undefined }}
+            title={d.onClick ? `${d.label}: ${valueFmt(d.value)} — click to see them` : `${d.label}: ${valueFmt(d.value)}`}
+            onClick={d.onClick}
           >
             <span style={{ width: 9, height: 9, borderRadius: "50%", background: d.color || "var(--accent)", flex: "none" }} />
             <span style={{

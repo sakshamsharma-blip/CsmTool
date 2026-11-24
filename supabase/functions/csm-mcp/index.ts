@@ -18,6 +18,7 @@ import {
 import { HOW_IT_WORKS, HOW_IT_WORKS_TOPICS } from '../_shared/howItWorks.js'
 import { computeSentimentHealth } from '../_shared/labHealth.js'
 import { expansionRows, revenueOn } from '../_shared/expansionRevenue.js'
+import { feedbackCoverage, feedbackTrend } from '../_shared/feedbackCoverage.js'
 
 // deno-lint-ignore no-explicit-any
 type Db = any
@@ -336,23 +337,70 @@ function buildServer(db: Db) {
   })
 
   server.registerTool('feedback_summary', {
-    description: 'Feedback & NPS recorded for the labs you can see: average NPS (out of 10), promoters (9–10), passives (7–8), detractors (0–6), average 1–5 rating, and the responses. Optionally one lab and/or a start date.',
-    inputSchema: z.object({ lab: z.string().optional(), since: z.string().optional().describe('YYYY-MM-DD') }),
+    description: 'Feedback & NPS for the clients you can see. Clients are asked for feedback (a 1–5 rating) once a calendar month and for NPS (0–10) once a calendar quarter. Returns: the summary for the chosen dates (average NPS out of 10, promoters 9–10, passives 7–8, detractors 0–6, average rating, the responses); coverage now (how many clients gave this month\'s feedback and this quarter\'s NPS, and which are still due, highest MRR first); and trends (average NPS for the last 6 quarters, average rating for the last 12 months). Optionally one lab, one CSM and/or a start date (the start date narrows the summary only, not coverage or trends).',
+    inputSchema: z.object({
+      lab: z.string().optional(),
+      csm: z.string().optional().describe('A CSM name, to narrow to their clients'),
+      since: z.string().optional().describe('YYYY-MM-DD'),
+    }),
     annotations: READ_ONLY,
-  }, async ({ lab, since }) => {
+  }, async ({ lab, csm, since }) => {
     const labs = await loadLabs(db)
     const byId = Object.fromEntries(labs.map((l: Db) => [l.id, l]))
-    let q = db.from('lab_feedback').select('lab_id,feedback_date,nps_score,rating,source,respondent_name,respondent_designation,comment').order('feedback_date', { ascending: false })
-    if (lab) { const { lab: l } = await findLab(db, lab); q = q.eq('lab_id', l.parentId || l.id) }
-    if (since) q = q.gte('feedback_date', since)
-    const rows = (await must<Db[]>(q.limit(1000))).filter((r: Db) => byId[r.lab_id])
+    const parentOf = (id: string) => byId[id]?.parentId && byId[byId[id].parentId] ? byId[id].parentId : id
+    let only: string | null = null
+    if (lab) { const { lab: l } = await findLab(db, lab); only = l.parentId || l.id }
+    const csmMatch = (id: string) => !csm || (byId[id]?.csm || '').toLowerCase() === csm.toLowerCase()
+    const all: Db[] = []
+    for (let from = 0; ; from += 1000) {
+      const rows = await must<Db[]>(db.from('lab_feedback').select('id,lab_id,feedback_date,nps_score,rating,source,respondent_name,respondent_designation,comment,created_at').order('feedback_date', { ascending: false }).order('id', { ascending: true }).range(from, from + 999))
+      all.push(...rows)
+      if (rows.length < 1000) break
+    }
+    const mine = all.filter((r: Db) => byId[r.lab_id] && (!only || parentOf(r.lab_id) === only) && csmMatch(parentOf(r.lab_id)))
+    const rows = since ? mine.filter((r: Db) => r.feedback_date >= since) : mine
     const nps = rows.map((r: Db) => r.nps_score).filter((v: Db) => v != null)
     const ratings = rows.map((r: Db) => r.rating).filter((v: Db) => v != null)
     const mean = (v: number[]) => (v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : null)
+
+    // Coverage and trends: same rules as the app (_shared/feedbackCoverage.js). Parent labs (clients) only.
+    const today = todayISO()
+    const asRow = (r: Db) => ({ lab: parentOf(r.lab_id), date: r.feedback_date, rating: r.rating, nps: r.nps_score })
+    const clients = labs.filter((l: Db) => l.hierarchy !== 'Child' && (!only || l.id === only) && csmMatch(l.id))
+    // Client MRR for ordering: Per-Branch = the children's sum, Consolidated (or no children) = the parent's own.
+    const clientMrr = (l: Db) => {
+      const kids = labs.filter((c: Db) => c.parentId === l.id)
+      return !kids.length || l.billingMode === 'Consolidated' ? l.mrr : kids.reduce((s: number, c: Db) => s + c.mrr, 0)
+    }
+    // Ordering only: USD counted at roughly ₹93 so INR and USD clients interleave sensibly (amounts are returned unconverted).
+    const dueCount = (x: Db) => Number(!x.feedbackThisMonth) + Number(!x.npsThisQuarter)
+    const orderMrr = (l: Db) => clientMrr(l) * (l.currency === 'USD' ? 93 : 1)
+    const cov = feedbackCoverage(clients, mine.map(asRow), today)
+    const due = cov.labs.filter((x: Db) => !x.feedbackThisMonth || !x.npsThisQuarter)
+      .sort((a: Db, b: Db) => dueCount(b) - dueCount(a) || orderMrr(b.lab) - orderMrr(a.lab))
+      .map((x: Db) => ({
+        lab: x.lab.name, labId: x.lab.labId, csm: x.lab.csm, mrr: clientMrr(x.lab), currency: x.lab.currency,
+        feedbackDueThisMonth: !x.feedbackThisMonth, lastRating: x.lastRating, lastRatingDate: x.lastRatingDate,
+        npsDueThisQuarter: !x.npsThisQuarter, lastNps: x.lastNps, lastNpsDate: x.lastNpsDate,
+      }))
+    const trendRows = mine.map(asRow)
     return json({
-      responses: rows.length, averageNps: mean(nps), promoters: nps.filter((v: number) => v >= 9).length, passives: nps.filter((v: number) => v >= 7 && v <= 8).length,
-      detractors: nps.filter((v: number) => v <= 6).length, averageRating: mean(ratings),
-      rows: rows.slice(0, 200).map((r: Db) => ({ ...r, lab: byId[r.lab_id].name, lab_id: undefined })),
+      summary: {
+        since: since || 'all time', responses: rows.length, averageNps: mean(nps), npsResponses: nps.length,
+        promoters: nps.filter((v: number) => v >= 9).length, passives: nps.filter((v: number) => v >= 7 && v <= 8).length,
+        detractors: nps.filter((v: number) => v <= 6).length, averageRating: mean(ratings), ratings: ratings.length,
+      },
+      coverage: {
+        rule: 'Feedback (a 1–5 rating) once a calendar month, NPS once a calendar quarter. Parent labs only; Inactive and Churned clients left out.',
+        month: cov.monthLabel, quarter: cov.quarterLabel, clients: cov.total,
+        feedbackThisMonth: cov.feedbackThisMonth, npsThisQuarter: cov.npsThisQuarter,
+        stillDue: due,
+      },
+      trends: {
+        npsByQuarter: feedbackTrend(trendRows, 'quarter', 6, today).map((p: Db) => ({ period: p.label, averageNps: p.nps.average == null ? null : Math.round(p.nps.average * 10) / 10, responses: p.nps.responses, clients: p.nps.labs, promoters: p.nps.promoters, passives: p.nps.passives, detractors: p.nps.detractors })),
+        ratingByMonth: feedbackTrend(trendRows, 'month', 12, today).map((p: Db) => ({ period: p.label, averageRating: p.rating.average == null ? null : Math.round(p.rating.average * 10) / 10, ratings: p.rating.responses, clients: p.rating.labs })),
+      },
+      rows: rows.slice(0, 200).map((r: Db) => ({ ...r, lab: byId[parentOf(r.lab_id)]?.name, csm: byId[parentOf(r.lab_id)]?.csm, lab_id: undefined, id: undefined, created_at: undefined })),
     })
   })
 

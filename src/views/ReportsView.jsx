@@ -7,6 +7,7 @@ import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import { computeLabRollup } from "../lib/labRollup";
 import ScopeToggle from "../components/ScopeToggle";
+import FxRate from "../components/FxRate";
 import SearchSelect from "../components/SearchSelect";
 import MultiSelectFilter from "../components/MultiSelectFilter";
 
@@ -177,7 +178,7 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
       </div>
 
       <div style={{ marginTop: 16 }}>
-        <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
+        <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} aside={<FxRate />} />
       </div>
 
       {tab === "churn" && (

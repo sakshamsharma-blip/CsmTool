@@ -49,7 +49,7 @@ with the same context and follows the same rules. Read it fully before making ch
 ## Core domain rules — how the business logic actually works
 
 - **Money**: `fmtUSD`/`fmtINR` round via `Math.round`; `toINR`/`toUSD`/`nativeCurrency`/
-  `fmtMoney(amount, lab.region)` convert between Domestic (INR) and ROW (USD). **Standard (Nov 2026): every amount shows USD first with INR in brackets** — one lab: `fmtMoney(amount, region)` ("$594 (₹55,000)"); a total already summed in INR: `fmtAmount(inr)`; tiles / tight columns: `fmtCompactMoney(inr)` ("$76.0K (₹70.48 L)", `lib/analyticsFormat.js`); chart axes only: `fmtCompactUSDFromINR`. Total MRR / ARR tiles show $ big with ₹ under it (`.tval-sub`; on Total Labs they span two columns). Never show a bare `fmtINR` amount; the only ₹-only text left is segment thresholds (segments are defined in INR) and amount inputs in a lab's own currency. The USD→INR rate is live from Frankfurter (ECB, `lib/fx.js`): fetched on load, cached 6h, re-checked hourly while open, fallback 93, and shown in the top bar and, via `components/FxRate.jsx` (ScopeToggle `aside`), at the right of the My Labs / Team View row on Total Labs and the Dashboard (`getUsdInrInfo`). Total Labs has an **MRR %** column after MRR (lab MRR in INR ÷ Total MRR). Labs can be in
+  `fmtMoney(amount, lab.region)` convert between Domestic (INR) and ROW (USD). **Standard (Nov 2026): every amount shows USD first with INR in brackets** — one lab: `fmtMoney(amount, region)` ("$594 (₹55,000)"); a total already summed in INR: `fmtAmount(inr)`; tiles / tight columns: `fmtCompactMoney(inr)` ("$76.0K (₹70.48 L)", `lib/analyticsFormat.js`); chart axes only: `fmtCompactUSDFromINR`. Total MRR / ARR tiles show $ big with ₹ under it (`.tval-sub`; on Total Labs they span two columns). Never show a bare `fmtINR` amount; the only ₹-only text left is segment thresholds (segments are defined in INR) and amount inputs in a lab's own currency. The USD→INR rate is live from Frankfurter (ECB, `lib/fx.js`): fetched on load, cached 6h, re-checked hourly while open, fallback 93, and shown only on the money pages — via `components/FxRate.jsx` (ScopeToggle `aside`) at the right of the My Labs / Team View row on Total Labs, Dashboard, Collections and Financial Reports (not in the top bar, decision Nov 24 2026) (`getUsdInrInfo`). Total Labs has an **MRR %** column after MRR (lab MRR in INR ÷ Total MRR). Labs can be in
   different native currencies — **always convert to INR before summing across labs**.
 - `activity_log.source` only accepts `'system'` and `'checkin'` (a DB check constraint) —
   `'manual'` is rejected.
@@ -157,6 +157,14 @@ with the same context and follows the same rules. Read it fully before making ch
   labs give feedback OFFLINE (Google Form, Email, WhatsApp — the sources offered) and the CSM records each response
   manually — NPS 0–10 and/or rating 1–5 (at least one), given by (picked from the lab's POCs, or a new POC added from
   the form), source, comment, optional supporting link. PARENT labs only (child-lab rows count under the parent).
+  **Cadence (decision Nov 24 2026)**: every client gives FEEDBACK (a 1–5 rating) once a calendar month and NPS once a calendar quarter; a response with a
+  rating counts for its month, one with an NPS score for its quarter (rules in `supabase/functions/_shared/feedbackCoverage.js`, re-exported by
+  `lib/feedback.js`, also used by the connector's `feedback_summary`). Coverage leaves out Inactive / Churned clients. The **Report** opens with a
+  headline in words (avg NPS vs the period before, detractors, this month's feedback and this quarter's NPS still due), six tiles, NPS-by-quarter
+  (6) and rating-by-month (12) trends (`ScaleTrend` in `components/Analytics.jsx`; all filters except dates), the "Monthly feedback & quarterly NPS"
+  list of clients still due (highest MRR first, + Record), then breakdowns. **Every tile, bar and row clicks through** to Responses (`drill`;
+  NPS-group / star filters show as chips). Dates are a preset select (This month, Last 30 days, This quarter, Last quarter, This year, All time,
+  Custom). Demo mode has fake responses (`buildDemoFeedback` in `lib/demoSeed.js`; saves last until reload).
   Opens on Team View for a Lead / Admin (`useScopedCsm(viewer, "feedback", "team")`) and on the Report tab (Nov 24 2026, session key `feedback.view`).
   Responses and Testimonials are newest first (date, then when recorded), one line per row (long text cut with …); clicking a row opens a side panel
   with the full details and Edit / Delete (`FeedbackDetail`). Tabs in order: Report, Responses, Testimonials (same format, with `collected_on` date — 0040). Report (Average NPS out of

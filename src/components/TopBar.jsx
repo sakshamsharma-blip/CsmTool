@@ -3,7 +3,6 @@ import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
 import { roleLabel } from "../lib/roles";
 import ChangePasswordModal from "./ChangePasswordModal";
 import { applyTheme, getStoredMode, saveMode, watchSystemTheme } from "../lib/theme";
-import { getUsdInrInfo } from "../lib/fx";
 
 const THEME_OPTIONS = [
   { mode: "light", icon: "☀", label: "Light mode" },
@@ -83,16 +82,6 @@ export default function TopBar({ viewer, setView, showToast, searchQuery, onSear
         onKeyDown={(e) => { if (e.key === "Enter") setView("list"); }}
       />
       <div className="topbar-spacer"></div>
-      {(() => {
-        // The dollar rate every $ / ₹ amount in the app uses (App re-renders when it updates).
-        const fx = getUsdInrInfo();
-        const day = fx.date ? new Date(fx.date + "T12:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }) : null;
-        return (
-          <span className="fx-chip" title={fx.live ? `European Central Bank rate for ${day}, checked every hour. Every $ / ₹ amount in the app uses it.` : "Live rate not loaded yet; using the fallback rate."}>
-            $1 = ₹{fx.rate.toFixed(2)}
-          </span>
-        );
-      })()}
       <div className="theme-toggle" role="group" aria-label="Display mode">
         {THEME_OPTIONS.map((o) => (
           <button key={o.mode} type="button" className={themeMode === o.mode ? "active" : ""} title={o.label} aria-label={o.label} aria-pressed={themeMode === o.mode} onClick={() => chooseTheme(o.mode)}>

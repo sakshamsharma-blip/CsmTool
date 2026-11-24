@@ -5,6 +5,9 @@ Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks 
 ## Nov 24 2026 — Feedback & NPS easier to read
 - Opens on Team View (for Leads, Managers and Admins) and the Report tab, which is now the first tab.
 - Responses and Testimonials are newest first and one line per row; click a row for the full comment or note, with Edit and Delete there.
+- Report: a short summary in words at the top; monthly feedback and quarterly NPS coverage with a list of clients still due (+ Record on each); NPS by quarter and rating by month trends; quick date choices (This month, This quarter…); every tile, bar and row opens the responses behind it. Export / Record sit on the tabs row.
+- The exchange rate is no longer in the top bar; it shows on Total Labs, Dashboard, Collections and Financial Reports only.
+- Demo mode shows fake feedback so the report can be tried. The Claude connector's feedback_summary and how_it_works give the same coverage, still-due list and trends (redeploy the connector).
 
 ## Nov 23 2026 — USD first everywhere, exchange rate, MRR %
 - Every amount shows USD first with INR in brackets (lab money, totals, tiles, Financial Reports, Collections, Dashboard, KPI, Adoption / Expansion analytics). Segment ranges stay in ₹ and now show their range, e.g. "A — Enterprise (₹1,00,000 and above)".
