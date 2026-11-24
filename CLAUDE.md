@@ -161,8 +161,9 @@ with the same context and follows the same rules. Read it fully before making ch
   rating counts for its month, one with an NPS score for its quarter (rules in `supabase/functions/_shared/feedbackCoverage.js`, re-exported by
   `lib/feedback.js`, also used by the connector's `feedback_summary`). Coverage leaves out Inactive / Churned clients. The **Report** opens with a
   headline in words (avg NPS vs the period before, detractors, this month's feedback and this quarter's NPS still due), six tiles, NPS-by-quarter
-  (6) and rating-by-month (12) trends (`ScaleTrend` in `components/Analytics.jsx`; all filters except dates), the "Monthly feedback & quarterly NPS"
-  list of clients still due (highest MRR first, + Record), then breakdowns. **Every tile, bar and row clicks through** to Responses (`drill`;
+  (6) and rating-by-month (12) trends (`ScaleTrend` in `components/Analytics.jsx`; all filters except dates). Order (Nov 24 2026): headline, tiles,
+  NPS breakdown + ratings, the two trends, By CSM, By designation, By lab, and LAST the "Monthly feedback & quarterly NPS" list of clients still
+  due (highest MRR first, + Record) — recorded data first, the to-do list after. **Every tile, bar and row clicks through** to Responses (`drill`;
   NPS-group / star filters show as chips). Dates are a preset select (This month, Last 30 days, This quarter, Last quarter, This year, All time,
   Custom). Demo mode has fake responses (`buildDemoFeedback` in `lib/demoSeed.js`; saves last until reload).
   Opens on Team View for a Lead / Admin (`useScopedCsm(viewer, "feedback", "team")`) and on the Report tab (Nov 24 2026, session key `feedback.view`).

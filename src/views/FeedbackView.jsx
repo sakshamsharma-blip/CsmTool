@@ -426,6 +426,22 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
           <button type="button" className="stile fb-tile" onClick={() => showDue("nps")} title="See who still owes this quarter's NPS"><div className="sval">{cov.npsThisQuarter} / {cov.total}</div><div className="slabel">NPS · {cov.quarterLabel}</div></button>
         </div>
 
+        <div className="fb-two">
+          <div className="table-card" style={{ padding: "16px 18px", overflow: "visible" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center" }}>
+              NPS breakdown
+              <InfoTip>Each answer is 0–10. Promoters 9–10, Passives 7–8, Detractors 0–6. Average NPS is the average answer out of 10. Click a bar to see those responses.</InfoTip>
+            </div>
+            <BarChart labelWidth={110} data={["Promoter", "Passive", "Detractor"].map((b) => ({
+              label: BUCKET_LABEL[b], value: { Promoter: sum.promoters, Passive: sum.passives, Detractor: sum.detractors }[b], color: BUCKET_COLOR[b], onClick: () => drill({ bucket: b }),
+            }))} />
+          </div>
+          <div className="table-card" style={{ padding: "16px 18px" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Feedback ratings</div>
+            <BarChart labelWidth={110} data={[5, 4, 3, 2, 1].map((n) => ({ label: plural(n, "star"), value: responses.filter((r) => r.rating === n).length, color: n >= 4 ? "var(--ok)" : n === 3 ? "var(--warn)" : "var(--bad)", onClick: () => drill({ rating: n }) }))} />
+          </div>
+        </div>
+
         {/* 6. Trends: NPS by quarter, feedback rating by month (their cadences). */}
         <div className="fb-two">
           <Card title="NPS by quarter" info="Average NPS (out of 10) of the responses recorded in each of the last 6 quarters, with how many clients answered. Hover a point for promoters, passives and detractors. Uses every filter except the dates.">
@@ -452,55 +468,6 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
           </Card>
         </div>
         {tip.tooltip}
-
-        {/* 3. Who still owes feedback / NPS. */}
-        <div ref={coverageRef} className="table-card" style={{ marginBottom: 18, scrollMarginTop: 80 }}>
-          <div className="fb-card-head">
-            <span style={{ display: "flex", alignItems: "center", fontWeight: 700, fontSize: 13 }}>
-              Monthly feedback &amp; quarterly NPS
-              <InfoTip>Each client is asked for feedback (a 1–5 rating) once a month and for NPS (0–10) once a quarter. A response with a rating counts for its month; one with an NPS score counts for its quarter. Parent labs only (a child lab's response counts for its parent); Inactive and Churned clients are left out. Uses the lab, CSM and lab-type filters, not the dates. Highest MRR first.</InfoTip>
-            </span>
-            <select value={dueShow} onChange={(e) => setDueShow(e.target.value)} aria-label="Which clients">
-              <option value="due">Anything due ({cov.labs.filter((x) => !x.feedbackThisMonth || !x.npsThisQuarter).length})</option>
-              <option value="feedback">Feedback due · {cov.monthLabel} ({feedbackDue})</option>
-              <option value="nps">NPS due · {cov.quarterLabel} ({npsDue})</option>
-              <option value="all">All clients ({cov.total})</option>
-            </select>
-          </div>
-          {!dueRows.length ? <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 12.5 }}>{cov.total ? "Nothing due — every client is up to date." : "No clients in this view."}</div> : (
-            <Paginated items={dueRows}>{(page) => (
-              <div className="table-scroll"><table className="child-mini">
-                <thead><tr><th>Client</th><th>CSM</th><th>MRR</th><th>Feedback · {cov.monthLabel}</th><th>NPS · {cov.quarterLabel}</th><th></th></tr></thead>
-                <tbody>{page.map((x) => (
-                  <tr key={x.lab.id}>
-                    <td className="lab-name clickable fb-cut" onClick={() => onOpenLab(x.lab.id)}>{x.lab.name}</td>
-                    <td className="fb-cut">{x.lab.csm || "—"}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{fmtAmount(clientMrr[x.lab.id] || 0)}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{cadenceCell(x.feedbackThisMonth, x.lastRatingDate, x.lastRating, 5, x.daysSinceRating)}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{cadenceCell(x.npsThisQuarter, x.lastNpsDate, x.lastNps, 10, x.daysSinceNps)}</td>
-                    <td style={{ textAlign: "right" }}>{(!x.feedbackThisMonth || !x.npsThisQuarter) && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(blankResponse(x.lab.id))}>+ Record</button>}</td>
-                  </tr>
-                ))}</tbody>
-              </table></div>
-            )}</Paginated>
-          )}
-        </div>
-
-        <div className="fb-two">
-          <div className="table-card" style={{ padding: "16px 18px", overflow: "visible" }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center" }}>
-              NPS breakdown
-              <InfoTip>Each answer is 0–10. Promoters 9–10, Passives 7–8, Detractors 0–6. Average NPS is the average answer out of 10. Click a bar to see those responses.</InfoTip>
-            </div>
-            <BarChart labelWidth={110} data={["Promoter", "Passive", "Detractor"].map((b) => ({
-              label: BUCKET_LABEL[b], value: { Promoter: sum.promoters, Passive: sum.passives, Detractor: sum.detractors }[b], color: BUCKET_COLOR[b], onClick: () => drill({ bucket: b }),
-            }))} />
-          </div>
-          <div className="table-card" style={{ padding: "16px 18px" }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Feedback ratings</div>
-            <BarChart labelWidth={110} data={[5, 4, 3, 2, 1].map((n) => ({ label: plural(n, "star"), value: responses.filter((r) => r.rating === n).length, color: n >= 4 ? "var(--ok)" : n === 3 ? "var(--warn)" : "var(--bad)", onClick: () => drill({ rating: n }) }))} />
-          </div>
-        </div>
 
         <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>By CSM</h3>
         <div className="table-card" style={{ marginBottom: 18 }}>
@@ -541,7 +508,7 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
         </div>
 
         <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>By lab</h3>
-        <div className="table-card">
+        <div className="table-card" style={{ marginBottom: 18 }}>
           {!byLab.length ? <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 12.5 }}>No responses in this view.</div> : (
             <Paginated items={byLab}>{(page) => (
               <div className="table-scroll"><table className="child-mini">
@@ -559,6 +526,39 @@ export default function FeedbackView({ labs: allLabs, viewer, idByName, onOpenLa
                     </tr>
                   );
                 })}</tbody>
+              </table></div>
+            )}</Paginated>
+          )}
+        </div>
+
+        {/* Last (decision Nov 24 2026): the working list of clients still due — after the report of what's been recorded. */}
+        <div ref={coverageRef} className="table-card" style={{ marginBottom: 18, scrollMarginTop: 80 }}>
+          <div className="fb-card-head">
+            <span style={{ display: "flex", alignItems: "center", fontWeight: 700, fontSize: 13 }}>
+              Monthly feedback &amp; quarterly NPS
+              <InfoTip>Each client is asked for feedback (a 1–5 rating) once a month and for NPS (0–10) once a quarter. A response with a rating counts for its month; one with an NPS score counts for its quarter. Parent labs only (a child lab's response counts for its parent); Inactive and Churned clients are left out. Uses the lab, CSM and lab-type filters, not the dates. Highest MRR first.</InfoTip>
+            </span>
+            <select value={dueShow} onChange={(e) => setDueShow(e.target.value)} aria-label="Which clients">
+              <option value="due">Anything due ({cov.labs.filter((x) => !x.feedbackThisMonth || !x.npsThisQuarter).length})</option>
+              <option value="feedback">Feedback due · {cov.monthLabel} ({feedbackDue})</option>
+              <option value="nps">NPS due · {cov.quarterLabel} ({npsDue})</option>
+              <option value="all">All clients ({cov.total})</option>
+            </select>
+          </div>
+          {!dueRows.length ? <div style={{ padding: 20, color: "var(--text-faint)", fontSize: 12.5 }}>{cov.total ? "Nothing due — every client is up to date." : "No clients in this view."}</div> : (
+            <Paginated items={dueRows}>{(page) => (
+              <div className="table-scroll"><table className="child-mini">
+                <thead><tr><th>Client</th><th>CSM</th><th>MRR</th><th>Feedback · {cov.monthLabel}</th><th>NPS · {cov.quarterLabel}</th><th></th></tr></thead>
+                <tbody>{page.map((x) => (
+                  <tr key={x.lab.id}>
+                    <td className="lab-name clickable fb-cut" onClick={() => onOpenLab(x.lab.id)}>{x.lab.name}</td>
+                    <td className="fb-cut">{x.lab.csm || "—"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{fmtAmount(clientMrr[x.lab.id] || 0)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{cadenceCell(x.feedbackThisMonth, x.lastRatingDate, x.lastRating, 5, x.daysSinceRating)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{cadenceCell(x.npsThisQuarter, x.lastNpsDate, x.lastNps, 10, x.daysSinceNps)}</td>
+                    <td style={{ textAlign: "right" }}>{(!x.feedbackThisMonth || !x.npsThisQuarter) && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(blankResponse(x.lab.id))}>+ Record</button>}</td>
+                  </tr>
+                ))}</tbody>
               </table></div>
             )}</Paginated>
           )}
