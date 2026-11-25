@@ -3,6 +3,7 @@ import Modal from "./Modal";
 import { todayISO, TASK_PRIORITIES } from "../lib/tasks";
 import SearchSelect from "./SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
+import { HINTS } from "../lib/hints";
 
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -60,7 +61,7 @@ export default function AddTaskModal({ open, onClose, onSubmit, defaultAssignee,
           </div>
           <div className="field">
             <label>Description <span className="atm-opt">optional</span></label>
-            <textarea rows="2" value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Any detail the owner needs" style={{ resize: "vertical" }} />
+            <textarea rows="2" value={details} onChange={(e) => setDetails(e.target.value)} placeholder={HINTS.taskDescription} style={{ resize: "vertical" }} />
           </div>
         </section>
 

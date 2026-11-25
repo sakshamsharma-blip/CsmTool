@@ -35,6 +35,7 @@ import { fetchLabPitchStatus } from "../lib/pitch";
 import Paginated from "../components/Pager";
 import LabContactsCard from "../components/LabContactsCard";
 import LabDocumentsTab from "../components/LabDocumentsTab";
+import { HINTS } from "../lib/hints";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const LAB_STATUSES = ["Active", "Inactive", "At Risk"]; // Churned/Contraction go through the Churn modal instead
@@ -323,6 +324,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   async function handleSaveVisitDetail() {
     // The date stays as logged unless it's moved — and a moved date must be today or yesterday.
     if (vDate !== visitDetail?.visitDate && !isCheckinDateAllowed(vDate)) { showToast(CHECKIN_DATE_MESSAGE); return; }
+    if (!vNotes.trim()) { showToast("Add notes — they're required on a check-in or visit."); return; }
     setSavingVisitDetail(true);
     try {
       await updateVisit(openVisitId, {
@@ -727,6 +729,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
   }
 
   async function handleChurnConfirm() {
+    if (!churnReason.trim()) { showToast("Add the reason — it's required for churn and contraction."); return; }
     const outstandingNow = (() => {
       const itemSummary = labCollectionsSummary(collItems, lab.creditDays);
       const openInvoices = invoices.filter(isInvoiceOpen);
@@ -1100,7 +1103,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                 {row("Current ARR", fmtMoney(effectiveMRR(lab) * 12, lab.region))}
                 {row("Status", lab.status)}
                 {row("Remarks", lab.remarks || "—",
-                  <textarea rows="2" value={editRemarks} onChange={(e) => setEditRemarks(e.target.value)} style={{ ...inputStyle, resize: "vertical" }} />
+                  <textarea rows="2" value={editRemarks} onChange={(e) => setEditRemarks(e.target.value)} style={{ ...inputStyle, resize: "vertical" }} placeholder={HINTS.labRemarks} />
                 )}
               </>
             );
@@ -1330,9 +1333,9 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
             style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" }} />
         </div>
         <div className="tmpl-field">
-          <label>Reason</label>
-          <textarea value={churnReason} onChange={(e) => setChurnReason(e.target.value)} rows={2}
-            placeholder="e.g. Switched to a competing LIMS"
+          <label>Reason <span style={{ color: "var(--bad)" }}>*</span></label>
+          <textarea value={churnReason} onChange={(e) => setChurnReason(e.target.value)} rows={3}
+            placeholder={HINTS.churnReason}
             style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", resize: "vertical" }} />
         </div>
         <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 10 }}>
@@ -1362,7 +1365,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
         </div>
         <div className="tmpl-field">
           <label>Note (optional)</label>
-          <textarea value={pulseNote} onChange={(e) => setPulseNote(e.target.value)} rows={2}
+          <textarea value={pulseNote} onChange={(e) => setPulseNote(e.target.value)} rows={2} placeholder={HINTS.healthNote}
             style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", resize: "vertical" }} />
         </div>
       </Modal>
@@ -1840,7 +1843,8 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                           </div>
                         )}
                         {row("Notes", visitDetail.notes || "—",
-                          <textarea rows="3" value={vNotes} onChange={(e) => setVNotes(e.target.value)} style={{ ...inputStyle, resize: "vertical" }} />
+                          <><textarea rows="5" value={vNotes} onChange={(e) => setVNotes(e.target.value)} style={{ ...inputStyle, resize: "vertical" }} placeholder={vType === "Visit" ? HINTS.visitNotes : HINTS.checkinNotes} />
+                          <div className="field-hint">Required. {vType === "Visit" ? HINTS.visitHelp : HINTS.checkinHelp}</div></>
                         )}
                         {row("Sentiment", visitDetail.sentiment || "Not set",
                           <div style={{ display: "flex", gap: 8 }}>

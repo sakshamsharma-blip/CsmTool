@@ -13,6 +13,7 @@ import InfoTip from "../components/InfoTip";
 import Paginated from "../components/Pager";
 import SearchSelect from "../components/SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
+import { HINTS } from "../lib/hints";
 
 // Visits & Meetings is about OFFLINE, in-person visits only. Calls, emails, WhatsApp chats and notes are
 // still logged — from a lab's Log Check-in — but they live in Lab History, not here. Two things happen on
@@ -138,6 +139,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
     if (!logLabId) { setLogError("Pick a lab first."); return; }
     if (!logEngagement) { setLogError("Choose Proactive or Reactive."); return; }
     if (!isCheckinDateAllowed(logDate)) { setLogError(CHECKIN_DATE_MESSAGE); return; }
+    if (!logNotes.trim()) { setLogError("Add notes — what happened on the visit."); return; }
     try {
       const lab = labsById[logLabId];
       const newVisitId = await addVisit({
@@ -240,6 +242,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
   async function handleSaveEdit() {
     // A visit keeps its original date unless it's moved — and the new date must be today or yesterday.
     if (editDate !== visitById[editId]?.visitDate && !isCheckinDateAllowed(editDate)) { showToast(CHECKIN_DATE_MESSAGE); return; }
+    if (!editNotes.trim()) { showToast("Add notes — what happened on the visit."); return; }
     setEditSaving(true);
     try {
       await updateVisit(editId, {
@@ -367,8 +370,9 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
           <input type="date" style={fieldStyle} value={logDate} min={checkinDateBounds().min} max={checkinDateBounds().max} onChange={(e) => setLogDate(e.target.value)} />
         </div>
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
-          <label>Notes</label>
-          <textarea rows="3" style={fieldStyle} value={logNotes} onChange={(e) => setLogNotes(e.target.value)} placeholder="What happened on the visit" />
+          <label>Notes <span style={{ color: "var(--bad)" }}>*</span></label>
+          <textarea rows="5" style={{ ...fieldStyle, resize: "vertical" }} value={logNotes} onChange={(e) => setLogNotes(e.target.value)} placeholder={HINTS.visitNotes} />
+          <div className="field-hint">{HINTS.visitHelp}</div>
         </div>
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
           <label>Sentiment (optional)</label>
@@ -466,8 +470,9 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
           <input type="date" style={fieldStyle} value={editDate} onChange={(e) => setEditDate(e.target.value)} />
         </div>
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
-          <label>Notes</label>
-          <textarea rows="3" style={fieldStyle} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="What happened on the visit" />
+          <label>Notes <span style={{ color: "var(--bad)" }}>*</span></label>
+          <textarea rows="5" style={{ ...fieldStyle, resize: "vertical" }} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder={HINTS.visitNotes} />
+          <div className="field-hint">{HINTS.visitHelp}</div>
         </div>
         <div className="tmpl-field" style={{ marginBottom: 12 }}>
           <label>Sentiment (optional)</label>

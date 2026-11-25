@@ -12,6 +12,7 @@ import SearchSelect from "./SearchSelect";
 import Paginated from "./Pager";
 import PocPicker from "./PocPicker";
 import InfoTip from "./InfoTip";
+import { HINTS } from "../lib/hints";
 
 // Feedback & NPS → Testimonials (decision Nov 24 2026, migration 0051). Tiles, four charts (format, designation, topic,
 // written source) and the list, all narrowed by the page's period / lab type / CSM scope plus the filters here. Every
@@ -328,7 +329,7 @@ export function TestimonialForm({ value, modules, labOptions, labCsm, pocsFor, o
             </div>
           </div>
           <div className="tmpl-field" style={{ marginTop: 12 }}><label>Note (optional)</label>
-            <textarea rows="3" style={{ ...field, resize: "vertical" }} value={t.note} onChange={(e) => set({ note: e.target.value })} />
+            <textarea rows="3" style={{ ...field, resize: "vertical" }} value={t.note} onChange={(e) => set({ note: e.target.value })} placeholder={HINTS.testimonialNote} />
           </div>
         </div>
         <div className="drawer-foot">

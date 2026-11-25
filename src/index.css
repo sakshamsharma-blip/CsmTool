@@ -1074,3 +1074,7 @@
 .ib-detail-row span:first-child{color:var(--text-dim);}
 .ib-detail-row span:last-child{min-width:0; overflow-wrap:anywhere;}
 .ib-actions{margin:0; padding-left:18px; font-size:13px; line-height:1.7;}
+/* A short line under a description box (Nov 25 2026) — what to write there; turns red when a required box is empty. */
+.field-hint{font-size:11.5px; color:var(--text-faint); margin-top:4px; font-weight:400; text-transform:none; letter-spacing:0;}
+.field-hint-bad{color:var(--bad);}
+textarea::placeholder{color:var(--text-faint); opacity:1; line-height:1.5;}

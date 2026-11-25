@@ -10,6 +10,7 @@ import { addTask, autoTaskTitle } from "../lib/tasks";
 import { todayISO, daysFromTodayISO, checkinDateBounds, isCheckinDateAllowed, CHECKIN_DATE_MESSAGE } from "../lib/dates";
 import { fetchLabContacts, addLabContact } from "../lib/labContacts";
 import DesignationSelect from "../components/DesignationSelect";
+import { HINTS } from "../lib/hints";
 
 const CHECKIN_TYPES = [
   { key: "Call", icon: "📞" },
@@ -65,6 +66,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   const [newPocMin, setNewPocMin] = useState(""); // "Minimum Proactive Check-ins per Month" for a POC saved from here
   const [topics, setTopics] = useState([]);
   const [notes, setNotes] = useState("");
+  const [notesError, setNotesError] = useState(false); // notes are required (decision Nov 25 2026)
   // Adoption Snapshot "Discussed" marks (decision, Oct 2026): which modules — and optionally which parameters
   // inside them — were points of discussion in this check-in. Saved on the visit for lab-wise reporting. They no
   // longer create follow-up tasks.
@@ -144,6 +146,12 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
     }
     if (!isCheckinDateAllowed(date)) {
       showToast(CHECKIN_DATE_MESSAGE);
+      return;
+    }
+    if (!notes.trim()) {
+      setNotesError(true);
+      showToast("Add notes — what was discussed — before logging the check-in.");
+      document.getElementById("checkin-notes")?.focus();
       return;
     }
     setSaving(true);
@@ -343,8 +351,10 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
               ))}
             </div>
             <div className="tmpl-field">
-              <label>Notes</label>
-              <textarea rows="3" style={fieldStyle} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="What was discussed" />
+              <label>Notes <span style={{ color: "var(--bad)" }}>*</span></label>
+              <textarea id="checkin-notes" rows="5" style={{ ...fieldStyle, resize: "vertical", ...(notesError ? { borderColor: "var(--bad)" } : {}) }} value={notes}
+                onChange={(e) => { setNotes(e.target.value); if (e.target.value.trim()) setNotesError(false); }} placeholder={HINTS.checkinNotes} />
+              <div className={`field-hint${notesError ? " field-hint-bad" : ""}`}>{notesError ? "Add what was discussed — notes are required." : HINTS.checkinHelp}</div>
             </div>
           </div>
 

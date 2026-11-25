@@ -16,6 +16,7 @@ import ModuleResources from "./ModuleResources";
 import AdoptionPies from "./AdoptionPies";
 import PipelineScores from "./PipelineScores";
 import { fetchModuleResources } from "../lib/moduleResources";
+import { HINTS } from "../lib/hints";
 
 const field = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
 const pct = (v) => (v == null ? "—" : `${Math.round(v)}%`);
@@ -324,7 +325,7 @@ function CommentRequiredModal({ title, hint, label, askDue, onClose, onConfirm }
       <div className="tmpl-field">
         <label>{label || "Comment"} <span style={{ color: "var(--bad)" }}>*</span></label>
         <textarea rows="3" autoFocus style={{ ...field, resize: "vertical" }} value={comment} onChange={(e) => { setComment(e.target.value); setError(false); }}
-          placeholder="Why is this changing?" />
+          placeholder={HINTS.adoptionComment} />
       </div>
       {askDue && <TaskDueField value={due} onChange={setDue} style={field} />}
       {error && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>A comment is required.</div>}

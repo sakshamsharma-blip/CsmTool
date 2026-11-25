@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { HINTS } from "../lib/hints";
 import {
   TASK_STATUSES, TASK_PRIORITIES, PRIORITY_COLORS, isRecurring, isTaskDoneToday, taskStatusLabel, taskTypeLabel, repeatLabel,
   resolutionDays, setTaskStatus, toggleTaskDone, updateTaskFields, fmtTime as fmtDueTime, deleteTask, fetchTaskUpdates, addTaskComment, deleteTaskUpdate,
@@ -124,7 +125,7 @@ export default function TaskDrawer({ task, lab, currentCSM, isHead, csmNames, id
             <label>Description</label>
             {canEdit ? (
               <>
-                <textarea rows="3" style={{ ...field, resize: "vertical" }} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Add details for this task…" />
+                <textarea rows="3" style={{ ...field, resize: "vertical" }} value={details} onChange={(e) => setDetails(e.target.value)} placeholder={HINTS.taskDescription} />
                 {details !== (task.details || "") && (
                   <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                     <button className="btn btn-primary" style={{ padding: "5px 12px", fontSize: 12 }} disabled={busy} onClick={() => change({ details })}>Save description</button>

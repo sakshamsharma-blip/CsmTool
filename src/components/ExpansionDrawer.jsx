@@ -3,6 +3,7 @@ import { EXPANSION_STATUSES } from "../lib/expansion";
 import { pitchOptionsFor } from "../lib/pitch";
 import { labSelectOptions } from "../lib/selectOptions";
 import SearchSelect from "./SearchSelect";
+import { HINTS } from "../lib/hints";
 
 const pickStyle = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", background: "var(--surface)", color: "var(--text)" };
 
@@ -104,7 +105,7 @@ export default function ExpansionDrawer({ row, deal, labOptions, labsById, modul
               </div>
               <div className="field">
                 <label>Description / Scope</label>
-                <textarea rows="2" value={form.description} onChange={(e) => set("description", e.target.value)} style={{ resize: "vertical" }} />
+                <textarea rows="2" value={form.description} onChange={(e) => set("description", e.target.value)} style={{ resize: "vertical" }} placeholder={HINTS.expansionDescription} />
               </div>
             </div>
 

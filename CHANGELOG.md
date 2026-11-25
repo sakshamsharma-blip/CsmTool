@@ -2,6 +2,10 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Nov 25 2026 — Example text in description boxes; notes required
+- Every description / notes box shows example text of what to write; it disappears as soon as you start typing.
+- Notes are now required to log a check-in or a visit (and when editing one), and a reason is required for churn / contraction.
+
 ## Nov 24 2026 — Cleaner task titles
 - Tasks made from a check-in or a planned visit no longer repeat the lab in the title (the Lab and Type columns already show it): an action item is just its text, a follow-up is "Follow-up: <reason>", a planned visit "Planned visit: <purpose>". Migration 0053 tidies the existing ones.
 

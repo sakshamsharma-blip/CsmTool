@@ -26,6 +26,7 @@ import Modal from "../components/Modal";
 import BarChart from "../components/BarChart";
 import InfoTip from "../components/InfoTip";
 import { labSelectOptions } from "../lib/selectOptions";
+import { HINTS } from "../lib/hints";
 
 const input = { border: "1px solid var(--border)", borderRadius: 7, padding: "7px 10px", fontSize: 12.5, fontFamily: "inherit", background: "var(--surface)", color: "var(--text)" };
 const field = { ...input, width: "100%", fontSize: 13, padding: "8px 10px" };
@@ -725,7 +726,7 @@ function ResponseModal({ value, labOptions, pocsFor, onAddPoc, saving, onClose, 
       </div>
       <div className="tmpl-field" style={{ marginBottom: 10 }}>
         <label>Comment / what they said</label>
-        <textarea rows="3" style={{ ...field, resize: "vertical" }} value={f.comment} onChange={(e) => set({ comment: e.target.value })} />
+        <textarea rows="3" style={{ ...field, resize: "vertical" }} value={f.comment} onChange={(e) => set({ comment: e.target.value })} placeholder={HINTS.feedbackComment} />
       </div>
       <div className="tmpl-field">
         <label>Supporting link (optional)</label>

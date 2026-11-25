@@ -3,6 +3,7 @@ import Modal from "./Modal";
 import TaskDueField from "./TaskDueField";
 import { PITCH_ACTIVE_STATUSES } from "../lib/pitch";
 import { STATUS_ACTIVE } from "../lib/adoption";
+import { HINTS } from "../lib/hints";
 
 const fieldStyle = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
 
@@ -84,7 +85,7 @@ export default function PitchStageModal({ target, fromStatus, toStatus, onClose,
       <div className="tmpl-field">
         <label>Comment <span style={{ color: "var(--bad)" }}>*</span></label>
         <textarea rows="3" style={{ ...fieldStyle, resize: "vertical" }} value={comment} onChange={(e) => { setComment(e.target.value); setError(false); }}
-          placeholder="Why is this changing? Anything the next person should know." />
+          placeholder={HINTS.pitchComment} />
       </div>
       {askDue && <TaskDueField value={due} onChange={setDue} style={fieldStyle} />}
       {isLostAfterPurchase && (

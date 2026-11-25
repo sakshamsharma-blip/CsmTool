@@ -283,6 +283,10 @@ with the same context and follows the same rules. Read it fully before making ch
   follow-up date becomes a follow-up task. **Auto task titles carry no lab name** (decision Nov 24 2026, `autoTaskTitle` in `lib/tasks.js`; 0053 tidied older ones):
   an action item = its own text, "Follow-up: <reason>", "Planned visit: <purpose>" — the Lab and Type columns show the rest. The follow-up task (the only one carrying `source_visit_id`, so editing the visit keeps
   it in sync). Adoption Snapshot ticks only mark what was *discussed* — they create no tasks.
+- **Description boxes** (decision Nov 25 2026): example text sits inside each description / notes box and disappears when you type (`HINTS` in
+  `lib/hints.js`, used as the textarea placeholder; a short `.field-hint` line under the main ones). **Notes are required** on Log Check-in, on
+  Visits & Meetings' Log Visit / Edit Visit, and when editing a check-in or visit from Lab History; the **reason is required** for churn /
+  contraction. Everything else stays optional. UI-enforced; old rows without notes are untouched.
 - **Searchable dropdowns**: every lab picker (parents *and* children), country and state uses
   `components/SearchSelect.jsx` (type to filter). Any new picker should use it too.
 - **MRR editing**: any lab (parent or child) can have its own MRR edited in Lab Details. Which

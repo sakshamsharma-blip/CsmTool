@@ -5,6 +5,7 @@ import CityPicker from "./CityPicker";
 import SearchSelect from "./SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
 import { LAB_TYPES } from "../lib/labs";
+import { HINTS } from "../lib/hints";
 
 const COUNTRY_NAMES = getCountryNames();
 
@@ -339,7 +340,7 @@ export default function AddLabDrawer({ open, onClose, onSave, labs, csmNames, pl
             <div className="fsection">
               <h4>5. Additional Information</h4>
               <div className="field"><label>Remarks</label>
-                <textarea rows="2" maxLength="500" value={form.remarks} onChange={(e) => set("remarks", e.target.value)} placeholder="Enter any additional notes about the lab (optional)" /></div>
+                <textarea rows="2" maxLength="500" value={form.remarks} onChange={(e) => set("remarks", e.target.value)} placeholder={HINTS.labRemarks} /></div>
             </div>
 
             <div className="side-card">
