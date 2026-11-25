@@ -2,6 +2,10 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Nov 25 2026 — Team View by default
+- CSM Leads, Managers and Admins now open on Team View on every screen that has the My Labs / Team View switch; My Labs is one click away and the choice is remembered while the tab is open.
+- Fix: editing a lab whose State is a placeholder ("—") no longer asks the city service about it (it showed console errors).
+
 ## Nov 25 2026 — Example text in description boxes; notes required
 - Every description / notes box shows example text of what to write; it disappears as soon as you start typing.
 - Notes are now required to log a check-in or a visit (and when editing one), and a reason is required for churn / contraction.

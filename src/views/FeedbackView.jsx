@@ -87,7 +87,7 @@ const TABS = [["overview", "Overview"], ["labs", "Lab-wise Report"], ["csm", "CS
 // Cadence rules: _shared/feedbackCoverage.js. Every number clicks through to the responses behind it.
 // Header filters (all tabs): period, My Labs / Team View + CSM, lab type. Lab / designation / source below the tabs.
 export default function FeedbackView({ labs: allLabs, modules = [], viewer, idByName, onOpenLab, showToast }) {
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "feedback", "team");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "feedback");
   const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
   const [rawTab, setTab] = useSessionState("feedback.view", "overview");
   const tab = TABS.some(([k]) => k === rawTab) ? rawTab : "overview"; // "report" (before Nov 24 2026) → Overview

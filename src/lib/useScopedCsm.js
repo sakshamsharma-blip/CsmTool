@@ -5,15 +5,15 @@ import { hasLeadAccess } from "./roles";
 // Tasks, Visits & Meetings, Reports, and Total Labs — this used to be copy-pasted into all seven
 // views individually. A plain CSM is always locked to their own labs (ScopeToggle renders
 // nothing for them — see components/ScopeToggle.jsx); a CSM Lead or Admin defaults to their own
-// too but can switch to Team View, optionally narrowed further to one CSM via csmFilter.
+// Team View (Nov 25 2026) but can switch to My Labs, optionally narrowed further to one CSM via csmFilter.
 //
 // Takes the same `viewer` object App.jsx computes (currentCSM/csmDirectory/myName/isHead — see
 // its own comment there) so every view reads currentCSM's role the same way. Note this — like
 // every hasLeadAccess/isHead check in the app — only controls what the UI shows; it is not the
 // security boundary. See the comment on hasLeadAccess in roles.js for why.
 // `page` keys the remembered My Labs / Team View choice per screen, so it survives a refresh (sessionStorage).
-// `defaultScope` lets a screen open on Team View for a Lead / Admin (Feedback & NPS does, Nov 2026).
-export function useScopedCsm(viewer, page = "default", defaultScope = "mine") {
+// Every screen opens on Team View for a Lead / Manager / Admin (decision Nov 25 2026); a plain CSM is locked to their own labs whatever `scope` says.
+export function useScopedCsm(viewer, page = "default", defaultScope = "team") {
   const { csmDirectory, currentCSM } = viewer;
   const isHead = hasLeadAccess(csmDirectory.find((c) => c.name === currentCSM)?.role);
   const [scope, setScope] = useSessionState(`${page}.scope`, defaultScope);

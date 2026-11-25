@@ -29,8 +29,11 @@ export function cityOptionsFor(labs, state) {
 // Cities for a country + state, best first: India's built-in list, otherwise the online service (cached per session,
 // 6-second timeout, [] on any failure). Always merged with cities already used on our labs in that state.
 const cityCache = new Map();
+// A state left as a placeholder ("—", "-", "N/A") is no state: don't ask the city service about it (it answers 404).
+const isPlaceholderState = (state) => /^[\s—–\-.]*$|^\s*n\/?a\s*$/i.test(String(state || ""));
+
 export async function fetchCities(country, state) {
-  if (!country || !state) return [];
+  if (!country || !state || isPlaceholderState(state)) return [];
   if (country === "India") return INDIA_CITIES[state] || [];
   const key = `${country}|${state}`;
   if (cityCache.has(key)) return cityCache.get(key);

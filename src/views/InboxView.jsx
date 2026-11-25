@@ -26,7 +26,7 @@ const fmtWhen = (v) => {
 const summaryOf = (v) => [v.notes, v.discussionTopics?.length ? `Topics: ${v.discussionTopics.join(", ")}` : null].filter(Boolean).join(" · ") || "No notes.";
 
 export default function InboxView({ labs: allLabs, modules = [], viewer, idByName, onOpenLab, showToast }) {
-  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "inbox", "team");
+  const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "inbox");
   const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
   const [demo] = useState(() => (SUPABASE_CONFIGURED ? null : buildDemoCheckins(todayISO())));
   const [visits, setVisits] = useState(() => demo?.visits || []);

@@ -172,7 +172,7 @@ with the same context and follows the same rules. Read it fully before making ch
   **Still due** with + Record; replaces the old By lab + still-due list), 3. CSM Performance
   (avg NPS, feedback coverage and NPS coverage per CSM, then By CSM), 4. Response Details (the responses list + search), 5. Testimonials. The period
   picker is in the header (top right) and applies to every tab. Session keys `feedback.view` (old "report" → Overview), `feedback.labWhat` / `feedback.labState`, `feedback.search`, `feedback.t.*`.
-  Opens on Team View for a Lead / Admin (`useScopedCsm(viewer, "feedback", "team")`) and on Overview.
+  Opens on Team View for a Lead / Admin (like every scoped screen) and on Overview.
   Lists are newest first, one line per row; clicking a row opens a side panel with the full details and Edit / Delete (`FeedbackDetail`, `TestimonialDetail`).
   **Testimonials** (`components/TestimonialsTab.jsx`, rules + topic list in `supabase/functions/_shared/testimonials.js` re-exported by
   `lib/testimonials.js`, migration 0051): format Video / Written; Written needs a source (Email, WhatsApp, Google Form, or Other + `source_detail` saying what it was —
@@ -330,8 +330,8 @@ with the same context and follows the same rules. Read it fully before making ch
   Collections still exist for those older / manual rows.
 - **Lab History** (`activity_log`) is meant to capture everything that happens to a lab, whether
   logged manually (a check-in) or as a side effect of any other action anywhere in the app.
-- **CSM scoping**: every CSM sees only their own labs by default; a Lead/Admin can switch to
-  "Team View" and filter by CSM. This pattern (`useScopedCsm`) is used consistently across
+- **CSM scoping**: a CSM sees only their own labs; a Lead / Manager / Admin **opens on Team View** on every screen
+  (decision Nov 25 2026, `useScopedCsm`'s default) and can switch to My Labs or filter by CSM; the choice is remembered per screen for the browser tab. This pattern (`useScopedCsm`) is used consistently across
   Dashboard, My Portfolio, Collections, Expansion, Visits, and Tasks — any new portfolio-wide
   screen should follow it too.
 
