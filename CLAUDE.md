@@ -189,11 +189,13 @@ with the same context and follows the same rules. Read it fully before making ch
   (what the KPI counts — the KPI itself is unchanged, monthly). Filters: search, status, show POCs without a target, sort (most urgent first).
   **Log check-in** opens the normal Log Check-in with the lab + person filled in and Proactive pre-picked, and returns to Check-ins after saving
   (`openLogCheckinFor` in App.jsx, sessionStorage `logcheckin.prefill`, `prefill` prop on `LogCheckinView`). Logging from the lab page counts the same.
-- **Inbox** (sidebar, **CSM Lead / Manager / Admin only**; `views/InboxView.jsx`, `lib/inbox.js`, migration 0052 `visit_reads`; decision Nov 24 2026):
-  the team's check-ins and logged visits (the `visits` table — not other Lab History), newest first, grouped by lab (3 per lab, "Show all").
+- **Inbox** (sidebar, **every CSM since Nov 26 2026** — a CSM sees their own labs (visits RLS already scopes it), a Lead / Manager / Admin the team on
+  Team View; `views/InboxView.jsx`, `lib/inbox.js`, migration 0052 `visit_reads`; decision Nov 24 2026): check-ins and logged visits (the `visits` table — not other Lab History), newest first, grouped by lab (3 per lab, "Show all").
   Opening an entry shows everything logged (side panel) and marks it read **for that person** (`visit_reads`, RLS: own rows only). Mark read per
-  lab, Mark all read, Mark unread. Filters: search, kind (Check-in / Visit), Everything / Unread only, lab, Team View + CSM, Lab Type. Entries
-  created before `INBOX_START` (2026-11-24) count as read. Sidebar shows the unread count (`useInboxUnread`, refreshed every 5 min).
+  lab, Mark all read, Mark unread. Filters: search, kind (Check-in / Visit), Everything / Unread only, **check-in sentiment** (the entry's own Positive / Neutral /
+  At Risk / Not set) and **lab health** (the lab's Lab Health bucket, shown on each lab card) — two separate filters, **date range** on the check-in date (Last 7 days = default, Last 2 weeks,
+  Last 1 month, All dates, Custom), lab, Team View + CSM, Lab Type. Entries created before `INBOX_START` (2026-11-24) count as read, and so does anything
+  you logged yourself (`visits.csm_id` = you; for a check-in that's who logged it, for a Visits & Meetings visit the lab's CSM). Sidebar shows the unread count (`useInboxUnread`, refreshed every 5 min).
 - **POC designation** is a dropdown (`POC_DESIGNATIONS` in `lib/labContacts.js`, `components/DesignationSelect.jsx`,
   with "Other…" to type one); older free-text values are kept until edited. Used on Points of Contact, Log Check-in
   and the Feedback "+ Add POC".
@@ -225,6 +227,13 @@ with the same context and follows the same rules. Read it fully before making ch
   for Domestic or ROW also shows "All regions" resources.
 - **Total Labs**: default sort MRR high → low (in INR); columns Lab ID, Lab Name, Type, CSM Name, MRR, Segment,
   Region, Lab Type, Status, Health, Lab Health (Sentiment), City, State, Country; the first columns stay frozen when scrolling sideways.
+  **Every column can be resized** by dragging its header edge (Nov 26 2026; double-click = default, "Reset column widths" next to Clear all;
+  `lib/useColumnWidths.js` + `components/ColResizer.jsx`, remembered per browser in localStorage); Lab Name starts at 280px. Use the same pair for any
+  other table that needs it (a `.col-sized` table with a `<colgroup>`); resizable header cells show a divider.
+- **Pinned table headers** (Nov 26 2026, `lib/useFloatingTableHeads.js`, mounted once in App.jsx): on every screen and side panel, a table's
+  header row stays at the top while you scroll through that table, scrolls away at its end, and the next table's header takes over. Done with a
+  transform on the header cells (CSS sticky can't escape the sideways-scrolling `.table-scroll` box). Tables already pinning their own header
+  (`.rep-scroll`, `.tmpl-list`) are skipped; add `.no-float-head` to opt a table out.
   No Consolidated / Per-Branch label in the list (it lives on the lab's Child Labs tab). Tiles include Needs Attention and At Risk
   (Lab Health) counts; filters include Lab Type and Lab Health.
 - **Segments** (Oct 30 2026, `SEG_BANDS` in `lib/format.js`, by MRR in INR): A Enterprise ₹1,00,000+ · B Premium ₹75,000+ · C Advance

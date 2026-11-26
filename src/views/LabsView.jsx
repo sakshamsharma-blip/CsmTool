@@ -8,6 +8,8 @@ import { fetchAllVisits } from "../lib/visits";
 import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { LAB_TYPES } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
+import { useColumnWidths } from "../lib/useColumnWidths";
+import ColResizer from "../components/ColResizer";
 import { todayISO } from "../lib/dates";
 import ScopeToggle from "../components/ScopeToggle";
 import FxRate from "../components/FxRate";
@@ -57,6 +59,22 @@ function exportLabsCsv(labs, allLabs) {
   URL.revokeObjectURL(url);
 }
 
+// Total Labs columns. Every width can be dragged (decision Nov 26 2026, lib/useColumnWidths.js, remembered per browser);
+// Lab Name starts wide so full names show. The first five stay frozen when scrolling sideways.
+const LAB_COLS = [
+  { key: "toggle", label: "", width: 28, fixed: true },
+  { key: "id", label: "Lab ID", width: 96 }, { key: "name", label: "Lab Name", width: 280 },
+  { key: "type", label: "Type", width: 96 }, { key: "csm", label: "CSM Name", width: 130 },
+  { key: "mrr", label: "MRR", width: 170 }, { key: "mrrPct", label: "MRR %", width: 84, title: "This account's share of Total MRR" },
+  { key: "segment", label: "Segment", width: 90 }, { key: "region", label: "Region", width: 96 },
+  { key: "labType", label: "Lab Type", width: 170 }, { key: "status", label: "Status", width: 104 },
+  { key: "health", label: "Health", width: 100 },
+  { key: "sentiment", label: "Lab Health (Sentiment)", width: 180, title: "Auto, from logged visit/check-in sentiment — separate from Health" },
+  { key: "city", label: "City", width: 140 }, { key: "state", label: "State", width: 140 }, { key: "country", label: "Country", width: 120 },
+];
+const FROZEN = 5;
+const LAB_COL_DEFAULTS = Object.fromEntries(LAB_COLS.map((c) => [c.key, c.width]));
+
 export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, initialQuery }) {
   // Same "My Labs vs. Team View" scoping every other screen (Dashboard, My Portfolio,
   // Collections, Tasks, Visits, Reports) already has — Total Labs was the one screen that
@@ -91,6 +109,13 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
     visits.forEach((v) => { (m[v.labId] = m[v.labId] || []).push(v); });
     return m;
   }, [visits]);
+  const colW = useColumnWidths("totalLabs", LAB_COL_DEFAULTS);
+  // Frozen columns sit at the summed width of the ones before them.
+  const frozenLeft = [];
+  LAB_COLS.slice(0, FROZEN).reduce((x, c, i) => { frozenLeft[i] = x; return x + colW.widths[c.key]; }, 0);
+  const fz = (i) => ({ left: frozenLeft[i] });
+  const tableWidth = LAB_COLS.reduce((sum, c) => sum + colW.widths[c.key], 0);
+
   function sentimentHealthOf(l) { return computeSentimentHealth(visitsByLab[l.id]); }
 
   // The top bar's search box seeds this same query — keep them in sync when it changes there,
@@ -171,13 +196,13 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
     const seg = segmentFor(toINR(l.mrr, l.region));
     return (
       <tr key={l.id} className={isChild ? "child-row" : undefined}>
-        <td className="fz fz0">{!isChild && l.children.length > 0 && (
+        <td className="fz fz0" style={fz(0)}>{!isChild && l.children.length > 0 && (
           <span className="toggle" onClick={() => setExpanded((e) => ({ ...e, [l.id]: !e[l.id] }))}>{expanded[l.id] ? "▾" : "▸"}</span>
         )}</td>
-        <td className="fz fz1">{l.labCode || l.id}</td>
-        <td className="fz fz2 lab-name clickable" onClick={() => onOpenLab(l.id)}>{l.name}</td>
-        <td className="fz fz3"><span className={`pill ${isChild ? "pill-child" : "pill-parent"}`}>{isChild ? "Child" : "Parent"}</span></td>
-        <td className="fz fz4">{l.csm}</td>
+        <td className="fz fz1" style={fz(1)}>{l.labCode || l.id}</td>
+        <td className="fz fz2 lab-name clickable" style={fz(2)} onClick={() => onOpenLab(l.id)} title={l.name}>{l.name}</td>
+        <td className="fz fz3" style={fz(3)}><span className={`pill ${isChild ? "pill-child" : "pill-parent"}`}>{isChild ? "Child" : "Parent"}</span></td>
+        <td className="fz fz4" style={fz(4)}>{l.csm}</td>
         <td className="mrr-cell">{fmtMoney(l.mrr, l.region)}</td>
         <td className="mrr-cell" title="Share of Total MRR">{totalMRR > 0 ? `${((toINR(l.mrr, l.region) / totalMRR) * 100).toFixed(2)}%` : "—"}</td>
         <td><span className="seg-badge" style={{ background: seg.color }}>{seg.code}</span></td>
@@ -186,7 +211,7 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
         <td><span className={`status-pill ${statusPillClass(l.status)}`}>{l.status}</span></td>
         <td>{l.healthStatus ? <span className={`status-pill ${healthPillClass(l.healthStatus)}`}>{l.healthStatus}</span> : <span style={{ color: "var(--text-faint)" }}>—</span>}</td>
         <td><span style={{ fontSize: 11, fontWeight: 700, color: HEALTH_BUCKET_COLORS[sentimentHealthOf(l).bucket] }}>{sentimentHealthOf(l).bucket}</span></td>
-        <td>{l.city || "—"}</td><td>{l.state}</td><td>{l.country}</td>
+        <td title={l.city || ""}>{l.city || "—"}</td><td title={l.state || ""}>{l.state}</td><td title={l.country || ""}>{l.country}</td>
       </tr>
     );
   }
@@ -289,17 +314,21 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
           <option value="name">Lab name A → Z</option>
         </select>
         <span className="clear" onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); setSortBy("mrr-desc"); }}>Clear all</span>
+        {colW.changed && <span className="clear" onClick={colW.reset} title="Put every column back to its default width">Reset column widths</span>}
       </div>
 
       <div className="table-card">
       <div className="table-scroll">
-      <table className="freeze-cols">
+      <table className="freeze-cols col-sized" style={{ width: tableWidth }}>
+        <colgroup>{LAB_COLS.map((c) => <col key={c.key} style={{ width: colW.widths[c.key] }} />)}</colgroup>
         <thead>
           <tr>
-            <th className="fz fz0"></th><th className="fz fz1">Lab ID</th><th className="fz fz2">Lab Name</th><th className="fz fz3">Type</th><th className="fz fz4">CSM Name</th>
-            <th>MRR</th><th title="This account's share of Total MRR">MRR %</th><th>Segment</th><th>Region</th><th>Lab Type</th><th>Status</th><th>Health</th>
-            <th title="Auto, from logged visit/check-in sentiment — separate from Health">Lab Health (Sentiment)</th>
-            <th>City</th><th>State</th><th>Country</th>
+            {LAB_COLS.map((c, i) => (
+              <th key={c.key} className={`col-resizable${i < FROZEN ? ` fz fz${i}` : ""}`} style={i < FROZEN ? fz(i) : undefined} title={c.title}>
+                {c.label}
+                {!c.fixed && <ColResizer width={colW.widths[c.key]} onResize={(px) => colW.setWidth(c.key, px)} />}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>

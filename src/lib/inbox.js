@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
 
-// Inbox (CSM Lead / Manager / Admin, decision Nov 24 2026): the team's check-ins and logged visits, marked read per person
+// Inbox (decision Nov 24 2026; every CSM since Nov 26 2026 — RLS on visits already limits a CSM to their own labs): check-ins and logged visits, marked read per person
 // (table visit_reads, migration 0052 — only you can see or change your own marks). Anything created before INBOX_START
 // counts as read, so the history doesn't arrive as hundreds of unread items.
 export const INBOX_START = "2026-11-24";
@@ -43,7 +43,7 @@ export async function markUnread(profileId, visitId) {
   notify();
 }
 
-// Sidebar badge: how many check-ins / visits since INBOX_START you haven't read. Refreshes every 5 minutes and whenever
+// Sidebar badge: how many check-ins / visits since INBOX_START (not logged by you) you haven't read. Refreshes every 5 minutes and whenever
 // something is marked read.
 export function useInboxUnread(profileId, enabled) {
   const [count, setCount] = useState(0);
@@ -51,11 +51,11 @@ export function useInboxUnread(profileId, enabled) {
     if (!enabled || !SUPABASE_CONFIGURED || !profileId) return;
     try {
       const [{ data, error }, reads] = await Promise.all([
-        supabase.from("visits").select("id,created_at").gte("created_at", INBOX_START).limit(5000),
+        supabase.from("visits").select("id,created_at,csm_id").gte("created_at", INBOX_START).limit(5000),
         fetchMyReads(profileId),
       ]);
       if (error) throw error;
-      setCount((data || []).filter((v) => !reads.has(v.id)).length);
+      setCount((data || []).filter((v) => !reads.has(v.id) && v.csm_id !== profileId).length); // your own entries count as read
     } catch { setCount(0); }
   }, [profileId, enabled]);
   useEffect(() => {

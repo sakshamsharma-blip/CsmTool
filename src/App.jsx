@@ -39,6 +39,7 @@ import LogCheckinView from "./views/LogCheckinView";
 import CheckinsView from "./views/CheckinsView";
 import InboxView from "./views/InboxView";
 import { useInboxUnread } from "./lib/inbox";
+import { useFloatingTableHeads } from "./lib/useFloatingTableHeads";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 
 // ---- address-bar routing: "#/<screen>", "#/lab/<lab id>/<tab>", "#/lab/<lab id>/<tab>/log-checkin" ----
@@ -73,6 +74,7 @@ export default function App() {
   const [csmDirectory, setCsmDirectory] = useState(SUPABASE_CONFIGURED ? [] : DEMO_CSM_DIRECTORY);
   const [idByName, setIdByName] = useState({});
   const [modules, setModules] = useState(SUPABASE_CONFIGURED ? [] : DEMO_MODULES);
+  useFloatingTableHeads(); // every table's header row stays pinned while you scroll through it
   const [plans, setPlans] = useState(SUPABASE_CONFIGURED ? [] : DEMO_PLANS);
   const [labs, setLabs] = useState(SUPABASE_CONFIGURED ? [] : DEMO_LABS);
 
@@ -557,7 +559,7 @@ export default function App() {
 
   // Unread "new tasks" count for the sidebar (the signed-in person's own tasks; cleared by opening Tasks).
   const newTaskCount = useNewTaskCount(idByName[myName], view === "tasks");
-  const inboxCount = useInboxUnread(idByName[myName], viewer.isHead);
+  const inboxCount = useInboxUnread(idByName[myName], true);
 
   if (SUPABASE_CONFIGURED && !authChecked) {
     return <div style={{ padding: 40, fontFamily: "sans-serif", color: "var(--text-dim)" }}>Loading…</div>;

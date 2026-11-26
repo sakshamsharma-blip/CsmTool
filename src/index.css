@@ -416,11 +416,8 @@
   table.freeze-cols .fz{box-sizing:border-box; overflow:hidden; text-overflow:ellipsis;}
   table.freeze-cols thead tr th.fz0, table.freeze-cols tbody tr td.fz0{padding:10px 6px;}
   table.freeze-cols tbody tr.child-row td.fz1{padding-left:24px; color:var(--text-dim);}
-  table.freeze-cols .fz0{left:0; min-width:28px; max-width:28px; width:28px;}
-  table.freeze-cols .fz1{max-width:96px; left:28px; min-width:96px; width:96px;}
-  table.freeze-cols .fz2{max-width:200px; left:124px; min-width:200px; width:200px;}
-  table.freeze-cols .fz3{max-width:118px; left:324px; min-width:118px; width:118px;}
-  table.freeze-cols .fz4{max-width:120px; left:442px; min-width:120px; width:120px; box-shadow:inset -1px 0 0 var(--border);}
+  /* Frozen column widths / left offsets come from the table's resizable widths (LabsView, useColumnWidths). */
+  table.freeze-cols .fz4{box-shadow:inset -1px 0 0 var(--border);}
   /* ---------- Chart hover card (components/ChartTooltip.jsx) ---------- */
   .chart-tip{position:fixed; z-index:300; max-width:290px; pointer-events:none; background:var(--surface); color:var(--text);
     border:1px solid var(--border); border-radius:9px; box-shadow:0 10px 28px rgba(16,24,40,.22); padding:10px 12px; font-size:12px; line-height:1.45;}
@@ -1078,3 +1075,29 @@
 .field-hint{font-size:11.5px; color:var(--text-faint); margin-top:4px; font-weight:400; text-transform:none; letter-spacing:0;}
 .field-hint-bad{color:var(--bad);}
 textarea::placeholder{color:var(--text-faint); opacity:1; line-height:1.5;}
+
+/* Resizable table columns (lib/useColumnWidths.js + components/ColResizer.jsx, Nov 26 2026). A table with .col-sized
+   takes its widths from a <colgroup>; long text is cut with … (full text on hover). */
+table.col-sized{table-layout:fixed; max-width:none;}
+table.col-sized th, table.col-sized td{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+th.col-resizable{position:relative;}
+table.freeze-cols th.col-resizable.fz{position:sticky;}
+.col-resizer{position:absolute; top:0; right:0; width:7px; height:100%; cursor:col-resize; z-index:3; user-select:none;}
+.col-resizer::after{content:""; position:absolute; top:25%; bottom:25%; right:2px; width:2px; border-radius:2px; background:var(--border); opacity:0; transition:opacity .12s;}
+th.col-resizable:hover .col-resizer::after, .col-resizer:hover::after{opacity:1; background:var(--accent);}
+body.col-resizing{cursor:col-resize; user-select:none;}
+body.col-resizing *{cursor:col-resize !important;}
+.ib-health{font-size:11px; font-weight:700;}
+.ib-dates{display:inline-flex; align-items:center; gap:6px;}
+.ib-dates input{padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); font:inherit; font-size:12.5px;}
+
+/* Pinned table headers (lib/useFloatingTableHeads.js): the header cells are moved down while their table scrolls past. */
+thead.is-floating th{z-index:4; box-shadow:inset 0 -1px 0 var(--border), 0 2px 4px rgba(16,24,40,.06);}
+thead.is-floating th:not(.fz){position:relative;}
+table.freeze-cols thead.is-floating th.fz{z-index:5;}
+/* Resizable headers show where to drag: a divider between header cells, the accent colour under the pointer. */
+table.col-sized thead th.col-resizable{border-right:1px solid var(--border);}
+table.col-sized thead th.col-resizable:last-child{border-right:none;}
+.col-resizer::after{opacity:.0;}
+th.col-resizable:hover .col-resizer::after{opacity:.6; background:var(--text-faint);}
+.col-resizer:hover::after, body.col-resizing .col-resizer::after{opacity:1 !important; background:var(--accent) !important;}

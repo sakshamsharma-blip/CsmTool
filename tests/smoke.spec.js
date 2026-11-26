@@ -403,7 +403,28 @@ test("Inbox: Lead sees team check-ins / visits, opens one and it becomes read", 
   await first.click();
   await expect(page.getByRole("dialog", { name: /details/ })).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();
-  // A plain CSM doesn't get the Inbox.
+  // Sentiment and date filters (default: last 7 days).
+  await expect(page.getByLabel("Date range")).toHaveValue("7");
+  await page.getByLabel("Date range").selectOption("custom");
+  await expect(page.getByLabel("From")).toBeVisible();
+  await page.getByLabel("Check-in sentiment").selectOption("At Risk");
+  await page.getByLabel("Lab health").selectOption("Needs Attention");
+  // A plain CSM gets the Inbox too — their own labs only, no Team View.
   await page.locator(".csm-switcher").selectOption("Aditi");
-  await expect(page.locator(".sidebar .nav-item", { hasText: "Inbox" })).toHaveCount(0);
+  await nav(page, "Inbox");
+  await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Team View" })).toHaveCount(0);
+});
+
+test("Total Labs: columns can be resized and reset", async ({ page }) => {
+  const th = page.locator("table.freeze-cols thead th", { hasText: "Lab Name" });
+  const b = await th.boundingBox();
+  expect(Math.round(b.width)).toBe(280);
+  await page.mouse.move(b.x + b.width - 3, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width + 60, b.y + b.height / 2, { steps: 4 });
+  await page.mouse.up();
+  expect(Math.round((await th.boundingBox()).width)).toBeGreaterThan(320);
+  await page.getByText("Reset column widths").click();
+  expect(Math.round((await th.boundingBox()).width)).toBe(280);
 });

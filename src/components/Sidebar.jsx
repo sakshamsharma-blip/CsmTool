@@ -20,7 +20,7 @@ const LIVE_NAV = [
   { key: "tasks", icon: "tasks", color: "purple", label: "Tasks" },
   { key: "visits", icon: "visits", color: "pink", label: "Visits & Meetings" },
   { key: "checkins", icon: "checkins", color: "teal", label: "Check-ins" },
-  { key: "inbox", icon: "inbox", color: "sky", label: "Inbox", leadOnly: true },
+  { key: "inbox", icon: "inbox", color: "sky", label: "Inbox" },
   { key: "adoption", icon: "adoption", color: "sky", label: "Adoption", alsoActive: ["adoption-template"] },
   { key: "kpi", icon: "kpi", color: "red", label: "KPI Management" },
   { key: "reports", icon: "reports", color: "success", label: "Financial Reports" },
