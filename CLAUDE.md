@@ -118,7 +118,7 @@ with the same context and follows the same rules. Read it fully before making ch
   `components/LabAdoptionTab.jsx`. Log Check-in's Adoption Snapshot marks modules and/or parameters as
   *discussed* (`visits.flagged_modules` / `visits.discussed_params`) — it no longer creates follow-up tasks.
 - **Engagement** (Oct 2026): every check-in / logged visit must be marked **Proactive** or **Reactive**
-  (`visits.engagement`; older rows NULL). **Time spent on a lab** = sum of its check-ins' Duration
+  (`visits.engagement`; older rows NULL). Log Check-in's Duration starts at 0 min (Nov 26 2026). **Time spent on a lab** = sum of its check-ins' Duration
   (`lib/labEngagement.js`), shown on the lab page header and Lab History tiles with the Proactive/Reactive split.
 - **Module docs & training links** (`module_resources`, `components/ModuleResources.jsx`): per MODULE, shared by
   all labs; anyone can add from the Adoption Template or a lab's Adoption tab; the adder or a Lead/Admin can
@@ -198,7 +198,7 @@ with the same context and follows the same rules. Read it fully before making ch
   Team View; `views/InboxView.jsx`, `lib/inbox.js`, migration 0052 `visit_reads`; decision Nov 24 2026): check-ins and logged visits (the `visits` table — not other Lab History), newest first, grouped by lab (3 per lab, "Show all").
   Opening an entry shows everything logged (side panel) and marks it read **for that person** (`visit_reads`, RLS: own rows only). Mark read per
   lab, Mark all read, Mark unread. Filters: search, kind (Check-in / Visit), Everything / Unread only, **check-in sentiment** (the entry's own Positive / Neutral /
-  At Risk / Not set) and **lab health** (the lab's Lab Health bucket, shown on each lab card) — two separate filters, **date range** on the check-in date (Last 7 days = default, Last 2 weeks,
+  At Risk / Not set) and **lab health** (the lab's Lab Health bucket, shown on each lab card) — two separate filters, **date range** on the check-in date (Today, Yesterday, Last 7 days = default, Last 2 weeks,
   Last 1 month, All dates, Custom), lab, Team View + CSM, Lab Type. Entries created before `INBOX_START` (2026-11-24) count as read, and so does anything
   you logged yourself (`visits.csm_id` = you; for a check-in that's who logged it, for a Visits & Meetings visit the lab's CSM). Sidebar shows the unread count (`useInboxUnread`, refreshed every 5 min).
 - **POC designation** is a dropdown (`POC_DESIGNATIONS` in `lib/labContacts.js`, `components/DesignationSelect.jsx`,
@@ -327,7 +327,7 @@ with the same context and follows the same rules. Read it fully before making ch
   category, weight, name, description, add/remove) are a DRAFT until "Save Changes"; "Discard" reverts. Plan
   ticks ("Apply Rules"/"Plans") and the module-total Rescale still apply straight away. Modules are ordered by
   `modules.sort_order` (drag ⠿ or ▲▼ in the Module Builder) and labs show them in that order. Module and
-  parameter descriptions show as ⓘ on each lab's Adoption tab.
+  parameter descriptions show as ⓘ on each lab's Adoption tab (keeping the line breaks typed in the template — `InfoTip pre`).
 - **Pitch stage comment is mandatory** (every stage change, incl. Mark purchased).
 - **Visits & Meetings**: the "Next Visit" on a logged visit becomes a planned visit (Upcoming); planned visits can
   be edited (date, purpose). City column + city filter on both lists.

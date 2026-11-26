@@ -56,7 +56,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   const [engagementError, setEngagementError] = useState(false);
   const [date, setDate] = useState(() => todayISO());
   const [time, setTime] = useState(() => new Date().toTimeString().slice(0, 5));
-  const [duration, setDuration] = useState("30");
+  const [duration, setDuration] = useState("0");
   const [location, setLocation] = useState("");
   const [personName, setPersonName] = useState(prefill?.personName || "");
   const [personDesignation, setPersonDesignation] = useState(prefill?.personDesignation || "");

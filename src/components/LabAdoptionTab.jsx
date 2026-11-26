@@ -184,7 +184,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
             <div className="module-head" onClick={() => setOpenModules((o) => ({ ...o, [mod.key]: !o[mod.key] }))}>
               <span className="mtoggle">{isOpen ? "▾" : "▸"}</span>
               <span>{mod.icon}</span>
-              <span className="mname">{mod.name}{mod.description ? <InfoTip label={`About ${mod.name}`}>{mod.description}</InfoTip> : null}</span>
+              <span className="mname">{mod.name}{mod.description ? <InfoTip pre label={`About ${mod.name}`}>{mod.description}</InfoTip> : null}</span>
               <span className="mtag">{stageFilter ? `${params.length} match` : `${inPlanCount}/${params.length} in plan`}</span>
               {resources.some((r) => r.moduleKey === mod.key) && <span className="mres-badge" title="Docs & training videos">📚 {resources.filter((r) => r.moduleKey === mod.key).length}</span>}
               <div className="bar-track"><div className="bar-fill" style={{ width: `${overallPct || 0}%`, background: barColor(overallPct) }}></div></div>
@@ -209,7 +209,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
                       <span className={`param-type ${r.def.type}`}>{r.def.type === "M" ? "Mandatory" : "Optional"}</span>
                       <span className="pname">
                         <span className="param-link" title="Show this parameter's history" onClick={() => setTrailFor(r)}>{r.def.name}</span>
-                        {r.def.description ? <InfoTip label={`About ${r.def.name}`}>{r.def.description}</InfoTip> : null}
+                        {r.def.description ? <InfoTip pre label={`About ${r.def.name}`}>{r.def.description}</InfoTip> : null}
                       </span>
                       <span className="param-weight">{r.def.weight}%</span>
                       <span className="plan-toggle" role="group" aria-label="In plan or not">

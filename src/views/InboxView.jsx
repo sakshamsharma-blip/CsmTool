@@ -27,7 +27,7 @@ const fmtWhen = (v) => {
   return new Date(d + "T12:00:00").toLocaleDateString(undefined, d.slice(0, 4) === today.slice(0, 4) ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" });
 };
 // Date range on the check-in / visit date. Default = the last 7 days (decision Nov 26 2026), for daily / weekly reviews.
-const RANGES = [["7", "Last 7 days"], ["14", "Last 2 weeks"], ["30", "Last 1 month"], ["all", "All dates"], ["custom", "Custom range…"]];
+const RANGES = [["today", "Today"], ["yesterday", "Yesterday"], ["7", "Last 7 days"], ["14", "Last 2 weeks"], ["30", "Last 1 month"], ["all", "All dates"], ["custom", "Custom range…"]];
 // Two separate filters (Nov 26 2026): the entry's own sentiment, and the lab's Lab Health (Sentiment) bucket.
 const SENTIMENTS = [["Positive", "Positive"], ["Neutral", "Neutral"], ["At Risk", "At Risk"], ["none", "Not set"]];
 const HEALTH_BUCKETS = ["Healthy", "Needs Attention", "At Risk", "Not Assessed"];
@@ -76,7 +76,10 @@ export default function InboxView({ labs: allLabs, modules = [], viewer, idByNam
   const healthCache = {};
   const healthOf = (labId) => (healthCache[labId] ||= computeSentimentHealth(visitsByLab[labId]).bucket);
   const today = todayISO();
-  const [dFrom, dTo] = range === "custom" ? [from, to] : range === "all" ? ["", ""] : [addDaysISO(today, -(Number(range) - 1)), ""];
+  const yesterday = addDaysISO(today, -1);
+  const [dFrom, dTo] = range === "custom" ? [from, to] : range === "all" ? ["", ""]
+    : range === "today" ? [today, today] : range === "yesterday" ? [yesterday, yesterday]
+    : [addDaysISO(today, -(Number(range) - 1)), ""];
   const inRange = (v) => (!dFrom || (v.visitDate || "") >= dFrom) && (!dTo || (v.visitDate || "") <= dTo);
   const sentOk = (v) => (!fSent || (fSent === "none" ? !v.sentiment : v.sentiment === fSent)) && (!fHealth || healthOf(v.labId) === fHealth);
   const unreadFor = (v) => isUnread(v, reads) && v.csmId !== me; // what you logged yourself is never unread for you

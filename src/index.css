@@ -211,6 +211,7 @@
   }
   .info-tip-content b{font-weight:700;}
   .info-tip-content.info-tip-floating{display:block; position:fixed; z-index:400; overflow-y:auto;}
+  .info-tip-content.info-tip-pre{white-space:pre-line;}
 
   h1.page-title{font-size:21px; margin:0 0 3px;}
   .page-sub{color:var(--text-dim); font-size:13px; margin:0 0 18px;}

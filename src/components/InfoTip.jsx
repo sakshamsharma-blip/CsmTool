@@ -5,7 +5,8 @@ import { createPortal } from "react-dom";
 // rendered into <body> in a fixed layer positioned next to the icon, so it is never cut off or hidden behind the next
 // row by a card or list that clips its content. It opens below the icon, or above when there's no room, and long
 // text scrolls inside it. Keyboard-accessible (focus the icon).
-export default function InfoTip({ children, label = "More info" }) {
+// `pre` keeps the line breaks typed into the text (template descriptions with numbered steps).
+export default function InfoTip({ children, label = "More info", pre = false }) {
   const iconRef = useRef(null);
   const timer = useRef(0);
   const [pos, setPos] = useState(null);
@@ -31,7 +32,7 @@ export default function InfoTip({ children, label = "More info" }) {
     <span className="info-tip" onMouseEnter={show} onMouseLeave={hide}>
       <span ref={iconRef} className="info-tip-icon" tabIndex={0} aria-label={label} onFocus={show} onBlur={hide}>i</span>
       {pos && createPortal(
-        <span className="info-tip-content info-tip-floating" role="tooltip" style={pos} onMouseEnter={keep} onMouseLeave={hide}>{children}</span>,
+        <span className={`info-tip-content info-tip-floating${pre ? " info-tip-pre" : ""}`} role="tooltip" style={pos} onMouseEnter={keep} onMouseLeave={hide}>{children}</span>,
         document.body,
       )}
     </span>
