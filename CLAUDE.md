@@ -197,7 +197,9 @@ with the same context and follows the same rules. Read it fully before making ch
   Last 1 month, All dates, Custom), lab, Team View + CSM, Lab Type. Entries created before `INBOX_START` (2026-11-24) count as read, and so does anything
   you logged yourself (`visits.csm_id` = you; for a check-in that's who logged it, for a Visits & Meetings visit the lab's CSM). Sidebar shows the unread count (`useInboxUnread`, refreshed every 5 min).
 - **POC designation** is a dropdown (`POC_DESIGNATIONS` in `lib/labContacts.js`, `components/DesignationSelect.jsx`,
-  with "Other…" to type one); older free-text values are kept until edited. Used on Points of Contact, Log Check-in
+  with "Other…" to type one); older free-text values are kept until edited. **POCs are always listed in that designation order** (decision
+  Nov 26 2026, `sortContacts` / `designationRank`, applied by `fetchLabContacts` / `fetchAllLabContacts`): Owner first … Inventory Manager, then
+  unlisted / "Other" designations, then none; same designation by name. A POC added later slots into its place. Used on Points of Contact, Log Check-in
   and the Feedback "+ Add POC".
 - **Refresh keeps your place** (Oct 2026): the current screen is in the address bar (`#/tasks`, `#/lab/<id>/<tab>`,
   `#/lab/<id>/<tab>/log-checkin` — `parseHash` / `hashFor` in App.jsx; Back/Forward work), and every screen's filters,

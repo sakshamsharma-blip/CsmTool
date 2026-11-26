@@ -21,11 +21,25 @@ export const POC_DESIGNATIONS = [
   "Inventory Manager",
 ];
 
+// POCs are listed in the order of POC_DESIGNATIONS (decision Nov 26 2026): Owner first … Inventory Manager last. A
+// designation not on the list (typed with "Other…", or older wording) comes after those, and no designation comes last;
+// same designation = by name. A POC added later slots straight into its place.
+const DESIGNATION_RANK = Object.fromEntries(POC_DESIGNATIONS.map((d, i) => [d.toLowerCase(), i]));
+export function designationRank(designation) {
+  const d = String(designation || "").trim().toLowerCase();
+  if (!d) return POC_DESIGNATIONS.length + 1;
+  return DESIGNATION_RANK[d] ?? POC_DESIGNATIONS.length;
+}
+export function sortContacts(list) {
+  return [...(list || [])].sort((a, b) => designationRank(a.designation) - designationRank(b.designation)
+    || String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" }));
+}
+
 // Every POC across the labs this person can see (one query) — used by Feedback & NPS.
 export async function fetchAllLabContacts() {
   const { data, error } = await supabase.from("lab_contacts").select("*").order("name");
   if (error) throw error;
-  return (data || []).map(mapRow);
+  return sortContacts((data || []).map(mapRow));
 }
 function mapRow(r) {
   return {
@@ -38,7 +52,7 @@ function mapRow(r) {
 export async function fetchLabContacts(labId) {
   const { data, error } = await supabase.from("lab_contacts").select("*").eq("lab_id", labId).order("name");
   if (error) throw error;
-  return (data || []).map(mapRow);
+  return sortContacts((data || []).map(mapRow));
 }
 
 // "" / null / undefined = no monthly target.

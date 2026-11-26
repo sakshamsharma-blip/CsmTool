@@ -4,7 +4,7 @@ import { useSessionState } from "../lib/useSessionState";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import { filterLabsByLabType } from "../lib/labs";
 import { fetchAllVisits } from "../lib/visits";
-import { fetchAllLabContacts } from "../lib/labContacts";
+import { fetchAllLabContacts, designationRank } from "../lib/labContacts";
 import { pocSchedule, cadenceLabel, STATUS_RANK } from "../lib/checkinCadence";
 import { buildDemoCheckins } from "../lib/demoSeed";
 import { todayISO } from "../lib/dates";
@@ -66,7 +66,7 @@ export default function CheckinsView({ labs: allLabs, viewer, onOpenLab, onLogCh
   const rows = (showNoTarget ? all : withTarget)
     .filter((r) => !qq || `${r.lab.name} ${r.c.name} ${r.c.designation} ${r.lab.csm}`.toLowerCase().includes(qq))
     .filter((r) => !fStatus || (fStatus === "soon" ? ["today", "soon"].includes(r.s.status) : fStatus === "met" ? r.s.month.met : r.s.status === fStatus))
-    .sort((a, b) => (sort === "lab" ? a.lab.name.localeCompare(b.lab.name) || a.c.name.localeCompare(b.c.name)
+    .sort((a, b) => (sort === "lab" ? a.lab.name.localeCompare(b.lab.name) || designationRank(a.c.designation) - designationRank(b.c.designation) || a.c.name.localeCompare(b.c.name)
       : sort === "csm" ? (a.lab.csm || "").localeCompare(b.lab.csm || "") || a.lab.name.localeCompare(b.lab.name)
         : STATUS_RANK[a.s.status] - STATUS_RANK[b.s.status] || (a.s.daysLeft ?? 999) - (b.s.daysLeft ?? 999) || a.lab.name.localeCompare(b.lab.name)));
 

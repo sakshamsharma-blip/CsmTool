@@ -2,6 +2,9 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Nov 26 2026 — POCs in designation order
+- Points of contact are listed in the designation order (Owner / Founder / Managing Director first … Inventory Manager last), on the lab's Points of Contact tab, Log Check-in's Person Contacted, Feedback's Given by and Check-ins (Lab A–Z). Other / older designations come after, then POCs with none. A newly added POC slots into its place.
+
 ## Nov 26 2026 — Clear filters everywhere
 - Every filter row now has "✕ Clear filters": always visible, greyed out until you set a filter, then one click resets them. Added where it was missing (Inbox, Check-ins, Resources, KPI, Adoption / Expansion analytics, Feedback's Lab-wise Report, the CSM / Lab Type row on every screen) and made the same everywhere else.
 

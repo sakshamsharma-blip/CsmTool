@@ -14,7 +14,7 @@ import { Card, ScaleTrend } from "../components/Analytics";
 import TestimonialsTab, { TestimonialDetail, TestimonialForm } from "../components/TestimonialsTab";
 import { needsConsent, topicInfo, sourceText } from "../lib/testimonials";
 const topicLabelOf = (k, modules) => topicInfo(k, modules).label;
-import { fetchAllLabContacts, addLabContact } from "../lib/labContacts";
+import { fetchAllLabContacts, addLabContact, sortContacts } from "../lib/labContacts";
 import { todayISO, addDaysISO } from "../lib/dates";
 import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
@@ -121,13 +121,13 @@ export default function FeedbackView({ labs: allLabs, modules = [], viewer, idBy
   async function load() {
     if (!SUPABASE_CONFIGURED) return;
     const [f, t, c] = await Promise.all([fetchFeedback(), fetchTestimonials(), fetchAllLabContacts().catch(() => [])]);
-    setFeedback(f); setTestimonials(t); setContacts(c);
+    setFeedback(f); setTestimonials(t); setContacts(sortContacts(c));
   }
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) return undefined;
     let cancelled = false;
     Promise.all([fetchFeedback(), fetchTestimonials(), fetchAllLabContacts().catch(() => [])])
-      .then(([f, t, c]) => { if (!cancelled) { setFeedback(f); setTestimonials(t); setContacts(c); } })
+      .then(([f, t, c]) => { if (!cancelled) { setFeedback(f); setTestimonials(t); setContacts(sortContacts(c)); } })
       .catch((err) => { if (!cancelled) setError(/lab_feedback|lab_testimonials|nps_score|collected_on/.test(err.message || "") ? "Feedback & NPS isn't fully set up in the database yet (migration 0040)." : err.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -167,9 +167,9 @@ export default function FeedbackView({ labs: allLabs, modules = [], viewer, idBy
   // POCs of the chosen lab (and of its child labs), for the "Given by" pickers.
   const pocsFor = (labId) => contacts.filter((c) => c.labId === labId || parentOf(c.labId) === labId);
   async function addPoc(labId, { name, designation, minProactive }) {
-    if (!SUPABASE_CONFIGURED) { const c = { id: `demo-poc-${Date.now()}`, labId, name, designation, minProactive }; setContacts((cs) => [...cs, c]); return c; }
+    if (!SUPABASE_CONFIGURED) { const c = { id: `demo-poc-${Date.now()}`, labId, name, designation, minProactive }; setContacts((cs) => sortContacts([...cs, c])); return c; }
     const c = await addLabContact(labId, { name, designation, minProactive }, csmId);
-    setContacts((cs) => [...cs, c]);
+    setContacts((cs) => sortContacts([...cs, c]));
     return c;
   }
 
