@@ -109,7 +109,7 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
     visits.forEach((v) => { (m[v.labId] = m[v.labId] || []).push(v); });
     return m;
   }, [visits]);
-  const colW = useColumnWidths("totalLabs", LAB_COL_DEFAULTS);
+  const colW = useColumnWidths(`totalLabs.${viewer.myName || ""}`, LAB_COL_DEFAULTS);
   // Frozen columns sit at the summed width of the ones before them.
   const frozenLeft = [];
   LAB_COLS.slice(0, FROZEN).reduce((x, c, i) => { frozenLeft[i] = x; return x + colW.widths[c.key]; }, 0);

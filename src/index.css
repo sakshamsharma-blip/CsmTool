@@ -1107,3 +1107,5 @@ th.col-resizable:hover .col-resizer::after{opacity:.6; background:var(--text-fai
 thead th.col-resizable{border-right:1px solid var(--border);}
 thead th.col-resizable:last-child{border-right:none;}
 table.col-user-sized th, table.col-user-sized td{overflow:hidden; text-overflow:ellipsis;}
+/* A cell holding a control (tick box, button, dropdown) is never cut with … — a 1px overflow would show a stray dot. */
+table.col-user-sized td:has(> input, > button, > select, > label), table.col-user-sized th:has(> input){text-overflow:clip;}
