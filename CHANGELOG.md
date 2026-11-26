@@ -2,6 +2,9 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Nov 26 2026 — Tasks: period picker for the numbers
+- Tasks has a Period dropdown next to All CSMs / All Lab Types (reset by the same Clear filters): All time (default), This week, Last week, This month, Last month, Last 90 days or custom dates. Every number on the page — all six tiles, TAT by source, status distribution, overdue aging, Team TAT Summary and Source-wise Completion — counts the tasks created in that period; arrows compare with the same number of days before.
+
 ## Nov 26 2026 — POCs in designation order
 - Points of contact are listed in the designation order (Owner / Founder / Managing Director first … Inventory Manager last), on the lab's Points of Contact tab, Log Check-in's Person Contacted, Feedback's Given by and Check-ins (Lab A–Z). Other / older designations come after, then POCs with none. A newly added POC slots into its place.
 

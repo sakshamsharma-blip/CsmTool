@@ -5,9 +5,10 @@ import ClearFilters from "./ClearFilters";
 // Collections and Visits & Meetings so a CSM Lead isn't stuck viewing one CSM's world at a time. A
 // plain CSM never sees the My Labs / Team View part — they only ever see their own labs.
 // The Lab Type filter (Pathology / Radiology / Pathology + Radiology) is shown to everyone when the screen passes
-// labType / setLabType.
-export default function ScopeToggle({ isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, labType, setLabType, aside }) {
-  if (!isHead && !setLabType && !aside) return null;
+// labType / setLabType. `extra` = one more filter for this screen, placed after Lab Type (e.g. Tasks' Period);
+// `extraActive` / `onClearExtra` let the same Clear filters reset it.
+export default function ScopeToggle({ isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, labType, setLabType, aside, extra, extraActive, onClearExtra }) {
+  if (!isHead && !setLabType && !aside && !extra) return null;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "2px 0 18px", flexWrap: "wrap" }}>
       {isHead && (
@@ -28,8 +29,10 @@ export default function ScopeToggle({ isHead, scope, setScope, csmFilter, setCsm
           {LAB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
       )}
-      {((isHead && scope === "team") || setLabType) && (
-        <ClearFilters active={!!((isHead && scope === "team" && csmFilter) || labType)} onClear={() => { if (setCsmFilter) setCsmFilter(""); if (setLabType) setLabType(""); }} />
+      {extra}
+      {((isHead && scope === "team") || setLabType || extra) && (
+        <ClearFilters active={!!((isHead && scope === "team" && csmFilter) || labType || extraActive)}
+          onClear={() => { if (setCsmFilter) setCsmFilter(""); if (setLabType) setLabType(""); if (onClearExtra) onClearExtra(); }} />
       )}
       {aside && <div style={{ marginLeft: "auto" }}>{aside}</div>}
     </div>

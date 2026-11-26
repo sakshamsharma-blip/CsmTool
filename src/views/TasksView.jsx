@@ -9,7 +9,7 @@ import {
   isTaskDoneToday, taskDueBucket, taskStatusLabel, taskTypeLabel, resolutionDays, repeatLabel,
   TASK_PRIORITIES, TASK_SOURCES, PRIORITY_COLORS, fmtTime,
 } from "../lib/tasks";
-import { taskKpis, statusDistribution, overdueAging, groupedStats, daysOverdue } from "../lib/taskStats";
+import { periodNumbers, daysOverdue, taskPeriod, TASK_PERIODS } from "../lib/taskStats";
 import { filterLabsByLabType } from "../lib/labs";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import ScopeToggle from "../components/ScopeToggle";
@@ -20,6 +20,7 @@ import InfoTip from "../components/InfoTip";
 import SearchSelect from "../components/SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
 import ClearFilters from "../components/ClearFilters";
+import { todayISO } from "../lib/dates";
 
 // Tasks (redesigned Oct 30 2026 from the reference layout): KPI tiles, Resolution TAT by source, status distribution and
 // overdue aging, then the task table grouped Overdue / Due Today / Upcoming / No due date / Done, a side panel per task
@@ -107,6 +108,10 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
   const [fTo, setFTo] = useSessionState(`${ns}.fTo`, "");
   const [q, setQ] = useSessionState(`${ns}.q`, "");
   const [sortBy, setSortBy] = useSessionState(`${ns}.sort`, "newest");
+  // Period for the numbers above and below the table (decision Nov 26 2026; default All time). The table itself isn't affected.
+  const [pKind, setPKind] = useSessionState(`${ns}.periodKind`, "all");
+  const [pFrom, setPFrom] = useSessionState(`${ns}.pFrom`, "");
+  const [pTo, setPTo] = useSessionState(`${ns}.pTo`, "");
   // Re-check every minute, so a task turns Overdue at its due time without a reload.
   const [, setMinute] = useState(0);
   useEffect(() => { const id = setInterval(() => setMinute((m) => m + 1), 60000); return () => clearInterval(id); }, []);
@@ -150,12 +155,25 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
     && (!isRecurring(t) || isTaskDueToday(t)));
 
   // ---- analytics (scope only, not the table filters) ----
-  const kpi = taskKpis(inScope);
-  const dist = statusDistribution(inScope);
-  const aging = overdueAging(inScope);
-  const bySource = groupedStats(inScope, (t) => t.source, TASK_SOURCES);
+  const period = taskPeriod(pKind, pFrom, pTo);
+  const resetPeriod = () => { setPKind("all"); setPFrom(""); setPTo(""); };
+  // Sits in the My Labs / Team View row next to All CSMs and All Lab Types (decision Nov 26 2026).
+  const periodPicker = (
+    <>
+      <select className="dash-select" value={pKind} onChange={(e) => setPKind(e.target.value)} aria-label="Period" title="Period for the numbers above the table">
+        {TASK_PERIODS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+      </select>
+      {pKind === "custom" && <span className="ib-dates">
+        <input type="date" value={pFrom} max={pTo || todayISO()} onChange={(e) => setPFrom(e.target.value)} aria-label="Period from" />
+        <span className="fb-faint">to</span>
+        <input type="date" value={pTo} min={pFrom || undefined} max={todayISO()} onChange={(e) => setPTo(e.target.value)} aria-label="Period to" />
+      </span>}
+    </>
+  );
   const ownersInView = [...new Set(inScope.map((t) => t.owner).filter(Boolean))].sort();
-  const team = (isHead && scope === "team") ? groupedStats(inScope, (t) => t.owner, ownersInView) : null;
+  // Every number on the page (tiles, the three panels, Team TAT Summary, Source-wise Completion) counts the tasks created in the period.
+  const nums = periodNumbers(inScope, period, { sources: TASK_SOURCES, owners: isHead && scope === "team" ? ownersInView : null });
+  const { kpi, dist, aging, bySource, team } = nums;
 
   // ---- table ----
   const needle = q.trim().toLowerCase();
@@ -251,7 +269,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
 
   // Open tasks by the item's current stage (shown when locked to one source).
   const openByStage = {};
-  inScope.filter((t) => !isTaskDoneToday(t)).forEach((t) => {
+  nums.tasks.filter((t) => !isTaskDoneToday(t)).forEach((t) => {
     const stage = t.paramName ? pitchByLab[t.labId]?.[`param:${t.moduleKey}|${t.paramName}`] || "Not set" : "Not set";
     openByStage[stage] = (openByStage[stage] || 0) + 1;
   });
@@ -268,13 +286,16 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
         <button className="btn btn-primary" onClick={() => setAddOpen(true)}>+ Add Task</button>
       </div>}
 
-      {!fixedSource && <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />}
+      {fixedSource
+        ? <ScopeToggle extra={periodPicker} extraActive={pKind !== "all"} onClearExtra={resetPeriod} />
+        : <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType}
+            extra={periodPicker} extraActive={pKind !== "all"} onClearExtra={resetPeriod} />}
 
       <div className="tk-kpis">
         <div className="tk-kpi"><span className="tk-kpi-ico" style={{ color: "var(--accent)" }}>☰</span><div><label>Total Tasks</label><b>{kpi.total}</b><Delta value={kpi.totalChange} goodWhenUp={false} /><span>All active tasks</span></div></div>
         <div className="tk-kpi"><span className="tk-kpi-ico" style={{ color: "var(--bad)" }}>⚠</span><div><label>Overdue</label><b style={{ color: kpi.overdue ? "var(--bad)" : undefined }}>{kpi.overdue}</b><span>Past due date</span></div></div>
         <div className="tk-kpi"><span className="tk-kpi-ico" style={{ color: "var(--warn)" }}>◷</span><div><label>Due Today</label><b>{kpi.dueToday}</b><span>Requires action today</span></div></div>
-        <div className="tk-kpi"><span className="tk-kpi-ico" style={{ color: "var(--ok)" }}>✓</span><div><label>Completed (30 days)</label><b>{kpi.completed}</b><Delta value={kpi.completedChange} /><span>Tasks resolved</span></div></div>
+        <div className="tk-kpi"><span className="tk-kpi-ico" style={{ color: "var(--ok)" }}>✓</span><div><label>Completed</label><b>{kpi.completed}</b><Delta value={kpi.completedChange} /><span>Tasks resolved</span></div></div>
         <div className="tk-kpi"><span className="tk-kpi-ico" style={{ color: "var(--accent)" }}>⏱</span><div><label>Avg. Resolution TAT</label><b>{fmtDays(kpi.avgTat)}</b><Delta value={kpi.avgTatChange} goodWhenUp={false} /><span>Created → done</span></div></div>
         <div className="tk-kpi"><span className="tk-kpi-ico" style={{ color: "var(--stg-plan-2)" }}>▮</span><div><label>On-time Completion</label><b>{kpi.onTime == null ? "—" : `${Math.round(kpi.onTime)}%`}</b><Delta value={kpi.onTimeChange} unit="pts" /><span>Completed within due date</span></div></div>
       </div>
@@ -282,7 +303,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
       <div className="tk-panels">
         {fixedSource ? (
           <div className="table-card tk-panel">
-            <div className="tk-panel-title">Open Tasks by Stage <InfoTip>Open {fixedSource} tasks by the stage the item is at now, with the average days from creation to Done over the last 30 days.</InfoTip></div>
+            <div className="tk-panel-title">Open Tasks by Stage <InfoTip>Open {fixedSource} tasks by the stage the item is at now, with the average days from creation to Done.</InfoTip></div>
             <div className="tk-src-cards">
               {Object.entries(openByStage).map(([stage, count]) => (
                 <div key={stage} className="tk-src-card" style={{ borderTopColor: "var(--stg-exp-2)" }}><label>{stage}</label><b>{count}</b><span>open</span></div>
@@ -292,7 +313,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
           </div>
         ) : (
         <div className="table-card tk-panel">
-          <div className="tk-panel-title">Resolution TAT by Task Source <InfoTip>Average days from creation to Done for tasks completed in the last 30 days, by where they came from. Arrows compare with the 30 days before (down is better).</InfoTip></div>
+          <div className="tk-panel-title">Resolution TAT by Task Source <InfoTip>Average days from creation to Done, by where the task came from. Arrows compare with the tasks created in the same number of days before the period (down is better).</InfoTip></div>
           <div className="tk-src-cards">
             {bySource.map((s) => (
               <div key={s.key} className="tk-src-card" style={{ borderTopColor: SOURCE_COLORS[s.key] }}>
@@ -305,7 +326,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
         </div>
         )}
         <div className="table-card tk-panel">
-          <div className="tk-panel-title">Task Status Distribution <InfoTip>Open tasks by status (Overdue = open and past its due date), plus tasks completed in the last 30 days.</InfoTip></div>
+          <div className="tk-panel-title">Task Status Distribution <InfoTip>Tasks by status (Overdue = open and past its due date).</InfoTip></div>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <Donut data={Object.entries(dist).map(([k, v]) => ({ label: k, value: v, color: DIST_COLORS[k] }))} total={distTotal} />
             <div className="tk-legend">
@@ -418,7 +439,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
       <div className="tk-panels" style={{ gridTemplateColumns: team && !fixedSource ? "1.4fr 1fr" : "1fr", marginTop: 18 }}>
         {team && (
           <div className="table-card tk-panel">
-            <div className="tk-panel-title">Team TAT Summary <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>(last 30 days)</span></div>
+            <div className="tk-panel-title">Team TAT Summary <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>({period ? period.label : "All time"})</span></div>
             <div className="table-scroll"><table className="child-mini">
               <thead><tr><th>CSM</th><th>Created</th><th>Completed</th><th>Avg. TAT</th>{!fixedSource && <><th>Manual TAT</th><th>Adoption TAT</th><th>Expansion TAT</th></>}<th>On-time %</th></tr></thead>
               <tbody>{team.map((r) => (
@@ -433,7 +454,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
         )}
         {!fixedSource && (
         <div className="table-card tk-panel">
-          <div className="tk-panel-title">Task Source Wise Completion <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>(last 30 days)</span></div>
+          <div className="tk-panel-title">Task Source Wise Completion <span style={{ fontWeight: 400, color: "var(--text-faint)" }}>({period ? period.label : "All time"})</span></div>
           <div className="table-scroll"><table className="child-mini">
             <thead><tr><th>Source</th><th>Created</th><th>Completed</th><th>Avg. TAT</th><th>On-time %</th></tr></thead>
             <tbody>{bySource.map((s) => (
