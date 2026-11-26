@@ -450,3 +450,23 @@ test("Check-ins and Feedback: any table's columns can be dragged wider, kept aft
     expect((await th.boundingBox()).width).toBeLessThan(wider - 30);
   }
 });
+
+test("Every filter row has Clear filters: greyed out until a filter is set, then resets them", async ({ page }) => {
+  await nav(page, "Inbox");
+  const row = page.locator(".filters").first();
+  const clear = row.getByRole("button", { name: /Clear filters/ });
+  await expect(clear).toBeDisabled();
+  await page.getByLabel("Check-in sentiment").selectOption("At Risk");
+  await page.getByLabel("Date range").selectOption("30");
+  await expect(clear).toBeEnabled();
+  await page.screenshot({ path: "/private/tmp/claude-501/-Users-creliohealth-Downloads-csm-tool-repo/bfabc3fd-5d6f-422a-a531-3192494108a8/scratchpad/clear-inbox.png" });
+  await clear.click();
+  await expect(page.getByLabel("Check-in sentiment")).toHaveValue("");
+  await expect(page.getByLabel("Date range")).toHaveValue("7");
+  await expect(clear).toBeDisabled();
+  await nav(page, "Check-ins");
+  await expect(page.locator(".filters").first().getByRole("button", { name: /Clear filters/ })).toBeDisabled();
+  await page.locator(".filters").first().getByLabel("Status").selectOption("overdue");
+  await page.locator(".filters").first().getByRole("button", { name: /Clear filters/ }).click();
+  await expect(page.locator(".filters").first().getByLabel("Status")).toHaveValue("");
+});

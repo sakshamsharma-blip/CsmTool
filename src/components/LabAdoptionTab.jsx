@@ -17,6 +17,7 @@ import AdoptionPies from "./AdoptionPies";
 import PipelineScores from "./PipelineScores";
 import { fetchModuleResources } from "../lib/moduleResources";
 import { HINTS } from "../lib/hints";
+import ClearFilters from "./ClearFilters";
 
 const field = { width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 10px", fontSize: 13, fontFamily: "inherit" };
 const pct = (v) => (v == null ? "—" : `${Math.round(v)}%`);
@@ -169,7 +170,7 @@ export default function LabAdoptionTab({ lab, modules, plans, idByName, currentC
             {PITCH_STATUSES.filter((st) => st !== "Purchased").map((st) => <option key={st} value={`exp:${st}`}>{st}</option>)}
           </optgroup>
         </select>
-        {stageFilter && <span className="clear" onClick={() => setStageFilter("")}>Clear filter</span>}
+        <ClearFilters active={!!(stageFilter)} onClear={() => setStageFilter("")} />
         {stageFilter && <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{all.filter(matchesStage).length} parameter(s)</span>}
       </div>
 

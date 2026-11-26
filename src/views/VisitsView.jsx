@@ -14,6 +14,7 @@ import Paginated from "../components/Pager";
 import SearchSelect from "../components/SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
 import { HINTS } from "../lib/hints";
+import ClearFilters from "../components/ClearFilters";
 
 // Visits & Meetings is about OFFLINE, in-person visits only. Calls, emails, WhatsApp chats and notes are
 // still logged — from a lab's Log Check-in — but they live in Lab History, not here. Two things happen on
@@ -280,7 +281,7 @@ export default function VisitsView({ labs: allLabs, viewer, idByName, onOpenLab,
         <div className="filters" style={{ marginBottom: 0 }}>
           <SearchSelect value={fLab} onChange={setFLab} options={labSelectOptions(flat)} emptyLabel="All labs" placeholder="All labs" />
           <SearchSelect value={fCity} onChange={setFCity} options={cityOptions.map((c) => ({ value: c, label: c }))} emptyLabel="All cities" placeholder="All cities" />
-          {(fLab || fCity) && <span className="clear" onClick={() => { setFLab(""); setFCity(""); }}>Clear filters</span>}
+          <ClearFilters active={!!((fLab || fCity))} onClear={() => { setFLab(""); setFCity(""); }} />
         </div>
         <div style={{ display: "flex", gap: 8 }}>
         <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={openPlan}>+ Plan a Visit</button>

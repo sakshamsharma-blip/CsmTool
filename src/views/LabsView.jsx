@@ -14,6 +14,7 @@ import { todayISO } from "../lib/dates";
 import ScopeToggle from "../components/ScopeToggle";
 import FxRate from "../components/FxRate";
 import SearchSelect from "../components/SearchSelect";
+import ClearFilters from "../components/ClearFilters";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 // [header, value getter]. "Lab ID" is the editable user-facing lab_code (not the internal id), the parent is
@@ -313,7 +314,7 @@ export default function LabsView({ labs, viewer, onOpenAddDrawer, onOpenLab, ini
           <option value="mrr-asc">MRR: low → high</option>
           <option value="name">Lab name A → Z</option>
         </select>
-        <span className="clear" onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); setSortBy("mrr-desc"); }}>Clear all</span>
+        <ClearFilters active={!!query || JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS) || sortBy !== "mrr-desc"} onClear={() => { setFilters(EMPTY_FILTERS); setQuery(""); setSortBy("mrr-desc"); }} />
         {colW.changed && <span className="clear" onClick={colW.reset} title="Put every column back to its default width">Reset column widths</span>}
       </div>
 

@@ -3,6 +3,7 @@ import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { TEAM_RESOURCE_KINDS, RESOURCE_REGIONS, REGION_LABEL, fetchResources, addResource, updateResource, deleteResource } from "../lib/resources";
 import { fetchModuleResources } from "../lib/moduleResources";
+import ClearFilters from "../components/ClearFilters";
 
 const ICON = { Document: "📄", Training: "🎬", Other: "🔗", Documentation: "📄", "Training Video": "🎬" };
 const input = { border: "1px solid var(--border)", borderRadius: 7, padding: "7px 10px", fontSize: 12.5, fontFamily: "inherit", background: "var(--surface)", color: "var(--text)" };
@@ -80,6 +81,7 @@ export default function ResourcesView({ modules, myProfileId, isHead, showToast 
           <option value="ROW">ROW (incl. All regions)</option>
           <option value="All">Only "All regions"</option>
         </select>
+        <ClearFilters active={!!(q || fKind || fRegion)} onClear={() => { setQ(""); setFKind(""); setFRegion(""); }} />
         {!form && myProfileId && <button className="btn btn-primary" style={{ marginLeft: "auto" }} onClick={() => setForm({ kind: "Document", region: "All", title: "", url: "", description: "" })}>+ Add resource</button>}
       </div>
 

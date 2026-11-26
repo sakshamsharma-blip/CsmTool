@@ -302,6 +302,11 @@ with the same context and follows the same rules. Read it fully before making ch
   `lib/hints.js`, used as the textarea placeholder; a short `.field-hint` line under the main ones). **Notes are required** on Log Check-in, on
   Visits & Meetings' Log Visit / Edit Visit, and when editing a check-in or visit from Lab History; the **reason is required** for churn /
   contraction. Everything else stays optional. UI-enforced; old rows without notes are untouched.
+- **Clear filters** (decision Nov 26 2026, `components/ClearFilters.jsx`): every filter row has "✕ Clear filters" — always shown, greyed out
+  until a filter is set, then resets that row's filters (not sorts, except Total Labs where it also resets the sort as before). The My Labs / Team
+  View row (`ScopeToggle`) has its own for the CSM and Lab Type filters; KPI, the Adoption / Expansion analytics, Inbox (back to Last 7 days),
+  Check-ins, Resources, Feedback's Lab-wise Report and every older screen use it too. Tasks for Today's lab filter shows "Clear" only once
+  set (tight card header). Any new filter row should add `<ClearFilters active={…} onClear={…} />`.
 - **Searchable dropdowns**: every lab picker (parents *and* children), country and state uses
   `components/SearchSelect.jsx` (type to filter). Any new picker should use it too.
 - **MRR editing**: any lab (parent or child) can have its own MRR edited in Lab Details. Which

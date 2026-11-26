@@ -10,6 +10,7 @@ import ScopeToggle from "../components/ScopeToggle";
 import FxRate from "../components/FxRate";
 import SearchSelect from "../components/SearchSelect";
 import MultiSelectFilter from "../components/MultiSelectFilter";
+import ClearFilters from "../components/ClearFilters";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const SEGMENTS = SEG_BANDS.map((b) => b.code);
@@ -238,7 +239,7 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
             <span style={{ minWidth: 200 }}><SearchSelect value={fCountry} onChange={(v) => { setFCountry(v); setFState(""); setFCity(""); }} options={countryOptions.map((n) => ({ value: n, label: n }))} emptyLabel="All countries" placeholder="All countries" /></span>
             <span style={{ minWidth: 200 }}><SearchSelect value={fState} onChange={(v) => { setFState(v); setFCity(""); }} options={stateOptions.map((n) => ({ value: n, label: n }))} emptyLabel="All states" placeholder="All states" /></span>
             <span style={{ minWidth: 200 }}><SearchSelect value={fCity} onChange={setFCity} options={cityOptions.map((n) => ({ value: n, label: n }))} emptyLabel="All cities" placeholder="All cities" /></span>
-            {(fRegion || fCountry || fState || fCity) && <span className="clear" onClick={() => { setFRegion(""); setFCountry(""); setFState(""); setFCity(""); }}>Clear filters</span>}
+            <ClearFilters active={!!((fRegion || fCountry || fState || fCity))} onClear={() => { setFRegion(""); setFCountry(""); setFState(""); setFCity(""); }} />
             <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Region / Country / State / City narrow every table below except "CSM share of the book".</span>
           </div>
           <div className="table-card" style={{ marginBottom: 18 }}>

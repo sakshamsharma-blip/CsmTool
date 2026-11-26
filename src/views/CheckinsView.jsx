@@ -11,6 +11,7 @@ import { todayISO } from "../lib/dates";
 import ScopeToggle from "../components/ScopeToggle";
 import Paginated from "../components/Pager";
 import InfoTip from "../components/InfoTip";
+import ClearFilters from "../components/ClearFilters";
 
 // Sidebar → Check-ins (decision Nov 24 2026). Every point of contact with a "Minimum Proactive Check-ins per Month"
 // target, when they were last contacted and when the next check-in is due (lib/checkinCadence.js: 4 = weekly,
@@ -100,6 +101,7 @@ export default function CheckinsView({ labs: allLabs, viewer, onOpenLab, onLogCh
         <input className="ts-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search lab, contact, CSM…" aria-label="Search" />
         <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} aria-label="Status">{STATUS_FILTERS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
         <label className="ci-toggle"><input type="checkbox" checked={!!showNoTarget} onChange={(e) => setShowNoTarget(e.target.checked)} /> Show POCs without a target</label>
+        <ClearFilters active={!!(q || fStatus || showNoTarget)} onClear={() => { setQ(""); setFStatus(""); setShowNoTarget(false); }} />
         <InfoTip>A POC's Minimum Proactive Check-ins per Month also sets how often to contact them: every 30 ÷ target days (4 = weekly, 2 = every 15 days, 1 = monthly). Next due = their last Proactive check-in + that gap; never contacted = counted from when the POC was added. A check-in counts for a POC when its Person Contacted matches their name. Set targets on a lab's Points of Contact tab. The KPI still counts check-ins done ÷ required per month.</InfoTip>
         <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort" style={{ marginLeft: "auto" }}>
           <option value="urgent">Most urgent first</option><option value="lab">Lab A–Z</option><option value="csm">CSM</option>

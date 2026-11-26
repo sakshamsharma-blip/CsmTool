@@ -2,6 +2,9 @@
 
 Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks for this).
 
+## Nov 26 2026 — Clear filters everywhere
+- Every filter row now has "✕ Clear filters": always visible, greyed out until you set a filter, then one click resets them. Added where it was missing (Inbox, Check-ins, Resources, KPI, Adoption / Expansion analytics, Feedback's Lab-wise Report, the CSM / Lab Type row on every screen) and made the same everywhere else.
+
 ## Nov 26 2026 — Inbox for every CSM, sentiment and date filters; resizable Total Labs columns
 - The Inbox is open to every CSM: a CSM sees check-ins and visits on their own labs, Leads / Managers / Admins the team. What you logged yourself counts as read.
 - New Inbox filters: check-in sentiment, lab health (Healthy / Needs Attention / At Risk / Not Assessed) and date range (Last 7 days by default, 2 weeks, 1 month, all, or custom dates). Each lab card shows its Lab Health.

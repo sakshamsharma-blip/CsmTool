@@ -27,6 +27,7 @@ import BarChart from "../components/BarChart";
 import InfoTip from "../components/InfoTip";
 import { labSelectOptions } from "../lib/selectOptions";
 import { HINTS } from "../lib/hints";
+import ClearFilters from "../components/ClearFilters";
 
 const input = { border: "1px solid var(--border)", borderRadius: 7, padding: "7px 10px", fontSize: 12.5, fontFamily: "inherit", background: "var(--surface)", color: "var(--text)" };
 const field = { ...input, width: "100%", fontSize: 13, padding: "8px 10px" };
@@ -391,7 +392,7 @@ export default function FeedbackView({ labs: allLabs, modules = [], viewer, idBy
           {tab === "responses" && <input className="ts-search" type="search" value={fSearch} onChange={(e) => setFSearch(e.target.value)} placeholder="Search lab, person, comment…" aria-label="Search responses" />}
           {tab === "responses" && fBucket && <span className="fb-chip">NPS: {BUCKET_LABEL[fBucket]} <button type="button" aria-label="Remove" onClick={() => setFBucket("")}>×</button></span>}
           {tab === "responses" && fRating && <span className="fb-chip">Rating: {plural(Number(fRating), "star")} <button type="button" aria-label="Remove" onClick={() => setFRating("")}>×</button></span>}
-          {filtersOn && <span className="clear" onClick={clearFilters}>Clear filters</span>}
+          <ClearFilters active={!!(filtersOn)} onClear={clearFilters} />
         </div>
       )}
 
@@ -570,6 +571,7 @@ export default function FeedbackView({ labs: allLabs, modules = [], viewer, idBy
             <option value="done">Done only ({doneRows.length})</option>
             <option value="due">Due only ({dueRows.length})</option>
           </select>
+          <ClearFilters active={labWhat !== "both" || labState !== "all"} onClear={() => { setLabWhat("both"); setLabState("all"); }} />
           <InfoTip>Each client is asked for feedback (a 1–5 rating) once a month and for NPS (0–10) once a quarter. A response with a rating counts for its month; one with an NPS score counts for its quarter. Done = what you judge by is in; the rest is due. Parent labs only (a child lab's response counts for its parent); Inactive and Churned clients are left out. Responses, NPS and rating follow every filter; ✓ / Due follow the lab, CSM and lab-type filters, not the dates. Highest MRR first. Click a row to see that client's responses.</InfoTip>
         </div>
         {labState !== "due" && labSection({ title: `Done — ${whatLabel}`, tone: "done", rows: doneRows, empty: "No client is done yet." })}

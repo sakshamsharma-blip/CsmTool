@@ -15,6 +15,7 @@ import InfoTip from "../components/InfoTip";
 import Modal from "../components/Modal";
 import { Tile, Card, TrendChart, ScoreBars, Ring, Heat, Change } from "../components/Analytics";
 import { fmtPct, fmtPP, fmtCompactMoney, downloadCsv } from "../lib/analyticsFormat";
+import ClearFilters from "../components/ClearFilters";
 
 // KPI Management (decision Nov 2 2026; rules in lib/kpi.js). A Lead / Admin sees the team dashboard and can open any CSM's
 // report; a plain CSM goes straight to their own. No photos of people anywhere on these screens.
@@ -91,6 +92,7 @@ export default function KpiView({ labs: allLabs, modules, plans, viewer, idByNam
         <option value="">All Lab Types</option>
         {LAB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
       </select>
+      <ClearFilters active={!!((isHead && picked) || labType)} onClear={() => { setPicked(""); setLabType(""); }} />
       {isHead && <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px", marginLeft: "auto" }} onClick={() => setSettingsOpen(true)}>Targets &amp; weights</button>}
     </div>
   );

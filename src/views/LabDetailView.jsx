@@ -36,6 +36,7 @@ import Paginated from "../components/Pager";
 import LabContactsCard from "../components/LabContactsCard";
 import LabDocumentsTab from "../components/LabDocumentsTab";
 import { HINTS } from "../lib/hints";
+import ClearFilters from "../components/ClearFilters";
 
 const SEG_NAME = { A: "Enterprise", B: "Premium", C: "Advance", D: "Standard", E: "Essential" };
 const LAB_STATUSES = ["Active", "Inactive", "At Risk"]; // Churned/Contraction go through the Churn modal instead
@@ -1947,7 +1948,7 @@ export default function LabDetailView({ lab, labs, modules, plans, csmNames, vie
                 <option value="">All activity types</option>
                 {kinds.map((k) => <option key={k} value={k}>{k}</option>)}
               </select>
-              {activityKind && <span className="clear" onClick={() => setActivityKind("")}>Clear filter</span>}
+              <ClearFilters active={!!(activityKind)} onClear={() => setActivityKind("")} />
             </div>
             <Paginated items={shownActivity}>{(pageRows) => (
             <table className="activity-table">

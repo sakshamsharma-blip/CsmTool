@@ -13,6 +13,7 @@ import Paginated from "./Pager";
 import PocPicker from "./PocPicker";
 import InfoTip from "./InfoTip";
 import { HINTS } from "../lib/hints";
+import ClearFilters from "./ClearFilters";
 
 // Feedback & NPS → Testimonials (decision Nov 24 2026, migration 0051). Tiles, four charts (format, designation, topic,
 // written source) and the list, all narrowed by the page's period / lab type / CSM scope plus the filters here. Every
@@ -95,7 +96,7 @@ export default function TestimonialsTab({ rows, totalAll, modules, labName, labC
         <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} aria-label="Status"><option value="">All statuses</option>{TESTIMONIAL_STATUSES.map((s) => <option key={s}>{s}</option>)}<option value="none">Not set</option></select>
         <select value={fSource} onChange={(e) => setFSource(e.target.value)} aria-label="Source"><option value="">All sources</option>{TESTIMONIAL_SOURCES.map((s) => <option key={s}>{s}</option>)}</select>
         <input className="ts-search" type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search lab or contact…" aria-label="Search" />
-        {filtersOn && <span className="clear" onClick={() => { setFDesig(""); setFTopic(""); setFFormat(""); setFStatus(""); setFSource(""); setSearch(""); }}>Clear filters</span>}
+        <ClearFilters active={!!(filtersOn)} onClear={() => { setFDesig(""); setFTopic(""); setFFormat(""); setFStatus(""); setFSource(""); setSearch(""); }} />
       </div>
 
       <div className="ts-charts">

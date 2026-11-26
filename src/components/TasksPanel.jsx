@@ -4,6 +4,7 @@ import AddTaskModal from "./AddTaskModal";
 import TaskDrawer from "./TaskDrawer";
 import SearchSelect from "./SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
+import ClearFilters from "./ClearFilters";
 import {
   TASK_SECTIONS, isTaskDoneToday, taskDisplayBucket, repeatLabel, taskTypeLabel, getTasksForPanel, fmtTime,
 } from "../lib/tasks";
@@ -31,6 +32,7 @@ export default function TasksPanel({ tasks, scopeCsm, onToggleDone, onAddTask, o
         <SearchSelect value={fLab} onChange={setFLab} options={labSelectOptions(labOptions || [])} emptyLabel="All labs" placeholder="All labs"
           inputStyle={{ border: "1px solid var(--border)", borderRadius: 7, padding: "5px 9px", fontSize: 11.5, fontFamily: "inherit", background: "var(--surface)", color: "var(--text)" }} />
       </span>
+      {fLab && <ClearFilters active onClear={() => setFLab("")} label="Clear" />}
       <button className="btn btn-primary" style={{ fontSize: 11, padding: "5px 10px" }} onClick={() => setModalOpen(true)}>+ Add Task</button>
     </span>
   );

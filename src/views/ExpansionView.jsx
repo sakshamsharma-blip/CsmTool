@@ -23,6 +23,7 @@ import InfoTip from "../components/InfoTip";
 import Paginated from "../components/Pager";
 import SearchSelect from "../components/SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
+import ClearFilters from "../components/ClearFilters";
 
 const STATUS_COLORS = { Onboarding: "var(--accent)", Pipeline: "var(--text-dim)", Live: "var(--ok)", Lost: "var(--bad)" };
 
@@ -193,7 +194,7 @@ export default function ExpansionView({ labs: allLabs, modules, plans, viewer, i
               {EXPANSION_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
             </select>
             <input type="text" placeholder="🔍 Search expansions…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 170 }} />
-            {(fLab || fStatus || q) && <span className="clear" onClick={() => { setFLab(""); setFStatus(""); setQ(""); }}>Clear filters</span>}
+            <ClearFilters active={!!((fLab || fStatus || q))} onClear={() => { setFLab(""); setFStatus(""); setQ(""); }} />
             <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
               <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={download}>Download</button>
               <button className="btn btn-primary" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={() => setDrawer({ adding: true })}>+ Add Expansion</button>

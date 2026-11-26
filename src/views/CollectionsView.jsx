@@ -14,6 +14,7 @@ import InfoTip from "../components/InfoTip";
 import Paginated from "../components/Pager";
 import SearchSelect from "../components/SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
+import ClearFilters from "../components/ClearFilters";
 
 export default function CollectionsView({ labs: allLabs, viewer, idByName, onOpenLab, showToast }) {
   const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "collections");
@@ -154,7 +155,7 @@ export default function CollectionsView({ labs: allLabs, viewer, idByName, onOpe
             <option value="Overdue">Overdue</option>
             <option value="Critical">Critical</option>
           </select>
-          {(fLab || fBucket) && <span className="clear" onClick={() => { setFLab(""); setFBucket(""); }}>Clear filters</span>}
+          <ClearFilters active={!!((fLab || fBucket))} onClear={() => { setFLab(""); setFBucket(""); }} />
         </div>
         <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px" }} onClick={() => setAddOpen(true)}>+ Add Item</button>
       </div>

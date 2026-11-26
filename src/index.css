@@ -1109,3 +1109,7 @@ thead th.col-resizable:last-child{border-right:none;}
 table.col-user-sized th, table.col-user-sized td{overflow:hidden; text-overflow:ellipsis;}
 /* A cell holding a control (tick box, button, dropdown) is never cut with … — a 1px overflow would show a stray dot. */
 table.col-user-sized td:has(> input, > button, > select, > label), table.col-user-sized th:has(> input){text-overflow:clip;}
+/* Clear filters link (components/ClearFilters.jsx) — on every filter row; greyed out when nothing is filtered. */
+.clear-filters{background:none; border:none; padding:4px 2px; font:inherit; font-size:12px; font-weight:600; color:var(--accent); cursor:pointer; white-space:nowrap; align-self:center;}
+.clear-filters:hover:not(:disabled){text-decoration:underline;}
+.clear-filters.is-idle{color:var(--text-faint); cursor:default; opacity:.7;}

@@ -11,6 +11,7 @@ import { computeSentimentHealth, HEALTH_BUCKET_COLORS } from "../lib/labHealth";
 import { labSelectOptions } from "../lib/selectOptions";
 import ScopeToggle from "../components/ScopeToggle";
 import SearchSelect from "../components/SearchSelect";
+import ClearFilters from "../components/ClearFilters";
 
 // Sidebar → Inbox (decision Nov 24 2026; open to every CSM since Nov 26 2026 — a CSM sees their own labs, a Lead / Manager /
 // Admin the team). Check-ins and logged visits, newest first, grouped by lab. Entries you logged yourself count as read.
@@ -131,6 +132,8 @@ export default function InboxView({ labs: allLabs, modules = [], viewer, idByNam
           <input type="date" value={to} min={from || undefined} max={today} onChange={(e) => setTo(e.target.value)} aria-label="To" />
         </span>}
         <span style={{ minWidth: 220 }}><SearchSelect value={fLab} onChange={setFLab} options={labSelectOptions(scoped)} emptyLabel="All labs" placeholder="All labs — type to filter" /></span>
+        <ClearFilters active={!!(q || fKind || unreadOnly || fSent || fHealth || range !== "7" || fLab)}
+          onClear={() => { setQ(""); setFKind(""); setUnreadOnly(false); setFSent(""); setFHealth(""); setRange("7"); setFrom(""); setTo(""); setFLab(""); }} />
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           <span className="fb-faint" style={{ fontSize: 12.5 }}>{groups.length} lab{groups.length === 1 ? "" : "s"} · {list.length} entr{list.length === 1 ? "y" : "ies"}</span>
           <button type="button" className="btn btn-ghost btn-sm" disabled={!unreadCount} onClick={() => doMarkRead(list)}>Mark all read</button>

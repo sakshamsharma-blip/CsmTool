@@ -19,6 +19,7 @@ import PitchStageModal from "../components/PitchStageModal";
 import InfoTip from "../components/InfoTip";
 import SearchSelect from "../components/SearchSelect";
 import { labSelectOptions } from "../lib/selectOptions";
+import ClearFilters from "../components/ClearFilters";
 
 // Tasks (redesigned Oct 30 2026 from the reference layout): KPI tiles, Resolution TAT by source, status distribution and
 // overdue aging, then the task table grouped Overdue / Due Today / Upcoming / No due date / Done, a side panel per task
@@ -338,7 +339,7 @@ export default function TasksView({ labs: allLabs, modules, plans, viewer, idByN
         </span>
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sort tasks">{SORT_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         <input type="text" placeholder="🔍 Search tasks…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 180 }} />
-        {anyFilter && <span className="clear" onClick={clearFilters}>Clear</span>}
+        <ClearFilters active={!!(anyFilter)} onClear={clearFilters} />
       </div>
 
       {selected.length > 0 && (

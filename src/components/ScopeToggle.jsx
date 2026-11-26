@@ -1,4 +1,5 @@
 import { LAB_TYPES } from "../lib/labs";
+import ClearFilters from "./ClearFilters";
 
 // Lead-only "see everything, optionally filter to one CSM" pattern, reused on My Portfolio, Dashboard,
 // Collections and Visits & Meetings so a CSM Lead isn't stuck viewing one CSM's world at a time. A
@@ -26,6 +27,9 @@ export default function ScopeToggle({ isHead, scope, setScope, csmFilter, setCsm
           <option value="">All Lab Types</option>
           {LAB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
+      )}
+      {((isHead && scope === "team") || setLabType) && (
+        <ClearFilters active={!!((isHead && scope === "team" && csmFilter) || labType)} onClear={() => { if (setCsmFilter) setCsmFilter(""); if (setLabType) setLabType(""); }} />
       )}
       {aside && <div style={{ marginLeft: "auto" }}>{aside}</div>}
     </div>

@@ -17,6 +17,7 @@ import Paginated from "./Pager";
 import { TipCard } from "./ChartTooltip";
 import { Tile, Card, TrendChart, ScoreBars, Donut, Heat, Change } from "./Analytics";
 import { RANGES, rangeOf, fmtPct, fmtPP, fmtCompactMoney, downloadCsv } from "../lib/analyticsFormat";
+import ClearFilters from "./ClearFilters";
 
 // The analytics shared by the Adoption and Expansion screens (decision Nov 2 2026): tiles, trend, by CSM, by range, then
 // lab-wise / CSM / module-wise tables. `pipeline` picks the one score the page shows and the KPI target it's held against:
@@ -247,6 +248,7 @@ export default function PipelineAnalytics({ pipeline, page, labs: allLabs, viewe
               {GRANULARITIES.map((g) => <button key={g} className={gran === g ? "on" : ""} onClick={() => { setGran(g); setPickA(""); setPickB(""); }}>{g}</button>)}
             </div>
             <div style={{ minWidth: 190 }}><SearchSelect value={fClient} onChange={setFClient} options={clientOptions} emptyLabel="All clients" placeholder="All clients" inputStyle={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 10px", fontSize: 12.5, fontFamily: "inherit", background: "var(--surface)", color: "var(--text)" }} /></div>
+            <ClearFilters active={!!fClient} onClear={() => setFClient("")} />
             <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: "6px 12px", marginLeft: "auto" }} onClick={exportCsv}>Export CSV</button>
           </div>
           <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
@@ -396,7 +398,7 @@ function CsmPerformance({ money, rows, groups, periods, periodA, periodB, metric
       )}
       {sub === "list" && (
         <>
-          <div className="filters"><select value={fCsm} onChange={(e) => setFCsm(e.target.value)}><option value="">All CSMs</option>{rows.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}</select></div>
+          <div className="filters"><select value={fCsm} onChange={(e) => setFCsm(e.target.value)}><option value="">All CSMs</option>{rows.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}</select><ClearFilters active={!!fCsm} onClear={() => setFCsm("")} /></div>
           <div className="table-card"><Paginated items={listed.flatMap((c) => c.groups.map((g) => ({ c, g })))}>{(page) => (
             <div className="table-scroll"><table className="child-mini an-table">
               <thead><tr><th>Client</th><th>CSM</th><th className="c">Labs</th><th>{money.label}</th>{money.showArr && <th>Expansion ARR</th>}<th className="c">{periodB.label}</th></tr></thead>
