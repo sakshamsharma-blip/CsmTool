@@ -50,7 +50,9 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   const plan = plans.find((p) => p.id === lab.plan) || plans[0];
   const seg = segmentFor(toINR(lab.mrr || 0, lab.region));
 
-  const [type, setType] = useState("Visit");
+  // No type is picked to start with (decision Nov 26 2026) — the CSM must choose one.
+  const [type, setType] = useState("");
+  const [typeError, setTypeError] = useState(false);
   // Required on every check-in (decision, Oct 2026): did the CSM reach out (Proactive) or respond to the lab (Reactive)?
   const [engagement, setEngagement] = useState(prefill?.personName ? "Proactive" : "");
   const [engagementError, setEngagementError] = useState(false);
@@ -138,6 +140,12 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
   }
 
   async function handleSubmit() {
+    if (!type) {
+      setTypeError(true);
+      showToast("Choose the check-in type (Call, Visit, Email…) before logging the check-in.");
+      window.scrollTo?.({ top: 0, behavior: "smooth" });
+      return;
+    }
     if (!engagement) {
       setEngagementError(true);
       showToast("Choose Proactive or Reactive before logging the check-in.");
@@ -252,13 +260,14 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, alignItems: "start" }}>
         <div>
           {/* 1. Check-in type */}
-          <div className="table-card" style={{ padding: "16px 18px", marginBottom: 14 }}>
-            <h3 style={{ fontSize: 13, margin: "0 0 10px" }}>1. Check-in Type</h3>
+          <div className="table-card" style={{ padding: "16px 18px", marginBottom: 14, ...(typeError ? { borderColor: "var(--bad)" } : {}) }}>
+            <h3 style={{ fontSize: 13, margin: "0 0 10px" }}>1. Check-in Type <span style={{ color: "var(--bad)" }}>*</span></h3>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {CHECKIN_TYPES.map((t) => (
                 <button
                   key={t.key}
-                  onClick={() => setType(t.key)}
+                  type="button"
+                  onClick={() => { setType(t.key); setTypeError(false); }}
                   className="btn"
                   style={{
                     flex: "1 1 100px", border: `1.5px solid ${type === t.key ? "var(--accent)" : "var(--border)"}`,
@@ -271,6 +280,7 @@ export default function LogCheckinView({ lab, modules, plans, viewer, idByName, 
                 </button>
               ))}
             </div>
+            {typeError && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 8 }}>Required — choose one.</div>}
           </div>
 
           {/* 1b. Proactive / Reactive — required */}

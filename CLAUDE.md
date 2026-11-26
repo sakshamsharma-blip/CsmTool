@@ -118,7 +118,7 @@ with the same context and follows the same rules. Read it fully before making ch
   `components/LabAdoptionTab.jsx`. Log Check-in's Adoption Snapshot marks modules and/or parameters as
   *discussed* (`visits.flagged_modules` / `visits.discussed_params`) — it no longer creates follow-up tasks.
 - **Engagement** (Oct 2026): every check-in / logged visit must be marked **Proactive** or **Reactive**
-  (`visits.engagement`; older rows NULL). Log Check-in's Duration starts at 0 min (Nov 26 2026). **Time spent on a lab** = sum of its check-ins' Duration
+  (`visits.engagement`; older rows NULL). Log Check-in's Duration starts at 0 min and the Check-in Type starts unselected and is required (Nov 26 2026). **Time spent on a lab** = sum of its check-ins' Duration
   (`lib/labEngagement.js`), shown on the lab page header and Lab History tiles with the Proactive/Reactive split.
 - **Module docs & training links** (`module_resources`, `components/ModuleResources.jsx`): per MODULE, shared by
   all labs; anyone can add from the Adoption Template or a lab's Adoption tab; the adder or a Lead/Admin can
