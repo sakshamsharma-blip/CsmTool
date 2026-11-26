@@ -228,8 +228,12 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Total Labs**: default sort MRR high → low (in INR); columns Lab ID, Lab Name, Type, CSM Name, MRR, Segment,
   Region, Lab Type, Status, Health, Lab Health (Sentiment), City, State, Country; the first columns stay frozen when scrolling sideways.
   **Every column can be resized** by dragging its header edge (Nov 26 2026; double-click = default, "Reset column widths" next to Clear all;
-  `lib/useColumnWidths.js` + `components/ColResizer.jsx`, remembered per browser in localStorage); Lab Name starts at 280px. Use the same pair for any
-  other table that needs it (a `.col-sized` table with a `<colgroup>`); resizable header cells show a divider.
+  `lib/useColumnWidths.js` + `components/ColResizer.jsx`, remembered per browser in localStorage); Lab Name starts at 280px. Total Labs keeps this React
+  version (`.col-sized`); every OTHER table gets resizable columns automatically:
+- **Resizable columns everywhere** (Nov 26 2026, `lib/useResizableTables.js`, mounted once in App.jsx): every table with a one-row header gets a
+  drag handle on each header cell (header cells show a divider). A table keeps its automatic layout until dragged; then it switches to fixed widths
+  (long text cut with …), saved in this browser per table (key = screen + header texts). Double-click a handle = that table back to automatic.
+  Skipped: `.col-sized` (Total Labs), `.no-resize`, multi-row / merged headers. Nothing to add for a new table.
 - **Pinned table headers** (Nov 26 2026, `lib/useFloatingTableHeads.js`, mounted once in App.jsx): on every screen and side panel, a table's
   header row stays at the top while you scroll through that table, scrolls away at its end, and the next table's header takes over. Done with a
   transform on the header cells (CSS sticky can't escape the sideways-scrolling `.table-scroll` box). Tables already pinning their own header

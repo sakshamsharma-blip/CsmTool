@@ -40,6 +40,7 @@ import CheckinsView from "./views/CheckinsView";
 import InboxView from "./views/InboxView";
 import { useInboxUnread } from "./lib/inbox";
 import { useFloatingTableHeads } from "./lib/useFloatingTableHeads";
+import { useResizableTables } from "./lib/useResizableTables";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 
 // ---- address-bar routing: "#/<screen>", "#/lab/<lab id>/<tab>", "#/lab/<lab id>/<tab>/log-checkin" ----
@@ -75,6 +76,7 @@ export default function App() {
   const [idByName, setIdByName] = useState({});
   const [modules, setModules] = useState(SUPABASE_CONFIGURED ? [] : DEMO_MODULES);
   useFloatingTableHeads(); // every table's header row stays pinned while you scroll through it
+  useResizableTables(); // and every table's columns can be dragged wider / narrower
   const [plans, setPlans] = useState(SUPABASE_CONFIGURED ? [] : DEMO_PLANS);
   const [labs, setLabs] = useState(SUPABASE_CONFIGURED ? [] : DEMO_LABS);
 

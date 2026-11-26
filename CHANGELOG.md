@@ -6,6 +6,7 @@ Newest first. Add an entry whenever a batch of work is finished (CLAUDE.md asks 
 - The Inbox is open to every CSM: a CSM sees check-ins and visits on their own labs, Leads / Managers / Admins the team. What you logged yourself counts as read.
 - New Inbox filters: check-in sentiment, lab health (Healthy / Needs Attention / At Risk / Not Assessed) and date range (Last 7 days by default, 2 weeks, 1 month, all, or custom dates). Each lab card shows its Lab Health.
 - Total Labs: drag a column header's edge to resize it (double-click resets it, "Reset column widths" resets all); Lab Name starts wider so full names show. Remembered in this browser. Header cells show a divider where you can drag.
+- Every table's columns can be resized the same way — Tasks, Collections and all the others (double-click a header edge to put a table back to normal).
 - Every table's header now stays pinned at the top while you scroll through it, until the table ends — then the next table's header takes over.
 
 ## Nov 25 2026 — Team View by default

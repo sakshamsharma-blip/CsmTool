@@ -428,3 +428,25 @@ test("Total Labs: columns can be resized and reset", async ({ page }) => {
   await page.getByText("Reset column widths").click();
   expect(Math.round((await th.boundingBox()).width)).toBe(280);
 });
+
+test("Check-ins and Feedback: any table's columns can be dragged wider, kept after refresh, reset by double-click", async ({ page }) => {
+  for (const [screen, col, tab] of [["Check-ins", "Point of contact"], ["Feedback", "Client", /Lab-wise/]]) {
+    await nav(page, screen);
+    if (tab) await page.getByRole("button", { name: tab }).first().click();
+    const th = page.locator("table thead th", { hasText: new RegExp(`^${col}`) }).first();
+    await expect(th.locator(".col-resizer")).toHaveCount(1);
+    const b = await th.boundingBox();
+    await page.mouse.move(b.x + b.width - 3, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width + 70, b.y + b.height / 2, { steps: 4 });
+    await page.mouse.up();
+    const wider = (await th.boundingBox()).width;
+    expect(wider).toBeGreaterThan(b.width + 50);
+    await page.reload();
+    await expect(th.locator(".col-resizer")).toHaveCount(1);
+    expect(Math.abs((await th.boundingBox()).width - wider)).toBeLessThan(2);
+    await page.screenshot({ path: "/private/tmp/claude-501/-Users-creliohealth-Downloads-csm-tool-repo/bfabc3fd-5d6f-422a-a531-3192494108a8/scratchpad/resize-${screen}.png" });
+    await th.locator(".col-resizer").dblclick();
+    expect((await th.boundingBox()).width).toBeLessThan(wider - 30);
+  }
+});

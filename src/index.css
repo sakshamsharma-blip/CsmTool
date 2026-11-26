@@ -1101,3 +1101,9 @@ table.col-sized thead th.col-resizable:last-child{border-right:none;}
 .col-resizer::after{opacity:.0;}
 th.col-resizable:hover .col-resizer::after{opacity:.6; background:var(--text-faint);}
 .col-resizer:hover::after, body.col-resizing .col-resizer::after{opacity:1 !important; background:var(--accent) !important;}
+
+/* Every table's columns are resizable (lib/useResizableTables.js): a divider between header cells shows where to drag.
+   Once dragged, the table has fixed widths and long text is cut with … */
+thead th.col-resizable{border-right:1px solid var(--border);}
+thead th.col-resizable:last-child{border-right:none;}
+table.col-user-sized th, table.col-user-sized td{overflow:hidden; text-overflow:ellipsis;}
