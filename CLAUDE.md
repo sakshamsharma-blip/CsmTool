@@ -201,6 +201,16 @@ with the same context and follows the same rules. Read it fully before making ch
   At Risk / Not set) and **lab health** (the lab's Lab Health bucket, shown on each lab card) — two separate filters, **date range** on the check-in date (Today, Yesterday, Last 7 days = default, Last 2 weeks,
   Last 1 month, All dates, Custom), lab, Team View + CSM, Lab Type. Entries created before `INBOX_START` (2026-11-24) count as read, and so does anything
   you logged yourself (`visits.csm_id` = you; for a check-in that's who logged it, for a Visits & Meetings visit the lab's CSM). Sidebar shows the unread count (`useInboxUnread`, refreshed every 5 min).
+  **Four inboxes (decision Nov 27 2026)**: Inbox stays ONE sidebar item (no dropdown, by decision); on the page, tabs Check-ins & Visits
+  (`#/inbox`, the above), **Adoption** (`#/inbox-adoption`), **Expansion** (`#/inbox-expansion`), **Account** (`#/inbox-account`), each with its
+  own unread count (`components/InboxTabs.jsx`, `views/InboxUpdatesView.jsx`, `lib/inboxUpdates.js`). The Adoption and Expansion inboxes are ALSO an
+  "Inbox" tab on the Adoption and Expansion pages (`embedded`, same read marks). Nothing new is tracked: they read Lab
+  History (`activity_log`) by kind (`UPDATE_SEGMENTS`): Adoption = "Adoption Updated" (In plan stage and In plan ⇄ Not in plan); Expansion = Pitch
+  Updated, Expansion Converted, Expansion Update, Expansion Opportunity Added / Updated; Account = MRR Updated, Invoice Uploaded, Plan Changed, Lab
+  Reassigned, Status Changed, Billing Mode Changed, Lab Churned, Contraction Logged, Feedback Recorded. **A new event that should reach an inbox
+  must write `activity_log` with one of those kinds (or add its kind there).** Changes by one person on one lab within 10 min are ONE entry
+  ("5 adoption updates", `groupBursts`); opening it lists every change and marks them all read (`activity_reads`, 0054, own rows only). Before
+  `UPDATES_START` (2026-11-27) and your own changes count as read. The sidebar Inbox badge = the total of all four.
 - **POC designation** is a dropdown (`POC_DESIGNATIONS` in `lib/labContacts.js`, `components/DesignationSelect.jsx`,
   with "Other…" to type one); older free-text values are kept until edited. **POCs are always listed in that designation order** (decision
   Nov 26 2026, `sortContacts` / `designationRank`, applied by `fetchLabContacts` / `fetchAllLabContacts`): Owner first … Inventory Manager, then
@@ -431,7 +441,7 @@ with the same context and follows the same rules. Read it fully before making ch
 - **Still conceptual / not real yet**: Zoho Books sync for Collections (currently simulated/
   manual), full Plan CRUD beyond toggling module/param membership. **Support & Tickets** is a sidebar link that opens
   Flow (https://creliohealthflow.vercel.app/, the CS ↔ Product escalation tracker) in a new tab.
-- Latest migration: `0053_task_titles_without_lab.sql`; **0001–0053 are all applied** (Nov 24 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
+- Latest migration: `0054_inbox_activity_reads.sql`; **0001–0054 are all applied** (Nov 27 2026). After 0035 the RLS helpers are `private.current_profile_id()`, `private.is_lead_or_admin()`,
   `private.is_admin()` (not API-exposed) — new policies must call those, not `public.*`. Applied
   migrations are now listed in `supabase_migrations.schema_migrations` — when you run a new file, also add its row
   there (see the note at the top of 0026).

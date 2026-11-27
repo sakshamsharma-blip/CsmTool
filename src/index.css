@@ -1090,6 +1090,15 @@ body.col-resizing{cursor:col-resize; user-select:none;}
 body.col-resizing *{cursor:col-resize !important;}
 .ib-health{font-size:11px; font-weight:700;}
 .ib-dates{display:inline-flex; align-items:center; gap:6px;}
+/* Inbox → Adoption / Expansion / Account (Nov 27 2026) */
+.ib-tab-count{margin-left:7px; min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:#25d366; color:#fff; font-size:10.5px; font-weight:700; display:inline-flex; align-items:center; justify-content:center;}
+.ib-row.ib-row-upd{grid-template-columns:auto 1fr auto auto auto;}
+.ib-upd-adoption{background:color-mix(in srgb, var(--ok) 14%, transparent); color:var(--ok);}
+.ib-upd-expansion{background:var(--warn-bg); color:var(--warn);}
+.ib-upd-account{background:color-mix(in srgb, var(--accent) 12%, transparent); color:var(--accent);}
+.ib-upd-item{padding:10px 0; border-bottom:1px solid var(--border); font-size:13px;}
+.ib-upd-what{display:flex; align-items:baseline; gap:4px; flex-wrap:wrap;}
+.ib-upd-change{margin-top:4px; font-weight:600; color:var(--text);}
 .ib-dates input{padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); font:inherit; font-size:12.5px;}
 
 /* Pinned table headers (lib/useFloatingTableHeads.js): the header cells are moved down while their table scrolls past. */

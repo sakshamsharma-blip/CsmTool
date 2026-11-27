@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase, SUPABASE_CONFIGURED } from "../supabaseClient";
+import { fetchInboxUpdates, fetchMyUpdateReads, groupBursts, updateUnread } from "./inboxUpdates";
 
 // Inbox (decision Nov 24 2026; every CSM since Nov 26 2026 — RLS on visits already limits a CSM to their own labs): check-ins and logged visits, marked read per person
 // (table visit_reads, migration 0052 — only you can see or change your own marks). Anything created before INBOX_START
@@ -43,20 +44,29 @@ export async function markUnread(profileId, visitId) {
   notify();
 }
 
-// Sidebar badge: how many check-ins / visits since INBOX_START (not logged by you) you haven't read. Refreshes every 5 minutes and whenever
-// something is marked read.
+// Sidebar badges: unread check-ins / visits since INBOX_START (not logged by you), and — since Nov 27 2026 — unread entries in the
+// Adoption, Expansion and Account inboxes (lib/inboxUpdates.js; a burst of changes counts once). Refreshes every 5 minutes and
+// whenever something is marked read. Returns { checkins, adoption, expansion, account, total }.
+const NO_COUNTS = { checkins: 0, adoption: 0, expansion: 0, account: 0, total: 0 };
 export function useInboxUnread(profileId, enabled) {
-  const [count, setCount] = useState(0);
+  const [counts, setCounts] = useState(NO_COUNTS);
   const load = useCallback(async () => {
     if (!enabled || !SUPABASE_CONFIGURED || !profileId) return;
+    const next = { ...NO_COUNTS };
     try {
       const [{ data, error }, reads] = await Promise.all([
         supabase.from("visits").select("id,created_at,csm_id").gte("created_at", INBOX_START).limit(5000),
         fetchMyReads(profileId),
       ]);
       if (error) throw error;
-      setCount((data || []).filter((v) => !reads.has(v.id) && v.csm_id !== profileId).length); // your own entries count as read
-    } catch { setCount(0); }
+      next.checkins = (data || []).filter((v) => !reads.has(v.id) && v.csm_id !== profileId).length; // your own entries count as read
+    } catch { /* leave at 0 */ }
+    try {
+      const [rows, reads] = await Promise.all([fetchInboxUpdates(), fetchMyUpdateReads(profileId)]);
+      groupBursts(rows).forEach((g) => { if (g.rows.some((r) => updateUnread(r, reads, profileId))) next[g.segment] += 1; });
+    } catch { /* inboxes not set up yet (migration 0054) — leave at 0 */ }
+    next.total = next.checkins + next.adoption + next.expansion + next.account;
+    setCounts(next);
   }, [profileId, enabled]);
   useEffect(() => {
     if (!enabled) return undefined;
@@ -65,5 +75,5 @@ export function useInboxUnread(profileId, enabled) {
     window.addEventListener("inbox-changed", load);
     return () => { clearTimeout(first); clearInterval(t); window.removeEventListener("inbox-changed", load); };
   }, [load, enabled]);
-  return enabled ? count : 0;
+  return enabled ? counts : NO_COUNTS;
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useKpiData } from "../lib/useKpiData";
 import PipelineAnalytics from "../components/PipelineAnalytics";
+import InboxUpdatesView from "./InboxUpdatesView";
 import ExpansionInsights from "../components/ExpansionInsights";
 import TasksView from "./TasksView";
 import { useSessionState } from "../lib/useSessionState";
@@ -27,7 +28,7 @@ import ClearFilters from "../components/ClearFilters";
 
 const STATUS_COLORS = { Onboarding: "var(--accent)", Pipeline: "var(--text-dim)", Live: "var(--ok)", Lost: "var(--bad)" };
 
-export default function ExpansionView({ labs: allLabs, modules, plans, viewer, idByName, onOpenLab, onPatchLab, showToast }) {
+export default function ExpansionView({ labs: allLabs, modules, plans, viewer, idByName, onOpenLab, onPatchLab, showToast, counts }) {
   const kpi = useKpiData({ labs: allLabs, modules, plans, idByName });
   const [tab, setTab] = useSessionState("expansion.tab", "analytics");
   // Same CSM/Manager split every other portfolio-wide screen (Collections, Dashboard, Tasks…)
@@ -248,7 +249,9 @@ export default function ExpansionView({ labs: allLabs, modules, plans, viewer, i
       </h1>
       <p className="page-sub">Track expansion progress, deals, tasks and revenue by lab, CSM and module.</p>
       <PipelineAnalytics pipeline="expansion" page="expansion" labs={allLabs} viewer={viewer} idByName={idByName} onOpenLab={onOpenLab} kpi={kpi}
-        tab={tab} onTab={setTab} extraTabs={[{ key: "deals", label: "Deals & Purchases", render: dealsTab }]} />
+        tab={tab} onTab={setTab} extraTabs={[{ key: "deals", label: "Deals & Purchases", render: dealsTab }, { key: "inbox", label: counts?.expansion ? `Inbox (${counts.expansion} unread)` : "Inbox", render: () => (
+          <InboxUpdatesView embedded segment="expansion" labs={allLabs} modules={modules} viewer={viewer} idByName={idByName} onOpenLab={onOpenLab} showToast={showToast} />
+        ) }]} />
     </div>
   );
 }

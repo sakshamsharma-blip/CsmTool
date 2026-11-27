@@ -15,8 +15,9 @@ test.afterEach(async ({ page }) => {
   expect(page.errors, "no console / page errors").toEqual([]);
 });
 
+// Top-level sidebar items only (the Inbox's sub-items — "Check-ins & Visits", "Adoption"… — share words with other items).
 function nav(page, label) {
-  return page.locator(".sidebar .nav-item", { hasText: label }).first().click();
+  return page.locator(".sidebar .nav > div > .nav-item, .sidebar .nav > a.nav-item", { hasText: label }).first().click();
 }
 // The Adoption Template is a tab inside Adoption.
 async function openTemplate(page) {
@@ -414,6 +415,42 @@ test("Inbox: Lead sees team check-ins / visits, opens one and it becomes read", 
   await nav(page, "Inbox");
   await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Team View" })).toHaveCount(0);
+});
+
+test("Inbox: Adoption, Expansion and Account each have their own inbox, bursts are one entry", async ({ page }) => {
+  await nav(page, "Inbox");
+  // One sidebar item; the four inboxes are tabs on the page.
+  await expect(page.locator(".sidebar .nav-sub", { hasText: "Check-ins & Visits" })).toHaveCount(0);
+  for (const label of ["Check-ins & Visits", "Adoption", "Expansion", "Account"]) await expect(page.getByRole("tab", { name: label })).toBeVisible();
+  await page.getByRole("tab", { name: "Adoption" }).click();
+  await expect(page).toHaveURL(/#\/inbox-adoption$/);
+  await expect(page.getByRole("tab", { name: /Adoption/ })).toHaveAttribute("aria-selected", "true");
+  // A burst of changes on one lab is a single entry; opening it lists each change and marks it read.
+  const burst = page.locator(".ib-row", { hasText: /\d+ adoption updates/ }).first();
+  await expect(burst).toContainText("unread");
+  await burst.click();
+  const panel = page.getByRole("dialog", { name: /Adoption update details/ });
+  await expect(panel).toBeVisible();
+  expect(await panel.locator(".ib-upd-item").count()).toBeGreaterThan(1);
+  await expect(panel.locator(".ib-upd-change").first()).toContainText("→");
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(burst).toContainText("read");
+  // Each inbox keeps only its own kinds.
+  await page.getByRole("tab", { name: /Expansion/ }).click();
+  await expect(page).toHaveURL(/#\/inbox-expansion$/);
+  await expect(page.locator(".ib-kind", { hasText: "Adoption" })).toHaveCount(0);
+  await expect(page.locator(".ib-row").first()).toBeVisible();
+  await page.getByRole("tab", { name: /Account/ }).click();
+  await expect(page.getByLabel("Kind")).toBeVisible();
+  await expect(page.locator(".ib-row").first()).toBeVisible();
+  // Refresh stays on the same inbox.
+  await page.reload();
+  await expect(page.getByRole("tab", { name: /Account/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".sidebar .nav-item.active")).toContainText("Inbox");
+  // The Adoption inbox is also a tab on the Adoption page.
+  await nav(page, "Adoption");
+  await page.locator(".tabbtn", { hasText: "Inbox" }).click();
+  await expect(page.locator(".ib-row", { hasText: /adoption updates?/ }).first()).toBeVisible();
 });
 
 test("Total Labs: columns can be resized and reset", async ({ page }) => {

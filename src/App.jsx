@@ -38,6 +38,7 @@ import ResourcesView from "./views/ResourcesView";
 import LogCheckinView from "./views/LogCheckinView";
 import CheckinsView from "./views/CheckinsView";
 import InboxView from "./views/InboxView";
+import InboxUpdatesView from "./views/InboxUpdatesView";
 import { useInboxUnread } from "./lib/inbox";
 import { useFloatingTableHeads } from "./lib/useFloatingTableHeads";
 import { useResizableTables } from "./lib/useResizableTables";
@@ -45,7 +46,7 @@ import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 
 // ---- address-bar routing: "#/<screen>", "#/lab/<lab id>/<tab>", "#/lab/<lab id>/<tab>/log-checkin" ----
 const ROUTE_VIEWS = ["list", "dashboard", "portfolio", "collections", "expansion", "tasks", "visits", "adoption", "adoption-template", "kpi",
-  "reports", "feedback", "resources", "csm-setup", "checkins", "inbox"];
+  "reports", "feedback", "resources", "csm-setup", "checkins", "inbox", "inbox-adoption", "inbox-expansion", "inbox-account"];
 function parseHash() {
   const parts = (window.location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean).map((p) => {
     try { return decodeURIComponent(p); } catch { return p; }
@@ -561,7 +562,7 @@ export default function App() {
 
   // Unread "new tasks" count for the sidebar (the signed-in person's own tasks; cleared by opening Tasks).
   const newTaskCount = useNewTaskCount(idByName[myName], view === "tasks");
-  const inboxCount = useInboxUnread(idByName[myName], true);
+  const inboxCounts = useInboxUnread(idByName[myName], true);
   useResizableTables(idByName[myName] || myName); // every table's columns can be dragged; widths kept per person, per browser
 
   if (SUPABASE_CONFIGURED && !authChecked) {
@@ -601,7 +602,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={navigateFromSidebar} viewer={viewer} newTaskCount={newTaskCount} inboxCount={inboxCount} setCurrentCSM={setCurrentCSM} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
+      <Sidebar view={view} setView={navigateFromSidebar} viewer={viewer} newTaskCount={newTaskCount} inboxCounts={inboxCounts} setCurrentCSM={setCurrentCSM} onOpenAddDrawer={() => { setAddDrawerPresetParent(null); setAddDrawerOpen(true); }} />
       <div className="main">
         <TopBar viewer={viewer} setView={navigate} showToast={showToast} searchQuery={globalSearchQuery} onSearchChange={handleGlobalSearch} />
         <div className="content">
@@ -617,7 +618,7 @@ export default function App() {
           {(view === "adoption" || view === "adoption-template") && (
             <AdoptionView
               onTemplate={view === "adoption-template"}
-              onNavigate={navigate}
+              onNavigate={navigate} showToast={showToast} counts={inboxCounts}
               labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName}
               onOpenLab={openLabDetail}
               onOpenCsm={(name) => { try { sessionStorage.setItem("csm.ui.kpi.csm", JSON.stringify(name)); } catch { /* storage unavailable */ } navigate("kpi"); }}
@@ -659,7 +660,7 @@ export default function App() {
             <CollectionsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
           )}
           {view === "expansion" && (
-            <ExpansionView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} onPatchLab={handlePatchLab} showToast={showToast} />
+            <ExpansionView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} onPatchLab={handlePatchLab} showToast={showToast} counts={inboxCounts} />
           )}
           {view === "tasks" && (
             <TasksView labs={labs} modules={modules} plans={plans} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} onPatchLab={handlePatchLab} showToast={showToast} />
@@ -671,7 +672,10 @@ export default function App() {
             <CheckinsView labs={labs} viewer={viewer} onOpenLab={openLabDetail} onLogCheckin={openLogCheckinFor} />
           )}
           {view === "inbox" && (
-            <InboxView labs={labs} modules={modules} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <InboxView labs={labs} modules={modules} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} counts={inboxCounts} onNavigate={navigate} />
+          )}
+          {view.startsWith("inbox-") && (
+            <InboxUpdatesView key={view} segment={view.slice(6)} labs={labs} modules={modules} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} counts={inboxCounts} onNavigate={navigate} />
           )}
           {view === "feedback" && (
             <FeedbackView labs={labs} modules={modules} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />

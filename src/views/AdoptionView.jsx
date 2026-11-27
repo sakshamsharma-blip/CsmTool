@@ -4,11 +4,12 @@ import { useKpiData } from "../lib/useKpiData";
 import { useScopedCsm } from "../lib/useScopedCsm";
 import PipelineAnalytics from "../components/PipelineAnalytics";
 import InfoTip from "../components/InfoTip";
+import InboxUpdatesView from "./InboxUpdatesView";
 
 // The one Adoption screen (decision Nov 2 2026): Analytics, CSM Performance, Module-wise and the Adoption Template all live
 // here as tabs. The Template tab has its own address (#/adoption-template) and renders without waiting for the score data.
 // Only a CSM Lead / Admin gets the Template tab (decision Nov 16 2026); App.jsx sends anyone else back to Analytics.
-export default function AdoptionView({ onTemplate, onNavigate, renderTemplate, labs, modules, plans, viewer, idByName, onOpenLab, onOpenCsm }) {
+export default function AdoptionView({ onTemplate, onNavigate, renderTemplate, labs, modules, plans, viewer, idByName, onOpenLab, onOpenCsm, showToast, counts }) {
   const [tab, setTab] = useSessionState("adoption.tab", "analytics");
   const { isHead } = useScopedCsm(viewer, "adoption");
   const kpi = useKpiData({ labs, modules, plans, idByName });
@@ -18,11 +19,15 @@ export default function AdoptionView({ onTemplate, onNavigate, renderTemplate, l
     setTab(key);
     if (onTemplate) onNavigate("adoption");
   };
+  // Inbox tab (decision Nov 27 2026): the Adoption inbox (same as Inbox → Adoption), shown without waiting for the score data.
+  const inboxLabel = counts?.adoption ? `Inbox (${counts.adoption} unread)` : "Inbox";
+  const inbox = () => <InboxUpdatesView embedded segment="adoption" labs={labs} modules={modules} viewer={viewer} idByName={idByName} onOpenLab={onOpenLab} showToast={showToast} />;
   const bar = (
     <div className="tabbar">
       {[["analytics", "Analytics"], ...(isHead ? [["csm", "CSM Performance"]] : []), ["modules", "Module-wise"]].map(([k, l]) => (
-        <button key={k} className="tabbtn" onClick={() => selectTab(k)}>{l}</button>
+        <button key={k} className={`tabbtn${!onTemplate && tab === k ? " active" : ""}`} onClick={() => selectTab(k)}>{l}</button>
       ))}
+      <button className={`tabbtn${!onTemplate && tab === "inbox" ? " active" : ""}`} onClick={() => selectTab("inbox")}>{inboxLabel}</button>
       {isHead && <button className={`tabbtn${onTemplate ? " active" : ""}`} onClick={() => selectTab("template")}>Template</button>}
     </div>
   );
@@ -36,6 +41,7 @@ export default function AdoptionView({ onTemplate, onNavigate, renderTemplate, l
       <p className="page-sub">Track adoption progress, trends and performance by lab, CSM and module.</p>
     </>
   );
+  if (tab === "inbox") return <div>{head}{bar}{inbox()}</div>;
   if (!SUPABASE_CONFIGURED) return <div>{head}{bar}<div className="table-card" style={{ padding: 40, textAlign: "center", color: "var(--text-faint)" }}>Demo mode — Adoption analytics needs a database connected.</div></div>;
   if (kpi.loading) return <div style={{ padding: 30, textAlign: "center", color: "var(--text-faint)" }}>Loading adoption…</div>;
   if (kpi.error) return <div className="error-banner">Couldn't load adoption — {kpi.error}</div>;
@@ -43,7 +49,7 @@ export default function AdoptionView({ onTemplate, onNavigate, renderTemplate, l
     <div>
       {head}
       <PipelineAnalytics pipeline="adoption" page="adoption" labs={labs} viewer={viewer} idByName={idByName} onOpenLab={onOpenLab} onOpenCsm={onOpenCsm} kpi={kpi}
-        tab={tab} onTab={selectTab} extraTabs={isHead ? [{ key: "template", label: "Template" }] : []} />
+        tab={tab} onTab={selectTab} extraTabs={[{ key: "inbox", label: inboxLabel, render: inbox }, ...(isHead ? [{ key: "template", label: "Template" }] : [])]} />
     </div>
   );
 }

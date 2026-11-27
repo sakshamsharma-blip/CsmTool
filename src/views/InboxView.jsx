@@ -12,11 +12,13 @@ import { labSelectOptions } from "../lib/selectOptions";
 import ScopeToggle from "../components/ScopeToggle";
 import SearchSelect from "../components/SearchSelect";
 import ClearFilters from "../components/ClearFilters";
+import InboxTabs from "../components/InboxTabs";
 
 // Sidebar → Inbox (decision Nov 24 2026; open to every CSM since Nov 26 2026 — a CSM sees their own labs, a Lead / Manager /
 // Admin the team). Check-ins and logged visits, newest first, grouped by lab. Entries you logged yourself count as read.
 // Filters include the check-in's sentiment or the lab's health (lib/labHealth.js) and a date range (default last 7 days). Opening an entry shows everything that was logged and marks it read for you (visit_reads,
 // migration 0052). "Mark all read" per lab or for the whole filtered list. Entries before INBOX_START count as read.
+// Since Nov 27 2026 this is the "Check-ins & Visits" inbox; Adoption, Expansion and Account have their own (InboxUpdatesView).
 
 const SENT_CLASS = { Positive: "fb-done", Neutral: "fb-faint", "At Risk": "fb-never" };
 const fmtWhen = (v) => {
@@ -33,7 +35,7 @@ const SENTIMENTS = [["Positive", "Positive"], ["Neutral", "Neutral"], ["At Risk"
 const HEALTH_BUCKETS = ["Healthy", "Needs Attention", "At Risk", "Not Assessed"];
 const summaryOf = (v) => [v.notes, v.discussionTopics?.length ? `Topics: ${v.discussionTopics.join(", ")}` : null].filter(Boolean).join(" · ") || "No notes.";
 
-export default function InboxView({ labs: allLabs, modules = [], viewer, idByName, onOpenLab, showToast }) {
+export default function InboxView({ labs: allLabs, modules = [], viewer, idByName, onOpenLab, showToast, counts, onNavigate }) {
   const { isHead, scope, setScope, csmFilter, setCsmFilter, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "inbox");
   const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
   const [demo] = useState(() => (SUPABASE_CONFIGURED ? null : buildDemoCheckins(todayISO())));
@@ -110,6 +112,7 @@ export default function InboxView({ labs: allLabs, modules = [], viewer, idByNam
     <div>
       <h1 className="page-title">Inbox</h1>
       <p className="page-sub">{isHead ? "Your team's" : "Your labs'"} check-ins and logged visits, newest first. Open one to see everything that was logged — it's then marked read for you. Viewing <b>{teamAll ? "the whole team" : scopeCsm}</b>'s labs.</p>
+      <InboxTabs view="inbox" counts={counts} onNavigate={onNavigate} />
       {error && <div className="error-banner">{error}</div>}
       <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} />
 
