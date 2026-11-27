@@ -451,6 +451,10 @@ test("Inbox: Adoption, Expansion and Account each have their own inbox, bursts a
   await nav(page, "Adoption");
   await page.locator(".tabbtn", { hasText: "Inbox" }).click();
   await expect(page.locator(".ib-row", { hasText: /adoption updates?/ }).first()).toBeVisible();
+  // … and the Account inbox on Financial Reports.
+  await nav(page, "Financial Reports");
+  await page.locator(".tabbtn", { hasText: "Inbox" }).click();
+  await expect(page.locator(".ib-kind", { hasText: /MRR|Plan Changed|Lab Reassigned/ }).first()).toBeVisible();
 });
 
 test("Total Labs: columns can be resized and reset", async ({ page }) => {

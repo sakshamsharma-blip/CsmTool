@@ -684,7 +684,7 @@ export default function App() {
             <ResourcesView modules={modules} myProfileId={idByName[myName]} isHead={viewer.isHead} showToast={showToast} />
           )}
           {view === "reports" && (
-            <ReportsView labs={labs} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} />
+            <ReportsView labs={labs} modules={modules} viewer={viewer} idByName={idByName} onOpenLab={openLabDetail} showToast={showToast} counts={inboxCounts} />
           )}
           {view === "lab-detail" && detailLab && (
             <LabDetailView

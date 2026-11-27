@@ -203,8 +203,8 @@ with the same context and follows the same rules. Read it fully before making ch
   you logged yourself (`visits.csm_id` = you; for a check-in that's who logged it, for a Visits & Meetings visit the lab's CSM). Sidebar shows the unread count (`useInboxUnread`, refreshed every 5 min).
   **Four inboxes (decision Nov 27 2026)**: Inbox stays ONE sidebar item (no dropdown, by decision); on the page, tabs Check-ins & Visits
   (`#/inbox`, the above), **Adoption** (`#/inbox-adoption`), **Expansion** (`#/inbox-expansion`), **Account** (`#/inbox-account`), each with its
-  own unread count (`components/InboxTabs.jsx`, `views/InboxUpdatesView.jsx`, `lib/inboxUpdates.js`). The Adoption and Expansion inboxes are ALSO an
-  "Inbox" tab on the Adoption and Expansion pages (`embedded`, same read marks). Nothing new is tracked: they read Lab
+  own unread count (`components/InboxTabs.jsx`, `views/InboxUpdatesView.jsx`, `lib/inboxUpdates.js`). The Adoption, Expansion and Account inboxes are ALSO an
+  "Inbox" tab on the Adoption, Expansion and Financial Reports pages respectively (`embedded`, same read marks). Nothing new is tracked: they read Lab
   History (`activity_log`) by kind (`UPDATE_SEGMENTS`): Adoption = "Adoption Updated" (In plan stage and In plan ⇄ Not in plan); Expansion = Pitch
   Updated, Expansion Converted, Expansion Update, Expansion Opportunity Added / Updated; Account = MRR Updated, Invoice Uploaded, Plan Changed, Lab
   Reassigned, Status Changed, Billing Mode Changed, Lab Churned, Contraction Logged, Feedback Recorded. **A new event that should reach an inbox
@@ -230,7 +230,7 @@ with the same context and follows the same rules. Read it fully before making ch
   India from the built-in `lib/indiaCities.js`, other countries from countriesnow.space (`fetchCities` in
   `lib/geography.js`, cached, 6s timeout), always plus cities already on our labs; any typed city is allowed.
   Changing Country / State clears City.
-- **Financial Reports** opens on **MRR Breakdown**, the first tab; Churn Report is second (Nov 23 2026, session key `reports.view`). MRR by Country, by State and by City are three separate full-width tables, one under another (`LocationTable` in `ReportsView.jsx`), each with: Clients, Labs, MRR, % of MRR, ARR (no Avg MRR / client), no paging or sideways scroll; it scrolls down inside the card (max 420px) with the header and a Total row pinned, and has a checkbox filter with search (`components/MultiSelectFilter.jsx`, empty = all; remembered per table). Use MultiSelectFilter for any new tick-several filter.
+- **Financial Reports** opens on **MRR Breakdown**, the first tab; Churn Report is second, then Inbox (the Account inbox, Nov 27 2026) (Nov 23 2026, session key `reports.view`). MRR by Country, by State and by City are three separate full-width tables, one under another (`LocationTable` in `ReportsView.jsx`), each with: Clients, Labs, MRR, % of MRR, ARR (no Avg MRR / client), no paging or sideways scroll; it scrolls down inside the card (max 420px) with the header and a Total row pinned, and has a checkbox filter with search (`components/MultiSelectFilter.jsx`, empty = all; remembered per table). Use MultiSelectFilter for any new tick-several filter.
 - **Financial Reports → MRR Breakdown** has Region, Country, State and City filters (each only offers what exists inside the choices
   before it; they narrow every table except CSM share) and
   "MRR by State" / "MRR by City" tables (clients, labs, MRR, % of MRR, avg per client, ARR).

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import InboxUpdatesView from "./InboxUpdatesView";
 import { useSessionState } from "../lib/useSessionState";
 import { SUPABASE_CONFIGURED } from "../supabaseClient";
 import { fmtINR, fmtAmount, fmtMoney, toINR, segmentFor, SEG_BANDS } from "../lib/format";
@@ -22,7 +23,7 @@ const SEG_RANGE = Object.fromEntries(SEG_BANDS.map((b, i) => [b.code, i === 0 ? 
 // time), and MRR Breakdown (Segment × CSM matrix, Region/Country splits) — the more granular
 // reporting the old "CS Dashboard 2026" pivot tabs carried that Dashboard's simple bucket
 // counts didn't replace.
-export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab }) {
+export default function ReportsView({ labs: allLabs, modules = [], viewer, idByName, onOpenLab, showToast, counts }) {
   const { isHead, scope, setScope, csmFilter, setCsmFilter, csmNames, teamNames, scopeCsm, teamAll, labType, setLabType } = useScopedCsm(viewer, "reports");
   const labs = useMemo(() => filterLabsByLabType(allLabs, labType), [allLabs, labType]);
   // MRR Breakdown opens first (Nov 23 2026). A new key, so a tab remembered from before doesn't reopen Churn.
@@ -176,11 +177,19 @@ export default function ReportsView({ labs: allLabs, viewer, idByName, onOpenLab
       <div className="tabbar">
         <button className={`tabbtn${tab === "mrr" ? " active" : ""}`} onClick={() => setTab("mrr")}>MRR Breakdown</button>
         <button className={`tabbtn${tab === "churn" ? " active" : ""}`} onClick={() => setTab("churn")}>Churn Report</button>
+        {/* The Account inbox (decision Nov 27 2026): same as Inbox → Account, with its own filters and scope. */}
+        <button className={`tabbtn${tab === "inbox" ? " active" : ""}`} onClick={() => setTab("inbox")}>{counts?.account ? `Inbox (${counts.account} unread)` : "Inbox"}</button>
       </div>
 
-      <div style={{ marginTop: 16 }}>
-        <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} aside={<FxRate />} />
-      </div>
+      {tab === "inbox" ? (
+        <div style={{ marginTop: 16 }}>
+          <InboxUpdatesView embedded segment="account" labs={allLabs} modules={modules} viewer={viewer} idByName={idByName} onOpenLab={onOpenLab} showToast={showToast} />
+        </div>
+      ) : (
+        <div style={{ marginTop: 16 }}>
+          <ScopeToggle isHead={isHead} scope={scope} setScope={setScope} csmFilter={csmFilter} setCsmFilter={setCsmFilter} csmNames={teamNames} labType={labType} setLabType={setLabType} aside={<FxRate />} />
+        </div>
+      )}
 
       {tab === "churn" && (
         loadingChurn ? (
